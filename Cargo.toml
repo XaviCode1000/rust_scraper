@@ -130,6 +130,10 @@ mimetype-detector = { version = "0.3", optional = true }
 # Both versions coexist because governor hasn't upgraded. Do NOT try to unify.
 governor = "0.6"
 
+# Redis client for distributed rate limiting (Phase 3)
+# Use redis with tokio runtime support and rustls for TLS
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager", "rustls"] }
+
 # Concurrent data structures - FASE 1 Web Crawler
 # NOTE: dashmap 6.x is used directly by url_queue.rs (DashSet).
 # governor pulls in dashmap 5.x. Both are needed. Do NOT remove either.
@@ -205,6 +209,11 @@ wide = { version = "0.7", optional = true }
 # Security updates - force secure versions to address vulnerabilities
 rustls-webpki = ">=0.103.12"
 time = ">=0.3.47"
+
+# Secrets protection (Phase 2: zeroize/secrecy)
+secrecy = { version = "0.8", features = ["serde"] }
+# Compile-time assertions for type safety
+static_assertions = "1.1"
 
 [dev-dependencies]
 assert_cmd = "2"

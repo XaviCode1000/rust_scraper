@@ -83,7 +83,7 @@ impl std::fmt::Display for LogFormat {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,ignore
 /// fn main() {
 ///     let _guard = init_json_logging("info", Some("/var/log"), "myapp").unwrap();
 ///     // ... application runs ...

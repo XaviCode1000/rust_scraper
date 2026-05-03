@@ -4,6 +4,7 @@
 //! Handles timeouts and network errors with configurable retry limits.
 
 use std::time::Duration;
+use tracing::instrument;
 
 /// Errors that can occur during retry operations
 #[derive(Debug, thiserror::Error)]
@@ -45,6 +46,17 @@ impl RetryPolicy {
     }
 
     /// Execute operation with retry logic
+    #[instrument(
+        name = "retry_execute",
+        skip(self, operation),
+        fields(
+            max_attempts = self.max_attempts,
+            base_delay_ms = self.base_delay_ms,
+            max_delay_ms = self.max_delay_ms,
+            attempt,
+            error
+        )
+    )]
     pub async fn execute_with_retry<F, Fut, T, E>(&self, mut operation: F) -> Result<T>
     where
         F: FnMut() -> Fut,
@@ -61,12 +73,19 @@ impl RetryPolicy {
                 Ok(result) => return Ok(result),
                 Err(error) => {
                     if attempt >= self.max_attempts {
+                        tracing::error!(
+                            max_retries_exceeded = true,
+                            total_attempts = attempt,
+                            last_error = %error
+                        );
                         return Err(RetryError::MaxRetriesExceeded(error.to_string()));
                     }
 
                     tracing::warn!(
-                        "Operation failed (attempt {}/{}): {}. Retrying in {}ms",
-                        attempt, self.max_attempts, error, delay
+                        attempt,
+                        error = %error,
+                        retry_delay_ms = delay,
+                        "Operation failed, retrying"
                     );
 
                     tokio::time::sleep(Duration::from_millis(delay)).await;

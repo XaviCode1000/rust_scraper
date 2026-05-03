@@ -15,6 +15,7 @@ use url::Url;
 
 pub mod crawl_job;
 pub mod crawler_entities;
+pub mod credentials;
 pub mod entities;
 pub mod error;
 pub mod exporter;
@@ -33,6 +34,9 @@ pub mod semantic_cleaner;
 
 // Re-exports for backward compatibility (crate::domain::X)
 pub use crawl_job::{ContentType, DiscoveredUrl};
+pub use credentials::{
+    AccessToken, ApiKey, CredentialError, CredentialStore, SecretCredential, SensitiveString,
+};
 
 pub use entities::{
     DocumentChunk, DocumentChunkExported, DocumentChunkUnvalidated, DocumentChunkValidated,

@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info, span, warn, Level};
+use tracing::{debug, error, info, instrument, span, warn, Level};
 use url::Url;
 
 pub use crate::domain::{
@@ -159,6 +159,14 @@ impl CrawlState {
 /// # Ok(())
 /// # }
 /// ```
+#[instrument(
+    name = "discover_urls_for_tui",
+    skip(config),
+    fields(
+        base_url,
+        use_sitemap = config.use_sitemap
+    )
+)]
 pub async fn discover_urls_for_tui(
     base_url: &str,
     config: &CrawlerConfig,
@@ -273,6 +281,15 @@ pub async fn discover_urls_for_tui(
 /// # Ok(())
 /// # }
 /// ```
+#[instrument(
+    name = "scrape_urls_for_tui",
+    skip(urls, config),
+    fields(
+        url_count = urls.len(),
+        concurrency = config.scraper_concurrency,
+        has_downloads = config.has_downloads()
+    )
+)]
 pub async fn scrape_urls_for_tui(
     urls: &[Url],
     config: &ScraperConfig,
@@ -313,6 +330,11 @@ pub async fn scrape_urls_for_tui(
 ///
 /// * `Ok(ScrapedContent)` - Scraped content from the URL
 /// * `Err(ScraperError)` - Error during scraping
+#[instrument(
+    name = "scrape_single_url",
+    skip(client, config),
+    fields(url = %url)
+)]
 pub async fn scrape_single_url_for_tui(
     client: &wreq::Client,
     url: &Url,
@@ -469,6 +491,17 @@ async fn download_assets_if_enabled(
 /// # Ok(())
 /// # }
 /// ```
+#[instrument(
+    name = "crawl_site",
+    skip(config),
+    fields(
+        seed_url = %config.seed_url,
+        max_depth = config.max_depth,
+        max_pages = config.max_pages,
+        delay_ms = config.delay_ms,
+        concurrency = config.concurrency
+    )
+)]
 pub async fn crawl_site(config: CrawlerConfig) -> Result<CrawlResult, CrawlError> {
     let span = span!(
         Level::INFO,
@@ -1139,15 +1172,11 @@ fn parse_sitemap(xml_content: &str, base_url: &Url) -> Result<Vec<String>, Crawl
     loop {
         buf.clear();
         match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref e) | Event::Empty(ref e)) => {
-                if e.name().as_ref() == b"loc" {
-                    in_loc = true;
-                }
+            Ok(Event::Start(ref e) | Event::Empty(ref e)) if e.name().as_ref() == b"loc" => {
+                in_loc = true;
             },
-            Ok(Event::End(ref e)) => {
-                if e.name().as_ref() == b"loc" {
-                    in_loc = false;
-                }
+            Ok(Event::End(ref e)) if e.name().as_ref() == b"loc" => {
+                in_loc = false;
             },
             Ok(Event::Text(ref e)) if in_loc => {
                 let text = e.unescape().map_err(|e| CrawlError::Parse(e.to_string()))?;

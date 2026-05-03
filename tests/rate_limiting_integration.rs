@@ -284,7 +284,7 @@ async fn test_rate_limiter_timing_accuracy() {
     // Assert: el promedio debería estar cerca de 100ms (con ±30ms de tolerancia)
     let avg_elapsed = total_elapsed_ms / num_cycles;
     assert!(
-        avg_elapsed >= 70 && avg_elapsed <= 150,
+        (70..=150).contains(&avg_elapsed),
         "Promedio {}ms debería estar entre 70-150ms",
         avg_elapsed
     );

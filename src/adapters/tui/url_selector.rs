@@ -345,10 +345,8 @@ pub async fn run_selector(urls: &[Url]) -> Result<Vec<Url>> {
                         KeyCode::Char('d') | KeyCode::Char('D') => state.deselect_all(),
 
                         // Enter confirmation mode
-                        KeyCode::Enter => {
-                            if state.has_selections() {
-                                state.enter_confirm_mode();
-                            }
+                        KeyCode::Enter if state.has_selections() => {
+                            state.enter_confirm_mode();
                         },
 
                         // Confirmation responses

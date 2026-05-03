@@ -195,7 +195,7 @@ mod tests {
         assert!(result.is_ok());
 
         // Verify chunks were written
-        let mut chunks = fs::read_dir(temp_dir.path())
+        let chunks = fs::read_dir(temp_dir.path())
             .unwrap()
             .filter_map(|e| e.ok())
             .filter(|e| e.path().to_string_lossy().contains("urls_chunk_"))

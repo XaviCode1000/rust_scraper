@@ -136,16 +136,12 @@ fn test_semantic_cleaner_offline_mode_config() {
 /// Test that DocumentChunk can be created (verifies domain integration)
 #[test]
 fn test_document_chunk_creation() {
-    let chunk = DocumentChunk {
-        id: uuid::Uuid::new_v4(),
-        url: "https://example.com".to_string(),
-        title: "Test Page".to_string(),
-        content: "Test content".to_string(),
-        metadata: std::collections::HashMap::new(),
-        timestamp: chrono::Utc::now(),
-        embeddings: None,
-        correlation_id: None,
-    };
+    let chunk = DocumentChunk::new(
+        uuid::Uuid::new_v4(),
+        "https://example.com",
+        "Test Page",
+        "Test content",
+    );
 
     assert_eq!(chunk.url, "https://example.com");
 }
@@ -172,7 +168,7 @@ async fn test_model_cache_is_cached() {
     let cache = ModelCache::new(config);
 
     // Should return false for non-existent file
-    assert!(!cache.is_model_cached("model.onnx").await?);
+    assert!(!cache.is_model_cached("model.onnx").await.unwrap());
 
     // Create a dummy file
     tokio::fs::create_dir_all(&cache_dir).await.unwrap();
@@ -181,7 +177,7 @@ async fn test_model_cache_is_cached() {
         .unwrap();
 
     // Should return true now
-    assert!(cache.is_model_cached("model.onnx").await?);
+    assert!(cache.is_model_cached("model.onnx").await.unwrap());
 }
 
 /// Test that ModelCache can get model path
@@ -880,29 +876,21 @@ fn test_relevance_filtering() {
     let reference = vec![1.0f32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
 
     // High similarity chunk
-    let chunk1 = DocumentChunk {
-        id: uuid::Uuid::new_v4(),
-        url: String::new(),
-        title: String::new(),
-        content: "High similarity".to_string(),
-        metadata: std::collections::HashMap::new(),
-        timestamp: chrono::Utc::now(),
-        embeddings: None,
-        correlation_id: None,
-    };
+    let chunk1 = DocumentChunk::new(
+        uuid::Uuid::new_v4(),
+        "",
+        "",
+        "High similarity",
+    );
     let emb1 = vec![0.9f32, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
 
     // Low similarity chunk (orthogonal)
-    let chunk2 = DocumentChunk {
-        id: uuid::Uuid::new_v4(),
-        url: String::new(),
-        title: String::new(),
-        content: "Low similarity".to_string(),
-        metadata: std::collections::HashMap::new(),
-        timestamp: chrono::Utc::now(),
-        embeddings: None,
-        correlation_id: None,
-    };
+    let chunk2 = DocumentChunk::new(
+        uuid::Uuid::new_v4(),
+        "",
+        "",
+        "Low similarity",
+    );
     let emb2 = vec![0.0f32, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
 
     let chunks = vec![(chunk1, emb1), (chunk2, emb2)];

@@ -16,8 +16,12 @@ use crate::domain::{DownloadedAsset, ScrapedContent, ValidUrl};
 use crate::error::{Result, ScraperError};
 use crate::ScraperConfig;
 use futures::stream::{self, StreamExt};
-use tracing::{debug, info, warn};
+use tracing::{debug, info, instrument, warn};
 use wreq::Client;
+
+/// Maximum HTML body size to log/instrument (1MB)
+/// Bodies larger than this are skipped to avoid performance issues
+const MAX_INSTRUMENTED_BODY_SIZE: usize = 1_048_576;
 
 /// Minimum character threshold for considering content "substantial".
 /// Pages below this threshold after extraction likely require JS rendering.
@@ -118,6 +122,14 @@ pub async fn scrape_with_readability(
 /// # Errors
 /// Returns `ScraperError::Http` for HTTP errors, `ScraperError::Network` for
 /// connection errors.
+#[instrument(
+    name = "scrape_with_config",
+    skip(client, config),
+    fields(
+        url = %url,
+        has_downloads = config.has_downloads()
+    )
+)]
 pub async fn scrape_with_config(
     client: &Client,
     url: &url::Url,
@@ -141,7 +153,24 @@ pub async fn scrape_with_config(
         .text()
         .await
         .map_err(|e| ScraperError::Network(e.to_string()))?;
-    debug!("📄 Downloaded {} bytes from {}", html.len(), url);
+
+    // Record HTML size in span, skip logging for large bodies (>1MB) to avoid performance issues
+    let html_size = html.len();
+    let html_truncated = html_size > MAX_INSTRUMENTED_BODY_SIZE;
+    if html_truncated {
+        tracing::debug!(
+            html_size_bytes = html_size,
+            html_size_skipped = true,
+            "HTML body exceeds 1MB, skipping detailed instrumentation"
+        );
+    } else {
+        tracing::debug!("📄 Downloaded {} bytes from {}", html.len(), url);
+    }
+
+    // Add span field for html size (truncated)
+    let span = tracing::Span::current();
+    span.record("html_size_bytes", html_size.min(MAX_INSTRUMENTED_BODY_SIZE));
+    span.record("html_size_skipped", html_truncated);
 
     // Detect WAF/CAPTCHA challenges disguised as HTTP 200
     if let Some(provider) = detect_waf_challenge(&html) {

@@ -227,6 +227,8 @@ async fn __main() -> CliExit {
         1 => "debug",
         _ => "trace",
     };
+    // Keep guard alive for program duration (required for tracing subscriber)
+    #[allow(clippy::let_unit_value)]
     let _guard = init_logging_dual(log_level, args.quiet, no_color);
 
     // =========================================================================

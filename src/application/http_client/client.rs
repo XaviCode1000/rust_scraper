@@ -99,7 +99,7 @@ impl HttpClient {
         );
 
         let builder = Client::builder()
-            .emulation(config.tls_emulation.clone())
+            .emulation(config.tls_emulation)
             .default_headers(headers)
             .timeout(Duration::from_secs(config.timeout_secs))
             .connect_timeout(Duration::from_secs(config.connect_timeout_secs))

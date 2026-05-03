@@ -335,8 +335,6 @@ impl Default for RelevanceScorer {
 mod tests {
     use super::*;
     use crate::domain::DocumentChunk;
-    use chrono::Utc;
-    use std::collections::HashMap;
     use uuid::Uuid;
 
     fn create_test_chunk(content: &str) -> (DocumentChunk, Vec<f32>) {

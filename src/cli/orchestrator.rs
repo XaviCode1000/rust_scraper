@@ -99,13 +99,16 @@ pub async fn run(args: Args) -> CliExit {
     };
 
     // Determine output directory for individual files
-    let output_dir = if args.quick_save && args.vault.is_some() {
-        let vault = args.vault.as_ref().unwrap();
-        let inbox = vault.join("_inbox");
-        if !inbox.exists() {
-            let _ = std::fs::create_dir_all(&inbox);
+    let output_dir = if args.quick_save {
+        if let Some(v) = &args.vault {
+            let inbox = v.join("_inbox");
+            if !inbox.exists() {
+                let _ = std::fs::create_dir_all(&inbox);
+            }
+            inbox
+        } else {
+            args.output.clone()
         }
-        inbox
     } else {
         args.output.clone()
     };

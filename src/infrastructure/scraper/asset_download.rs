@@ -4,7 +4,7 @@
 //! Enabled with --features images or --features documents.
 
 use crate::domain::DownloadedAsset;
-use crate::error::{Result, ScraperError};
+use crate::error::Result;
 use crate::ScraperConfig;
 use futures::stream::{self, StreamExt};
 use scraper;
@@ -166,7 +166,7 @@ async fn download_single_asset(
         Ok(local_path)
     })
     .await
-    .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("spawn_blocking failed: {e}")))??;
+    .map_err(|e| io::Error::other(format!("spawn_blocking failed: {e}")))??;
 
     tracing::info!("Downloaded: {} -> {:?}", url_str, final_path);
 
