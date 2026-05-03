@@ -66,10 +66,18 @@ pub async fn run(args: Args) -> CliExit {
     let urls_to_scrape = discovered_urls;
 
     // Create scraper config
-    let scraper_config = ScraperConfig::default()
+    let mut scraper_config = ScraperConfig::default()
         .with_output_dir(args.output.clone())
         .with_scraper_concurrency(args.concurrency.resolve())
         .with_max_pages(args.max_pages);
+
+    // Apply download flags (builder pattern requires conditional application)
+    if args.download_images {
+        scraper_config = scraper_config.with_images();
+    }
+    if args.download_documents {
+        scraper_config = scraper_config.with_documents();
+    }
 
     // Scraping phase
 
