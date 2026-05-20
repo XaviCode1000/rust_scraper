@@ -29,9 +29,7 @@
 mod client;
 mod config;
 mod error;
-mod waf;
 
 pub use client::{create_http_client, get_random_user_agent_from_pool, HttpClient};
 pub use config::HttpClientConfig;
 pub use error::{HttpError, HttpResult};
-pub use waf::detect_waf_challenge;

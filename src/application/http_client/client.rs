@@ -4,7 +4,7 @@
 
 use super::config::HttpClientConfig;
 use super::error::{HttpError, HttpResult};
-use super::waf::detect_waf_challenge;
+use crate::infrastructure::http::waf_engine::WafInspector;
 use crate::error::ScraperError;
 use crate::infrastructure::user_agent::UserAgentCache;
 use governor::clock::DefaultClock;
@@ -59,7 +59,7 @@ impl HttpClient {
     ///
     /// Returns `ScraperError::Config` if client creation fails
     pub fn new(config: HttpClientConfig) -> Result<Self, ScraperError> {
-        let pool_size = std::cmp::max(3, num_cpus::get() - 1);
+        let pool_size = std::cmp::max(6, num_cpus::get() - 1);
 
         // Build Client Hints headers for Chrome 145 (2026 Standard)
         // These MUST match the TLS fingerprint to avoid "Headless Spoofing" detection
@@ -228,7 +228,7 @@ impl HttpClient {
                         .await
                         .map_err(|e| HttpError::Request(e.to_string()))?;
 
-                    if let Some(provider) = detect_waf_challenge(&body) {
+                    if let Some(provider) = WafInspector::detect_body(&body) {
                         warn!(
                             "WAF challenge detected from {} ({}), attempting fallback strategies",
                             url, provider
