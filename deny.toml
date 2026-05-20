@@ -1,5 +1,8 @@
 [advisories]
-ignore = []
+ignore = [
+    # tonic 0.12.3 (transitive via console-subscriber) — optional feature, low risk
+    "RUSTSEC-2026-0097",
+]
 
 [licenses]
 allow = [
