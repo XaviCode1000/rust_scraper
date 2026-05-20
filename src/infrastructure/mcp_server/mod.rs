@@ -1124,7 +1124,7 @@ impl McpHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
 
-        match crate::application::http_client::detect_waf_challenge(&params.html) {
+        match crate::infrastructure::http::waf_engine::WafInspector::detect_body(&params.html) {
             Some(provider) => Ok(CallToolResult::success(vec![Content::text(format!(
                 "WAF detected: {}",
                 provider

@@ -38,7 +38,7 @@ use crate::domain::{CrawlError, CrawlerConfig};
 /// ```
 pub fn create_rate_limited_client(delay_ms: u64) -> Result<Client> {
     // Hardware-aware: limit connection pool for low-resource systems
-    let pool_size = std::cmp::max(3, num_cpus::get() - 1);
+    let pool_size = std::cmp::max(6, num_cpus::get() - 1);
 
     let client = Client::builder()
         .emulation(Emulation::Chrome145)

@@ -132,14 +132,14 @@ mod tests {
     #[test]
     fn test_waf_detector_logic() {
         let clean_html = "<html><body>Normal content</body></html>";
-        let result = crate::application::http_client::detect_waf_challenge(clean_html);
+        let result = crate::infrastructure::http::waf_engine::WafInspector::detect_body(clean_html);
         assert!(result.is_none());
     }
 
     #[test]
     fn test_waf_detector_cloudflare() {
         let cf_html = "<div id=\"cf-turnstile\" data-sitekey=\"abc123\"></div>";
-        let result = crate::application::http_client::detect_waf_challenge(cf_html);
+        let result = crate::infrastructure::http::waf_engine::WafInspector::detect_body(cf_html);
         assert!(result.is_some());
         assert!(result.unwrap().contains("Cloudflare"));
     }

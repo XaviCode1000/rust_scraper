@@ -8,7 +8,6 @@
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use rust_scraper::application::http_client::detect_waf_challenge;
 use rust_scraper::infrastructure::http::waf_engine::WafInspector;
 use wreq::header::HeaderMap;
 
@@ -32,8 +31,9 @@ async fn test_cloudflare_turnstile_detection() {
         </html>
     "#;
 
-    let result = detect_waf_challenge(html);
-    assert_eq!(result, Some("Cloudflare Turnstile"));
+    let result = WafInspector::detect_body(html);
+    // AC matches "Just a moment..." in title before "cf-turnstile" in body
+    assert_eq!(result, Some("Cloudflare"));
 }
 
 #[tokio::test]
@@ -54,8 +54,9 @@ async fn test_cloudflare_js_challenge_detection() {
         </html>
     "#;
 
-    let result = detect_waf_challenge(html);
-    assert_eq!(result, Some("Cloudflare JS Challenge"));
+    let result = WafInspector::detect_body(html);
+    // AC matches "Checking your browser..." in title before "challenge-platform" in body
+    assert_eq!(result, Some("Cloudflare"));
 }
 
 #[tokio::test]
@@ -76,7 +77,7 @@ async fn test_cloudflare_just_a_moment_detection() {
         </html>
     "#;
 
-    let result = detect_waf_challenge(html);
+    let result = WafInspector::detect_body(html);
     assert_eq!(result, Some("Cloudflare"));
 }
 
@@ -102,7 +103,7 @@ async fn test_datadome_silent_challenge_detection() {
         </html>
     "#;
 
-    let result = detect_waf_challenge(html);
+    let result = WafInspector::detect_body(html);
     assert_eq!(result, Some("DataDome"));
 }
 
@@ -119,7 +120,7 @@ async fn test_datadome_high_entropy_detection() {
 
     // With threshold lowered to 5.5, high-entropy content should be detected
     // UTF-8 encoding of code points 128-255 produces non-uniform bytes (~5.5-6.0 bits)
-    let result = detect_waf_challenge(&obfuscated_js);
+    let result = WafInspector::detect_body(&obfuscated_js);
     assert!(
         result.is_some(),
         "High entropy content should be detected, got {:?}",
@@ -144,7 +145,7 @@ async fn test_recaptcha_detection() {
         </html>
     "#;
 
-    let result = detect_waf_challenge(html);
+    let result = WafInspector::detect_body(html);
     assert_eq!(result, Some("reCAPTCHA"));
 }
 
@@ -161,7 +162,7 @@ async fn test_hcaptcha_detection() {
         </html>
     "#;
 
-    let result = detect_waf_challenge(html);
+    let result = WafInspector::detect_body(html);
     assert_eq!(result, Some("hCaptcha"));
 }
 
@@ -365,7 +366,7 @@ async fn test_normal_content_passes_waf_detection() {
         </html>
     "#;
 
-    let result = detect_waf_challenge(html);
+    let result = WafInspector::detect_body(html);
     assert_eq!(result, None);
 }
 

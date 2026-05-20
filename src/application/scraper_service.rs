@@ -11,7 +11,7 @@
 //! - **config-externalize**: Concurrency is configurable via ScraperConfig
 //! - **async-concurrency-limit**: Uses buffer_unordered for concurrency control
 
-use super::http_client::detect_waf_challenge;
+use crate::infrastructure::http::waf_engine::WafInspector;
 use crate::domain::{DownloadedAsset, ScrapedContent, ValidUrl};
 use crate::error::{Result, ScraperError};
 use crate::ScraperConfig;
@@ -173,7 +173,7 @@ pub async fn scrape_with_config(
     span.record("html_size_skipped", html_truncated);
 
     // Detect WAF/CAPTCHA challenges disguised as HTTP 200
-    if let Some(provider) = detect_waf_challenge(&html) {
+    if let Some(provider) = WafInspector::detect_body(&html) {
         warn!("WAF challenge detected from {}: {}", url, provider);
         return Err(ScraperError::WafBlocked {
             url: url.to_string(),
