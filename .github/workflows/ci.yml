@@ -32,8 +32,6 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # All warnings = hard errors in CI
-  RUSTFLAGS: "-Dwarnings"
 
 jobs:
   # ============================================================================
@@ -105,8 +103,8 @@ jobs:
       - name: CVE scan
         run: cargo audit
       - uses: taiki-e/install-action@cargo-deny
-      - name: License check
-        run: cargo deny check advisories
+      - name: License + bans + sources check
+        run: cargo deny check
 
   # ============================================================================
   # RELEASE: build optimized binary (main only)

@@ -47,8 +47,8 @@ pub trait CrawlResultRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::ScrapedContent;
     use crate::domain::value_objects::ValidUrl;
+    use crate::domain::ScrapedContent;
     use url::Url;
 
     /// Minimal mock that implements the new save(&ScrapedContent) signature.

@@ -419,7 +419,7 @@ skill(name: "rust-skills")
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **rust-scraper** (4155 symbols, 8648 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **rust_scraper** (4409 symbols, 8051 relationships, 178 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
@@ -442,10 +442,10 @@ This project is indexed by GitNexus as **rust-scraper** (4155 symbols, 8648 rela
 
 | Resource | Use for |
 |----------|---------|
-| `gitnexus://repo/rust-scraper/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/rust-scraper/clusters` | All functional areas |
-| `gitnexus://repo/rust-scraper/processes` | All execution flows |
-| `gitnexus://repo/rust-scraper/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/rust_scraper/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/rust_scraper/clusters` | All functional areas |
+| `gitnexus://repo/rust_scraper/processes` | All execution flows |
+| `gitnexus://repo/rust_scraper/process/{name}` | Step-by-step execution trace |
 
 ## CLI
 

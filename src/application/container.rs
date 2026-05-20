@@ -53,7 +53,7 @@ impl Container {
             Err(e) => {
                 tracing::warn!("no se pudo inicializar el repositorio: {e}");
                 None
-            }
+            },
         };
 
         Ok(Self {
@@ -93,8 +93,13 @@ mod tests {
             ..Default::default()
         };
 
-        let container = Container::new(crawler_config, scraper_config).await.unwrap();
+        let container = Container::new(crawler_config, scraper_config)
+            .await
+            .unwrap();
         let repo = container.crawl_result_repository();
-        assert!(repo.is_some(), "crawl_result_repository() debe retornar Some");
+        assert!(
+            repo.is_some(),
+            "crawl_result_repository() debe retornar Some"
+        );
     }
 }

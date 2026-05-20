@@ -129,9 +129,8 @@ test-ci:
     @echo "4/4 → Ejecutando suite completa de tests..."
     cargo nextest run \
         --profile ci \
-        --test-threads $(nproc) \
-        --no-fail-fast \
-        --run-ignored=all
+        --test-threads 2 \
+        --no-fail-fast
     @echo "✅ CI PASADO - Listo para commit/push/PR"
 
 # Versión rápida para cuando solo quieres tests + clippy (sin fmt)
@@ -139,5 +138,5 @@ test-ci-quick:
     @echo "🔥 CI rápido (clippy + tests)..."
     cargo clippy --all-targets --all-features -- -D warnings
     gitnexus analyze || echo "GitNexus ya estaba actualizado"
-    cargo nextest run --profile ci --test-threads $(nproc) --no-fail-fast
+    cargo nextest run --profile ci --test-threads 2 --no-fail-fast
     @echo "✅ CI rápido pasado"

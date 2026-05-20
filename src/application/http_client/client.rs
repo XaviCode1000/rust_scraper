@@ -4,8 +4,8 @@
 
 use super::config::HttpClientConfig;
 use super::error::{HttpError, HttpResult};
-use crate::infrastructure::http::waf_engine::WafInspector;
 use crate::error::ScraperError;
+use crate::infrastructure::http::waf_engine::WafInspector;
 use crate::infrastructure::user_agent::UserAgentCache;
 use governor::clock::DefaultClock;
 use governor::state::{InMemoryState, NotKeyed};

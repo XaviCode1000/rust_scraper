@@ -11,9 +11,9 @@
 //! - **config-externalize**: Concurrency is configurable via ScraperConfig
 //! - **async-concurrency-limit**: Uses buffer_unordered for concurrency control
 
-use crate::infrastructure::http::waf_engine::WafInspector;
 use crate::domain::{DownloadedAsset, ScrapedContent, ValidUrl};
 use crate::error::{Result, ScraperError};
+use crate::infrastructure::http::waf_engine::WafInspector;
 use crate::ScraperConfig;
 use futures::stream::{self, StreamExt};
 use tracing::{debug, info, instrument, warn};

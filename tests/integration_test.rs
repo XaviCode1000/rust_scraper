@@ -6,8 +6,8 @@
 //! Run with features: cargo test --test integration --features images,documents
 
 use rust_scraper::{
-    create_http_client, save_results, scrape_with_readability, DownloadedAsset,
-    ScrapedContent, ValidUrl,
+    create_http_client, save_results, scrape_with_readability, DownloadedAsset, ScrapedContent,
+    ValidUrl,
 };
 use tempfile::TempDir;
 
@@ -306,6 +306,7 @@ fn test_save_results_markdown_with_markdown_syntax() {
 #[tokio::test]
 async fn test_download_images_from_website() {
     use rust_scraper::scrape_with_config;
+    use walkdir::WalkDir;
 
     // Arrange - Use webscraper.io test site (free, no auth required)
     let temp_dir = TempDir::new().expect("Failed to create temp dir");

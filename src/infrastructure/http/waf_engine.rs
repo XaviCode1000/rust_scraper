@@ -165,7 +165,9 @@ impl WafInspector {
 
         // Aho-Corasick single-pass scan for all 62 patterns.
         // Returns provider name for the first match found by AC (earliest end position).
-        WAF_AC.find(body).map(|m| WAF_BODY_SIGNATURES[m.pattern()].1)
+        WAF_AC
+            .find(body)
+            .map(|m| WAF_BODY_SIGNATURES[m.pattern()].1)
     }
 
     /// Verify response integrity across multiple layers
@@ -346,7 +348,10 @@ mod tests {
     #[test]
     fn test_detect_body_cloudflare_turnstile() {
         let html = r#"<div id="cf-turnstile" data-sitekey="abc123"></div>"#;
-        assert_eq!(WafInspector::detect_body(html), Some("Cloudflare Turnstile"));
+        assert_eq!(
+            WafInspector::detect_body(html),
+            Some("Cloudflare Turnstile")
+        );
     }
 
     #[test]

@@ -7,21 +7,8 @@ use lol_html::{element, rewrite_str, RewriteStrSettings};
 
 /// Tags to remove entirely (element + all content).
 const TAGS_TO_REMOVE: &[&str] = &[
-    "script",
-    "style",
-    "noscript",
-    "form",
-    "iframe",
-    "object",
-    "embed",
-    "svg",
-    "canvas",
-    "video",
-    "audio",
-    "nav",
-    "header",
-    "footer",
-    "aside",
+    "script", "style", "noscript", "form", "iframe", "object", "embed", "svg", "canvas", "video",
+    "audio", "nav", "header", "footer", "aside",
 ];
 
 /// CSS selectors for elements to remove (class-based, attribute-based).
@@ -98,7 +85,7 @@ pub fn clean_html(html: &str) -> String {
 
         for name in attr_names {
             if !PRESERVED_ATTRS.contains(&name.as_str()) {
-                let _ = el.remove_attribute(&name);
+                el.remove_attribute(&name);
             }
         }
         Ok(())
@@ -115,7 +102,7 @@ pub fn clean_html(html: &str) -> String {
         Err(e) => {
             tracing::warn!("error reescribiendo HTML con lol_html: {e}");
             html.to_string()
-        }
+        },
     }
 }
 
@@ -215,7 +202,8 @@ mod tests {
 
     #[test]
     fn test_clean_whitespace_normalization() {
-        let html = "<html><body><p>  Too   many    spaces  </p><p>\n\n\tNewlines\t\t</p></body></html>";
+        let html =
+            "<html><body><p>  Too   many    spaces  </p><p>\n\n\tNewlines\t\t</p></body></html>";
         let cleaned = clean_html(html);
         assert!(
             !cleaned.contains("   "),

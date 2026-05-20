@@ -63,8 +63,12 @@ impl CrawlResultRepositoryImpl {
         }
 
         // Spawn background writer
-        let writer =
-            BackgroundWriter::new(log_path.clone(), rx, Arc::clone(&index), Arc::clone(&write_error));
+        let writer = BackgroundWriter::new(
+            log_path.clone(),
+            rx,
+            Arc::clone(&index),
+            Arc::clone(&write_error),
+        );
         tokio::spawn(writer.run());
 
         Ok(Self {
@@ -87,13 +91,13 @@ impl CrawlResultRepositoryImpl {
         loop {
             let mut len_buf = [0u8; 4];
             match reader.read_exact(&mut len_buf) {
-                Ok(()) => {}
+                Ok(()) => {},
                 Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => break,
                 Err(e) => {
                     return Err(CrawlError::Storage(format!(
                         "lectura corrupta en offset {offset}: {e}"
                     )))
-                }
+                },
             }
 
             let len = u32::from_le_bytes(len_buf) as usize;
@@ -141,12 +145,12 @@ impl CrawlResultRepository for CrawlResultRepositoryImpl {
             .map_err(|e| match e {
                 mpsc::error::TrySendError::Full(_) => {
                     CrawlError::Storage("canal lleno, backpressure".to_string())
-                }
+                },
                 mpsc::error::TrySendError::Closed(_) => {
                     // Writer task dropped the receiver — mark as dead
                     self.write_error.store(true, Ordering::Relaxed);
                     CrawlError::Storage("writer caído, canal cerrado".to_string())
-                }
+                },
             })?;
 
         Ok(())
@@ -222,7 +226,7 @@ impl BackgroundWriter {
                 tracing::error!("no se pudo abrir log para escritura: {e}");
                 self.write_error.store(true, Ordering::Relaxed);
                 return;
-            }
+            },
         };
 
         while let Some(cmd) = self.rx.recv().await {
@@ -251,7 +255,7 @@ impl BackgroundWriter {
                     let _ = file.flush();
 
                     self.index.insert(url, offset);
-                }
+                },
             }
         }
     }
@@ -355,8 +359,10 @@ mod tests {
         // First session: save entries
         {
             let repo = CrawlResultRepositoryImpl::new(log_path.clone(), 64).unwrap();
-            repo.save(&make_content("https://first.com", "First")).unwrap();
-            repo.save(&make_content("https://second.com", "Second")).unwrap();
+            repo.save(&make_content("https://first.com", "First"))
+                .unwrap();
+            repo.save(&make_content("https://second.com", "Second"))
+                .unwrap();
             wait_for_index(&repo, "https://first.com/").await;
             wait_for_index(&repo, "https://second.com/").await;
         } // repo drops — writer task stops
@@ -366,10 +372,7 @@ mod tests {
             let repo = CrawlResultRepositoryImpl::new(log_path, 64).unwrap();
             let mut urls = repo.get_all_urls().unwrap();
             urls.sort();
-            assert_eq!(
-                urls,
-                vec!["https://first.com/", "https://second.com/"]
-            );
+            assert_eq!(urls, vec!["https://first.com/", "https://second.com/"]);
 
             let found = repo.find_by_url("https://first.com/").unwrap();
             assert!(found.is_some());
@@ -408,11 +411,17 @@ mod tests {
         wait_for_index(&repo, "https://beta.com/page2").await;
         wait_for_index(&repo, "https://gamma.com/page3").await;
 
-        let found = repo.find_by_url("https://alpha.com/page1").unwrap().unwrap();
+        let found = repo
+            .find_by_url("https://alpha.com/page1")
+            .unwrap()
+            .unwrap();
         assert_eq!(found.title, "Alpha One");
         assert_eq!(found.content, "Content for Alpha One");
 
-        let found = repo.find_by_url("https://gamma.com/page3").unwrap().unwrap();
+        let found = repo
+            .find_by_url("https://gamma.com/page3")
+            .unwrap()
+            .unwrap();
         assert_eq!(found.title, "Gamma Three");
         assert_eq!(found.content, "Content for Gamma Three");
     }
