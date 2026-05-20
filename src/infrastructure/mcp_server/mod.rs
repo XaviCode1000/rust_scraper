@@ -292,10 +292,6 @@ struct VerifyWafIntegrityParams {
     html: Option<String>,
 }
 
-// Empty params for tools that take no arguments (MCP spec requires type: "object")
-#[derive(Deserialize, JsonSchema, Debug)]
-struct EmptyParams {}
-
 // ============================================================================
 // Tool implementations — organized by category
 // ============================================================================
