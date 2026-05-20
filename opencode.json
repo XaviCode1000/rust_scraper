@@ -9,9 +9,9 @@
     },
     "rust-scraper": {
       "type": "local",
-      "command": ["cargo", "run", "--example", "mcp_server_stdio", "--quiet"],
+      "command": ["/home/xavi/Projects/Rust/rust_scraper/target/release/examples/mcp_server_stdio"],
       "enabled": true,
-      "timeout": 60000
+      "timeout": 10000
     }
   }
 }
