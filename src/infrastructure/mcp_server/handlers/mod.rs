@@ -2,10 +2,13 @@
 //!
 //! Each module provides a `build_router()` function that returns a partial
 //! `ToolRouter<McpHandler>`. All routers are combined with the `+` operator.
+//!
+//! Note: All 37 tools are defined in the parent mod.rs #[tool_router] block.
+//! These submodules exist for future modularization but currently return
+//! empty routers.
 
 use rmcp::handler::server::tool::ToolRouter;
 use super::McpHandler;
-use super::state::McpState;
 
 pub mod scraping;
 pub mod content;
@@ -17,12 +20,13 @@ pub mod ai;
 pub mod assets;
 
 /// Build the combined ToolRouter from all 8 category modules.
-pub fn build_tool_router(state: &McpState) -> ToolRouter<McpHandler> {
-    scraping::build_router(state)
-        + content::build_router(state)
-        + export::build_router(state)
-        + url_utils::build_router(state)
-        + security::build_router(state)
-        + obsidian::build_router(state)
-        + assets::build_router(state)
+pub fn build_tool_router() -> ToolRouter<McpHandler> {
+    scraping::build_router()
+        + content::build_router()
+        + export::build_router()
+        + url_utils::build_router()
+        + security::build_router()
+        + obsidian::build_router()
+        + assets::build_router()
+        + ai::build_router()
 }

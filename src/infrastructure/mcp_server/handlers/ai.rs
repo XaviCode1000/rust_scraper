@@ -6,17 +6,15 @@
 
 use rmcp::handler::server::tool::ToolRouter;
 use super::McpHandler;
-use super::super::state::McpState;
 
 /// Build the partial tool router for AI tools.
 #[cfg(feature = "ai")]
-pub fn build_router(_state: &McpState) -> ToolRouter<McpHandler> {
-    // TODO: Implement 3 AI tools (PR 2)
+pub fn build_router() -> ToolRouter<McpHandler> {
     ToolRouter::new()
 }
 
 /// Stub for non-AI builds (returns empty router).
 #[cfg(not(feature = "ai"))]
-pub fn build_router(_state: &McpState) -> ToolRouter<McpHandler> {
+pub fn build_router() -> ToolRouter<McpHandler> {
     ToolRouter::new()
 }

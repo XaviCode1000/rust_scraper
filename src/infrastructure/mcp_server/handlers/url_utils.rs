@@ -5,10 +5,8 @@
 
 use rmcp::handler::server::tool::ToolRouter;
 use super::McpHandler;
-use super::super::state::McpState;
 
 /// Build the partial tool router for URL tools.
-pub fn build_router(_state: &McpState) -> ToolRouter<McpHandler> {
-    // TODO: Implement 6 URL tools (PR 2)
+pub fn build_router() -> ToolRouter<McpHandler> {
     ToolRouter::new()
 }

@@ -1,15 +1,13 @@
-//! Scraping Core tools — 8 tools for URL discovery and scraping
+//! Scraping Core tools — stub module (tools implemented in mod.rs)
 //!
-//! Tools: scrape_url, scrape_with_config, scrape_batch, crawl_site,
+//! Tools: scrape_url, scrape_with_options, scrape_batch, crawl_site,
 //! crawl_with_sitemap, discover_urls, discover_sitemap, detect_spa
 
 use rmcp::handler::server::tool::ToolRouter;
 use super::McpHandler;
-use super::super::state::McpState;
 
 /// Build the partial tool router for scraping tools.
-pub fn build_router(_state: &McpState) -> ToolRouter<McpHandler> {
-    // TODO: Implement 8 scraping tools (PR 2)
-    // Will use #[tool_router] macro on impl McpHandler block
+/// Tools are defined in the parent mod.rs #[tool_router] block.
+pub fn build_router() -> ToolRouter<McpHandler> {
     ToolRouter::new()
 }

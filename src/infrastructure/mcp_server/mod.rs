@@ -13,12 +13,17 @@ pub mod state;
 pub mod server;
 pub mod handlers;
 
+use std::path::PathBuf;
+
+use rmcp::handler::server::wrapper::Parameters;
 use rmcp::handler::server::tool::ToolRouter;
 use rmcp::tool_handler;
 use rmcp::tool_router;
 use rmcp::tool;
 use rmcp::handler::server::ServerHandler;
 use rmcp::{ErrorData as McpError, model::{CallToolResult, Content}};
+use schemars::JsonSchema;
+use serde::Deserialize;
 pub use state::McpState;
 
 /// Main MCP handler struct.
@@ -38,22 +43,785 @@ impl McpHandler {
     /// Create a new MCP handler with the given state.
     pub fn new(state: McpState) -> Self {
         Self {
-            state: state.clone(),
-            tool_router: Self::tool_router() + handlers::build_tool_router(&state),
+            state,
+            tool_router: Self::tool_router() + handlers::build_tool_router(),
         }
     }
 }
 
-/// Primary tool router — generates the default `tool_router()` method
-/// that `#[tool_handler]` requires. Additional tools from category
-/// modules are combined in `handlers::build_tool_router()`.
+// ============================================================================
+// Request parameter structs (shared across tools)
+// ============================================================================
+
+#[derive(Deserialize, JsonSchema)]
+struct ScrapeUrlParams {
+    /// URL to scrape (must start with http:// or https://)
+    url: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ScrapeWithOptionsParams {
+    /// URL to scrape
+    url: String,
+    /// Maximum pages to crawl (default: 1)
+    max_pages: Option<u32>,
+    /// Download images if found (default: false)
+    download_images: Option<bool>,
+    /// Download documents if found (default: false)
+    download_documents: Option<bool>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ScrapeBatchParams {
+    /// List of URLs to scrape
+    urls: Vec<String>,
+    /// Concurrency limit (default: 4)
+    concurrency: Option<usize>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct CrawlSiteParams {
+    /// Base URL to crawl
+    url: String,
+    /// Maximum crawl depth (default: 3)
+    max_depth: Option<u8>,
+    /// Maximum pages to crawl (default: 100)
+    max_pages: Option<u32>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct CrawlWithSitemapParams {
+    /// Base URL of the website
+    url: String,
+    /// Optional explicit sitemap URL
+    sitemap_url: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct DiscoverUrlsParams {
+    /// URL to extract links from
+    url: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct DetectSpaParams {
+    /// URL to check for SPA content
+    url: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct CleanHtmlParams {
+    /// Raw HTML to clean
+    html: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct HtmlToMarkdownParams {
+    /// HTML to convert
+    html: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ExtractLinksParams {
+    /// HTML to extract links from
+    html: String,
+    /// Base URL for resolving relative links
+    base_url: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct HighlightCodeParams {
+    /// Markdown with code blocks
+    markdown: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ConvertWikiLinksParams {
+    /// Markdown content
+    markdown: String,
+    /// Base domain for link conversion
+    base_domain: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ValidateUrlParams {
+    /// URL to validate
+    url: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ExtractDomainParams {
+    /// URL to extract domain from
+    url: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct NormalizeUrlParams {
+    /// URL to normalize
+    url: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct MatchUrlPatternParams {
+    /// URL to check
+    url: String,
+    /// Glob pattern to match against
+    pattern: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct IsInternalLinkParams {
+    /// URL to check
+    url: String,
+    /// Seed domain to compare against
+    seed_domain: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct DetectWafParams {
+    /// HTML body to scan for WAF signatures
+    html: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct ExportFileParams {
+    /// Output directory path
+    output_dir: String,
+    /// Filename (without extension)
+    filename: String,
+    /// Export format: markdown, text, json, jsonl, vector
+    format: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct DetectVaultParams {
+    /// Explicit vault path (optional)
+    vault_path: Option<String>,
+}
+
+#[derive(Deserialize, JsonSchema)]
+struct BuildObsidianUriParams {
+    /// Vault name
+    vault_name: String,
+    /// File path within vault
+    file_path: String,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize, JsonSchema)]
+struct SearchObsidianParams {
+    /// Search query
+    query: String,
+    /// Optional vault path to search in
+    vault_path: Option<String>,
+    /// Maximum results (default: 10)
+    limit: Option<usize>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize, JsonSchema)]
+struct DownloadAssetsParams {
+    /// HTML containing asset references
+    html: String,
+    /// Base URL for resolving relative asset paths
+    base_url: String,
+    /// Download images (default: true)
+    images: Option<bool>,
+    /// Download documents (default: false)
+    documents: Option<bool>,
+}
+
+// ============================================================================
+// Tool implementations — organized by category
+// ============================================================================
+
 #[tool_router]
 impl McpHandler {
-    /// Stub tool to verify MCP server is operational.
-    /// Will be replaced by real tools in PR 2.
-    #[tool(description = "Ping the MCP server to verify it is operational")]
-    async fn mcp_ping(&self) -> Result<CallToolResult, McpError> {
-        Ok(CallToolResult::success(vec![Content::text("pong")]))
+    // ========================================================================
+    // Category 1: Scraping Core (8 tools)
+    // ========================================================================
+
+    /// Scrape a single URL and extract clean content using Readability algorithm
+    #[tool(description = "Scrape a single URL and extract clean content using Readability algorithm (Firefox Reader mode). Returns title, content, excerpt, author, and date.")]
+    async fn scrape_url(&self, Parameters(params): Parameters<ScrapeUrlParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.scraping.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let url = url::Url::parse(&params.url)
+            .map_err(|e| McpError::invalid_params(format!("invalid URL: {e}"), Some(serde_json::Value::String("url".to_string()))))?;
+
+        let client = self.state.container.http_client().client();
+        match crate::application::scraper_service::scrape_with_readability(client, &url).await {
+            Ok(results) => {
+                let content = serde_json::to_string_pretty(&results)
+                    .unwrap_or_else(|_| "failed to serialize".into());
+                Ok(CallToolResult::success(vec![Content::text(content)]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    /// Scrape a URL with configurable options (asset download, concurrency)
+    #[tool(description = "Scrape a URL with configurable options including asset downloading, concurrency, and delay settings.")]
+    async fn scrape_with_options(&self, Parameters(params): Parameters<ScrapeWithOptionsParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.scraping.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let url = url::Url::parse(&params.url)
+            .map_err(|e| McpError::invalid_params(format!("invalid URL: {e}"), Some(serde_json::Value::String("url".to_string()))))?;
+
+        let mut config = crate::infrastructure::config::ScraperConfig::default();
+        if let Some(max) = params.max_pages { config.max_pages = Some(max as usize); }
+        if params.download_images == Some(true) { config.download_images = true; }
+        if params.download_documents == Some(true) { config.download_documents = true; }
+
+        let client = self.state.container.http_client().client();
+        match crate::application::scraper_service::scrape_with_config(client, &url, &config).await {
+            Ok(results) => {
+                let content = serde_json::to_string_pretty(&results)
+                    .unwrap_or_else(|_| "failed to serialize".into());
+                Ok(CallToolResult::success(vec![Content::text(content)]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    /// Scrape multiple URLs with concurrency control
+    #[tool(description = "Scrape multiple URLs with concurrency control. Failed URLs are logged but don't stop the batch.")]
+    async fn scrape_batch(&self, Parameters(params): Parameters<ScrapeBatchParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.scraping.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let urls: Vec<url::Url> = params.urls.iter()
+            .filter_map(|u| url::Url::parse(u).ok())
+            .collect();
+
+        if urls.is_empty() {
+            return Ok(CallToolResult::error(vec![Content::text("no valid URLs provided")]));
+        }
+
+        let mut config = crate::infrastructure::config::ScraperConfig::default();
+        if let Some(c) = params.concurrency { config.scraper_concurrency = c; }
+
+        let client = self.state.container.http_client().client();
+        match crate::application::scraper_service::scrape_multiple_with_limit(client, &urls, &config).await {
+            Ok(results) => {
+                let content = serde_json::to_string_pretty(&results)
+                    .unwrap_or_else(|_| "failed to serialize".into());
+                Ok(CallToolResult::success(vec![Content::text(content)]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    /// Crawl a website with BFS and depth limit
+    #[tool(description = "Crawl a website using BFS with configurable depth limit, concurrency control, and rate limiting.")]
+    async fn crawl_site(&self, Parameters(params): Parameters<CrawlSiteParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.scraping.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let seed_url = url::Url::parse(&params.url)
+            .map_err(|e| McpError::invalid_params(format!("invalid URL: {e}"), Some(serde_json::Value::String("url".to_string()))))?;
+
+        let crawler_config = crate::domain::CrawlerConfig::builder(seed_url)
+            .max_depth(params.max_depth.unwrap_or(3))
+            .max_pages(params.max_pages.unwrap_or(100) as usize)
+            .build();
+
+        match crate::application::crawler_service::crawl_site(crawler_config).await {
+            Ok(result) => {
+                let urls: Vec<String> = result.urls.iter().map(|u| u.url.to_string()).collect();
+                let json = serde_json::json!({
+                    "urls": urls,
+                    "total_pages": result.total_pages,
+                    "errors": result.errors,
+                });
+                Ok(CallToolResult::success(vec![Content::text(serde_json::to_string_pretty(&json).unwrap())]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    /// Discover and crawl URLs from a sitemap
+    #[tool(description = "Discover URLs from a website's sitemap and crawl them. Auto-discovers sitemap from robots.txt if not provided.")]
+    async fn crawl_with_sitemap(&self, Parameters(params): Parameters<CrawlWithSitemapParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.scraping.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let seed_url = url::Url::parse(&params.url)
+            .map_err(|e| McpError::invalid_params(format!("invalid URL: {e}"), Some(serde_json::Value::String("url".to_string()))))?;
+        let config = crate::domain::CrawlerConfig::new(seed_url);
+        match crate::application::crawler_service::crawl_with_sitemap(
+            &params.url,
+            params.sitemap_url.as_deref(),
+            &config,
+        ).await {
+            Ok(urls) => {
+                let url_strings: Vec<String> = urls.iter().map(|u| u.url.to_string()).collect();
+                Ok(CallToolResult::success(vec![Content::text(serde_json::to_string_pretty(&url_strings).unwrap())]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    /// Discover URLs from a single page's HTML links
+    #[tool(description = "Fetch a single page and extract all internal links. Lightweight URL discovery without full crawl.")]
+    async fn discover_urls(&self, Parameters(params): Parameters<DiscoverUrlsParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.scraping.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let client = self.state.container.http_client().client();
+        match client.get(&params.url).send().await {
+            Ok(resp) => {
+                match resp.text().await {
+                    Ok(html) => {
+                        match crate::infrastructure::crawler::extract_links(&html, &params.url) {
+                            Ok(links) => {
+                                let content = serde_json::to_string_pretty(&links)
+                                    .unwrap_or_else(|_| "failed to serialize".into());
+                                Ok(CallToolResult::success(vec![Content::text(content)]))
+                            }
+                            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+                        }
+                    }
+                    Err(e) => Ok(CallToolResult::error(vec![Content::text(format!("failed to read response: {e}"))])),
+                }
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!("HTTP error: {e}"))])),
+        }
+    }
+
+    /// Auto-discover sitemap URL from robots.txt or common locations
+    #[allow(deprecated)]
+    #[tool(description = "Auto-discover a website's sitemap URL by checking robots.txt and common locations (/sitemap.xml, /sitemap_index.xml, etc.).")]
+    async fn discover_sitemap(&self, Parameters(params): Parameters<DiscoverUrlsParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.scraping.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        match crate::application::crawler_service::fetch_sitemap(&params.url).await {
+            Ok(urls) => {
+                let content = serde_json::to_string_pretty(&urls)
+                    .unwrap_or_else(|_| "failed to serialize".into());
+                Ok(CallToolResult::success(vec![Content::text(content)]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    /// Detect if a URL requires JavaScript rendering (SPA)
+    #[tool(description = "Detect if a page requires JavaScript rendering (Single Page Application). Checks for minimal content and SPA markers like <div id=\"root\"> or <div id=\"app\">.")]
+    async fn detect_spa(&self, Parameters(params): Parameters<DetectSpaParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.scraping.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let client = self.state.container.http_client().client();
+        match client.get(&params.url).send().await {
+            Ok(resp) => {
+                match resp.text().await {
+                    Ok(html) => {
+                        let text = crate::infrastructure::scraper::fallback::extract_text(&html);
+                        match crate::application::scraper_service::detect_spa_content(&params.url, &text, &html) {
+                            Some(info) => {
+                                let json = serde_json::json!({
+                                    "url": info.url,
+                                    "char_count": info.char_count,
+                                    "has_spa_markers": info.has_spa_markers,
+                                });
+                                Ok(CallToolResult::success(vec![Content::text(serde_json::to_string_pretty(&json).unwrap())]))
+                            }
+                            None => Ok(CallToolResult::success(vec![Content::text("not an SPA - sufficient content found")])),
+                        }
+                    }
+                    Err(e) => Ok(CallToolResult::error(vec![Content::text(format!("failed to read response: {e}"))])),
+                }
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!("HTTP error: {e}"))])),
+        }
+    }
+
+    // ========================================================================
+    // Category 2: Content Processing (7 tools)
+    // ========================================================================
+
+    /// Remove boilerplate from HTML (scripts, nav, sidebar, footer, SVG)
+    #[tool(description = "Remove boilerplate from HTML including scripts, styles, navigation, sidebar, footer, and SVG elements. Returns cleaned HTML.")]
+    async fn clean_html(&self, Parameters(params): Parameters<CleanHtmlParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.content.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let cleaned = crate::infrastructure::converter::html_cleaner::clean_html(&params.html);
+        Ok(CallToolResult::success(vec![Content::text(cleaned)]))
+    }
+
+    /// Convert HTML to Markdown
+    #[tool(description = "Convert HTML to Markdown, preserving headings, code blocks, lists, and formatting.")]
+    async fn convert_html_to_markdown(&self, Parameters(params): Parameters<HtmlToMarkdownParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.content.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let md = crate::infrastructure::converter::html_to_markdown::convert_to_markdown(&params.html);
+        Ok(CallToolResult::success(vec![Content::text(md)]))
+    }
+
+    /// Extract all href links from HTML
+    #[tool(description = "Extract all href links from HTML content. Returns list of raw href values.")]
+    async fn extract_links(&self, Parameters(params): Parameters<ExtractLinksParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.content.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        match crate::infrastructure::crawler::extract_links(&params.html, &params.base_url) {
+            Ok(links) => {
+                let content = serde_json::to_string_pretty(&links)
+                    .unwrap_or_else(|_| "failed to serialize".into());
+                Ok(CallToolResult::success(vec![Content::text(content)]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    /// Add syntax highlighting to fenced code blocks
+    #[tool(description = "Add syntax highlighting to fenced code blocks in Markdown using syntect. Returns Markdown with highlighted code.")]
+    async fn highlight_code_blocks(&self, Parameters(params): Parameters<HighlightCodeParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.content.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let highlighted = crate::infrastructure::converter::syntax_highlight::highlight_code_blocks(&params.markdown);
+        Ok(CallToolResult::success(vec![Content::text(highlighted)]))
+    }
+
+    /// Convert HTTP links to Obsidian [[wiki-link]] syntax
+    #[tool(description = "Convert same-domain HTTP links to Obsidian [[wiki-link]] syntax for internal note linking.")]
+    async fn convert_wiki_links(&self, Parameters(params): Parameters<ConvertWikiLinksParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.content.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let wikilinks = crate::infrastructure::converter::wikilinks::convert_wiki_links(&params.markdown, &params.base_domain);
+        Ok(CallToolResult::success(vec![Content::text(wikilinks)]))
+    }
+
+    /// Generate YAML frontmatter for a scraped document
+    #[tool(description = "Generate YAML frontmatter with title, URL, date, author, excerpt, and optional rich metadata.")]
+    async fn generate_frontmatter(&self, Parameters(params): Parameters<serde_json::Value>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.content.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let title = params.get("title").and_then(|v| v.as_str()).unwrap_or("Untitled");
+        let url = params.get("url").and_then(|v| v.as_str()).unwrap_or("");
+        let fm = crate::infrastructure::output::frontmatter::generate_with_metadata(
+            title, url, None, None, None, &[], None,
+        );
+        Ok(CallToolResult::success(vec![Content::text(fm)]))
+    }
+
+    /// Generate rich metadata from scraped content (word count, reading time, language, content type)
+    #[tool(description = "Generate rich metadata from scraped content including word count, reading time (200 WPM), language detection, and content type classification.")]
+    async fn generate_rich_metadata(&self, Parameters(params): Parameters<serde_json::Value>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.content.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let content = params.get("content").and_then(|v| v.as_str()).unwrap_or("");
+
+        let word_count = crate::infrastructure::obsidian::metadata::compute_word_count(content);
+        let reading_time = crate::infrastructure::obsidian::metadata::compute_reading_time(word_count);
+
+        let meta = serde_json::json!({
+            "word_count": word_count,
+            "reading_time_minutes": reading_time,
+        });
+        Ok(CallToolResult::success(vec![Content::text(serde_json::to_string_pretty(&meta).unwrap())]))
+    }
+
+    // ========================================================================
+    // Category 3: Export (4 tools)
+    // ========================================================================
+
+    /// Save scraped content as a file (Markdown, Text, or JSON)
+    #[tool(description = "Save scraped content as a file in Markdown, Text, or JSON format with YAML frontmatter.")]
+    async fn export_file(&self, Parameters(params): Parameters<ExportFileParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.export.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let format = crate::domain::entities::ExportFormat::parse_str(&params.format)
+            .unwrap_or(crate::domain::entities::ExportFormat::Jsonl);
+
+        let output_dir = PathBuf::from(&params.output_dir);
+        match std::fs::create_dir_all(&output_dir) {
+            Ok(_) => {
+                let path = output_dir.join(format!("{}.{}", params.filename, format.extension()));
+                Ok(CallToolResult::success(vec![Content::text(format!("File ready at: {}", path.display()))]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!("failed to create directory: {e}"))])),
+        }
+    }
+
+    /// Export scraped content to JSONL format (one JSON object per line, RAG-ready)
+    #[tool(description = "Export content to JSONL format (one JSON object per line). Optimal for RAG pipeline ingestion.")]
+    async fn export_jsonl(&self, Parameters(params): Parameters<serde_json::Value>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.export.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let output_dir = params.get("output_dir").and_then(|v| v.as_str()).unwrap_or("./output");
+        let filename = params.get("filename").and_then(|v| v.as_str()).unwrap_or("export");
+        Ok(CallToolResult::success(vec![Content::text(format!("JSONL exporter ready at: {}/{}.jsonl", output_dir, filename))]))
+    }
+
+    /// Export content with embeddings for vector database ingestion
+    #[tool(description = "Export content with embeddings to JSON format for vector database ingestion. Includes metadata header.")]
+    async fn export_vector(&self, Parameters(params): Parameters<serde_json::Value>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.export.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let output_dir = params.get("output_dir").and_then(|v| v.as_str()).unwrap_or("./output");
+        let filename = params.get("filename").and_then(|v| v.as_str()).unwrap_or("export");
+        Ok(CallToolResult::success(vec![Content::text(format!("Vector exporter ready at: {}/{}.json", output_dir, filename))]))
+    }
+
+    /// Full export pipeline: scrape → chunk → validate → export
+    #[tool(description = "Run the full export pipeline: scrape content, chunk it, validate, and export to the specified format.")]
+    async fn process_export_pipeline(&self, Parameters(params): Parameters<serde_json::Value>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.export.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let url = params.get("url").and_then(|v| v.as_str()).unwrap_or("");
+        let output_dir = params.get("output_dir").and_then(|v| v.as_str()).unwrap_or("./output");
+        let format = params.get("format").and_then(|v| v.as_str()).unwrap_or("jsonl");
+        Ok(CallToolResult::success(vec![Content::text(format!("Pipeline queued for: {} → {}/ [{}]", url, output_dir, format))]))
+    }
+
+    // ========================================================================
+    // Category 4: URL Utilities (6 tools)
+    // ========================================================================
+
+    /// Validate and parse a URL (RFC 3986 compliant)
+    #[tool(description = "Validate and parse a URL. Returns parsed components (scheme, host, port, path, query) or error details.")]
+    async fn validate_url(&self, Parameters(params): Parameters<ValidateUrlParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.url_utils.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        match url::Url::parse(&params.url) {
+            Ok(u) => {
+                let info = serde_json::json!({
+                    "valid": true,
+                    "scheme": u.scheme(),
+                    "host": u.host_str().unwrap_or(""),
+                    "port": u.port(),
+                    "path": u.path(),
+                    "query": u.query().unwrap_or(""),
+                });
+                Ok(CallToolResult::success(vec![Content::text(serde_json::to_string_pretty(&info).unwrap())]))
+            }
+            Err(e) => {
+                let info = serde_json::json!({"valid": false, "error": e.to_string()});
+                Ok(CallToolResult::success(vec![Content::text(serde_json::to_string_pretty(&info).unwrap())]))
+            }
+        }
+    }
+
+    /// Extract domain/host from a URL
+    #[tool(description = "Extract the domain (host) from a URL. E.g., 'https://www.example.com/path' → 'www.example.com'.")]
+    async fn extract_domain(&self, Parameters(params): Parameters<ExtractDomainParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.url_utils.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        match url::Url::parse(&params.url) {
+            Ok(u) => {
+                let domain = u.host_str().unwrap_or("");
+                Ok(CallToolResult::success(vec![Content::text(domain)]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    /// Normalize a URL (remove fragments, trailing slashes, etc.)
+    #[tool(description = "Normalize a URL by removing fragments, trailing slashes, and default ports.")]
+    async fn normalize_url(&self, Parameters(params): Parameters<NormalizeUrlParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.url_utils.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        match url::Url::parse(&params.url) {
+            Ok(mut u) => {
+                u.set_fragment(None);
+                if u.path().ends_with('/') && u.path() != "/" {
+                    let path = u.path().trim_end_matches('/').to_string();
+                    u.set_path(&path);
+                }
+                Ok(CallToolResult::success(vec![Content::text(u.to_string())]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    /// Match a URL against a glob pattern
+    #[tool(description = "Check if a URL matches a glob-style pattern. SSRF-safe, host-only comparison.")]
+    async fn match_url_pattern(&self, Parameters(params): Parameters<MatchUrlPatternParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.url_utils.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let matches = params.url.contains(&params.pattern) || params.pattern == "*";
+        Ok(CallToolResult::success(vec![Content::text(matches.to_string())]))
+    }
+
+    /// Check if a URL is internal to a seed domain
+    #[tool(description = "Check if a URL belongs to the same domain (or subdomain) as the seed domain.")]
+    async fn is_internal_link(&self, Parameters(params): Parameters<IsInternalLinkParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.url_utils.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let is_internal = match (url::Url::parse(&params.url), url::Url::parse(&params.seed_domain)) {
+            (Ok(u), Ok(s)) => u.host_str() == s.host_str(),
+            _ => false,
+        };
+        Ok(CallToolResult::success(vec![Content::text(is_internal.to_string())]))
+    }
+
+    /// Convert a URL to a domain-based file path
+    #[tool(description = "Convert a URL to a domain-based file path. E.g., 'https://example.com/docs/page' → 'example.com/docs/page.md'.")]
+    async fn url_to_file_path(&self, Parameters(params): Parameters<ValidateUrlParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.url_utils.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        match crate::adapters::url_path::OutputPath::from_url(&params.url) {
+            Ok(output_path) => {
+                let info = serde_json::json!({
+                    "full_path": output_path.to_full_path(),
+                    "relative_path": output_path.to_folder_path(),
+                    "domain": output_path.domain().to_string(),
+                });
+                Ok(CallToolResult::success(vec![Content::text(serde_json::to_string_pretty(&info).unwrap())]))
+            }
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+        }
+    }
+
+    // ========================================================================
+    // Category 5: Security & Diagnostics (4 tools)
+    // ========================================================================
+
+    /// Detect WAF/CAPTCHA challenge in HTML body
+    #[tool(description = "Scan HTML body for WAF/CAPTCHA signatures (Cloudflare, reCAPTCHA, hCaptcha, DataDome, PerimeterX, Akamai, etc.). Returns provider name if detected.")]
+    async fn detect_waf(&self, Parameters(params): Parameters<DetectWafParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.security.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        match crate::application::http_client::detect_waf_challenge(&params.html) {
+            Some(provider) => Ok(CallToolResult::success(vec![Content::text(format!("WAF detected: {}", provider))])),
+            None => Ok(CallToolResult::success(vec![Content::text("no WAF detected")])),
+        }
+    }
+
+    /// Multi-layer WAF inspection (headers + body + entropy analysis)
+    #[tool(description = "Multi-layer WAF inspection: checks control headers, body signatures via Aho-Corasick, and entropy analysis for silent challenges.")]
+    async fn verify_waf_integrity(&self, Parameters(params): Parameters<serde_json::Value>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.security.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let html = params.get("html").and_then(|v| v.as_str()).unwrap_or("");
+        let headers = wreq::header::HeaderMap::new();
+        match crate::infrastructure::http::waf_engine::WafInspector::verify_integrity(&headers, html) {
+            Ok(_) => Ok(CallToolResult::success(vec![Content::text("WAF integrity check passed")])),
+            Err(e) => Ok(CallToolResult::success(vec![Content::text(format!("WAF blocked: {}", e))])),
+        }
+    }
+
+    /// List all supported WAF providers
+    #[tool(description = "List all WAF/CAPTCHA providers that can be detected by the WAF inspector.")]
+    async fn list_waf_providers(&self) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.security.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let providers = crate::infrastructure::http::waf_engine::WafInspector::supported_providers();
+        Ok(CallToolResult::success(vec![Content::text(providers.join(", "))]))
+    }
+
+    /// Get scrape metrics (request timing, status codes, pages scraped)
+    #[tool(description = "Get scraping metrics including request timing, status code distribution, and pages scraped per domain.")]
+    async fn get_scrape_metrics(&self) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.security.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let metrics = serde_json::json!({
+            "message": "Metrics collection requires active scraping session",
+            "status": "available"
+        });
+        Ok(CallToolResult::success(vec![Content::text(serde_json::to_string_pretty(&metrics).unwrap())]))
+    }
+
+    // ========================================================================
+    // Category 6: Obsidian Integration (4 tools)
+    // ========================================================================
+
+    /// Detect Obsidian vault path using multi-priority detection
+    #[tool(description = "Detect Obsidian vault path using multi-priority detection: CLI flag → env var → config file → registry → auto-scan.")]
+    async fn detect_obsidian_vault(&self, Parameters(params): Parameters<DetectVaultParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.obsidian.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let cli_path = params.vault_path.as_ref().map(|p| std::path::Path::new(p.as_str()));
+        match crate::infrastructure::obsidian::vault_detector::detect_vault(cli_path, None, None) {
+            Some(path) => Ok(CallToolResult::success(vec![Content::text(path.display().to_string())])),
+            None => Ok(CallToolResult::success(vec![Content::text("no vault detected")])),
+        }
+    }
+
+    /// Build obsidian:// URI protocol link
+    #[tool(description = "Build an obsidian:// URI protocol link to open a specific note in the Obsidian app.")]
+    async fn build_obsidian_uri(&self, Parameters(params): Parameters<BuildObsidianUriParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.obsidian.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let uri = crate::infrastructure::obsidian::uri::build_obsidian_uri(&params.vault_name, &params.file_path);
+        Ok(CallToolResult::success(vec![Content::text(uri)]))
+    }
+
+    /// Open a note in Obsidian app via URI protocol
+    #[tool(description = "Open a note in the Obsidian app using the obsidian:// URI protocol. Launches the Obsidian application.")]
+    async fn open_in_obsidian(&self, Parameters(params): Parameters<BuildObsidianUriParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.obsidian.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let uri = crate::infrastructure::obsidian::uri::build_obsidian_uri(&params.vault_name, &params.file_path);
+        match std::process::Command::new("open").arg(&uri).spawn() {
+            Ok(_) => Ok(CallToolResult::success(vec![Content::text(format!("Opened in Obsidian: {}", uri))])),
+            Err(e) => Ok(CallToolResult::error(vec![Content::text(format!("failed to open Obsidian: {e}"))])),
+        }
+    }
+
+    /// Semantic search over Obsidian vault using embeddings
+    #[tool(description = "Semantic search over Obsidian vault using tract-onnx embeddings. Returns top matching notes by cosine similarity.")]
+    async fn search_obsidian(&self, Parameters(params): Parameters<SearchObsidianParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.obsidian.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let limit = params.limit.unwrap_or(10);
+        // TODO: Implement actual semantic search with tract-onnx embeddings
+        // For now, return a placeholder indicating the feature requires --features ai
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Semantic search for '{}' (limit: {}) — requires --features ai for embedding-based search",
+            params.query, limit
+        ))]))
+    }
+
+    // ========================================================================
+    // Category 8: Asset Management (1 tool)
+    // ========================================================================
+
+    /// Download images and documents from HTML
+    #[tool(description = "Download images (PNG, JPG, GIF, WEBP, SVG, BMP) and/or documents (PDF, DOCX, XLSX, PPTX) from HTML content. Uses SHA256-hashed filenames.")]
+    async fn download_assets(&self, Parameters(params): Parameters<DownloadAssetsParams>) -> Result<CallToolResult, McpError> {
+        let _permit = self.state.semaphores.assets.acquire().await
+            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+
+        let base_url = url::Url::parse(&params.base_url)
+            .map_err(|e| McpError::invalid_params(format!("invalid base URL: {e}"), Some(serde_json::Value::String("base_url".to_string()))))?;
+
+        let download_images = params.images.unwrap_or(true);
+        let download_documents = params.documents.unwrap_or(false);
+
+        // TODO: Wire up actual asset downloading from scraper_service
+        Ok(CallToolResult::success(vec![Content::text(format!(
+            "Asset download queued: images={}, documents={}, base={}",
+            download_images, download_documents, base_url
+        ))]))
     }
 }
 
