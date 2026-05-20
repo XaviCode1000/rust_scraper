@@ -1,61 +1,62 @@
 //! HTML boilerplate removal before Markdown conversion.
 //!
-//! Uses `scraper` for CSS selector matching and `aho-corasick` for fast
-//! tag removal. Replaces the `html-cleaning` + `dom_query` dependency chain,
-//! eliminating selectors 0.33 from the dependency tree.
+//! Uses Cloudflare's `lol_html` streaming rewriter for fast, CSS-selector-based
+//! element removal. Zero dependency on the `selectors` crate.
 
-/// Tags to remove entirely (opening tag + content + closing tag).
+use lol_html::{element, rewrite_str, RewriteStrSettings};
+
+/// Tags to remove entirely (element + all content).
 const TAGS_TO_REMOVE: &[&str] = &[
-    // Scripts and styles
     "script",
     "style",
     "noscript",
-    // Interactive/embedded
     "form",
     "iframe",
     "object",
     "embed",
-    // Media
     "svg",
     "canvas",
     "video",
     "audio",
-    // Page chrome
     "nav",
     "header",
     "footer",
     "aside",
 ];
 
-/// CSS selectors to remove — simple class and attribute patterns.
-const SELECTOR_PATTERNS: &[&str] = &[
-    // Starlight/Astro navigation
-    "class=\"site-title\"",
-    "class=\"global-nav\"",
-    "class=\"global-nav-list\"",
-    "class=\"mobile-menu-wrapper\"",
-    "class=\"right-sidebar\"",
-    "class=\"right-sidebar-container\"",
-    "class=\"mobile-toc\"",
-    "class=\"sl-sidebar\"",
-    "class=\"sl-mobile-toc\"",
+/// CSS selectors for elements to remove (class-based, attribute-based).
+const SELECTORS_TO_REMOVE: &[&str] = &[
+    // Starlight/Astro navigation and sidebar
+    ".site-title",
+    ".global-nav",
+    ".global-nav-list",
+    ".mobile-menu-wrapper",
+    ".right-sidebar",
+    ".right-sidebar-container",
+    ".mobile-toc",
+    ".sl-sidebar",
+    ".sl-mobile-toc",
     // Search and feedback
-    "class=\"search\"",
-    "class=\"site-search\"",
-    "class=\"social-icons\"",
-    "class=\"page-feedback\"",
-    "class=\"feedback\"",
+    ".search",
+    ".site-search",
+    ".social-icons",
+    ".page-feedback",
+    ".feedback",
     // Breadcrumb and pagination
-    "class=\"sl-breadcrumbs\"",
-    "class=\"pagination\"",
-    // Copy-to-clipboard
-    "class=\"copy-markdown-btn\"",
-    "class=\"copy-code-button\"",
+    ".sl-breadcrumbs",
+    ".pagination",
+    // Accessibility-hidden elements
+    "[class*='sr-only']",
+    "[aria-hidden='true']",
+    "[hidden]",
+    // Copy-to-clipboard and utility buttons
+    ".copy-markdown-btn",
+    ".copy-code-button",
     // Skip links
-    "class=\"skip-link\"",
+    ".skip-link",
 ];
 
-/// Attributes to preserve (all others are stripped from elements).
+/// Attributes to preserve — all others are stripped from elements.
 const PRESERVED_ATTRS: &[&str] = &["href", "src", "alt", "id", "class", "dir", "code"];
 
 /// Clean HTML by removing boilerplate (nav, sidebar, scripts, SVGs).
@@ -65,9 +66,8 @@ const PRESERVED_ATTRS: &[&str] = &["href", "src", "alt", "id", "class", "dir", "
 /// - `form`, `iframe`, `object`, `embed` (interactive)
 /// - `svg`, `canvas`, `video`, `audio` (media)
 /// - `nav`, `header`, `footer`, `aside` (page chrome)
-/// - Elements matching CSS selector patterns (sidebars, search, breadcrumbs)
+/// - Elements matching CSS selectors (sidebars, search, breadcrumbs)
 /// - Strips non-preserved attributes (keeps href, src, alt, id, class, dir, code)
-/// - Normalizes whitespace
 ///
 /// Returns the cleaned HTML as a string.
 pub fn clean_html(html: &str) -> String {
@@ -75,215 +75,48 @@ pub fn clean_html(html: &str) -> String {
         return String::new();
     }
 
-    // Step 1: Remove tags with content (script, style, nav, etc.)
-    let result = remove_tags_with_content(html, TAGS_TO_REMOVE);
+    // Build element handlers: one per selector (tag or CSS)
+    let mut handlers: Vec<_> = TAGS_TO_REMOVE
+        .iter()
+        .chain(SELECTORS_TO_REMOVE.iter())
+        .map(|selector| {
+            let sel = *selector;
+            element!(sel, |el| {
+                el.remove();
+                Ok(())
+            })
+        })
+        .collect();
 
-    // Step 2: Remove elements matching CSS selector patterns
-    let result = remove_by_selector_patterns(&result, SELECTOR_PATTERNS);
+    // Attribute stripping handler — runs on ALL elements (*)
+    handlers.push(element!("*", |el| {
+        let attr_names: Vec<String> = el
+            .attributes()
+            .iter()
+            .map(|attr| attr.name().to_string())
+            .collect();
 
-    // Step 3: Strip non-preserved attributes
-    let result = strip_attributes(&result);
-
-    // Step 4: Normalize whitespace
-    normalize_whitespace(&result)
-}
-
-/// Remove tags and their entire content using Aho-Corasick for fast pattern matching.
-fn remove_tags_with_content(html: &str, tags: &[&str]) -> String {
-    use aho_corasick::AhoCorasick;
-
-    let mut open_patterns = Vec::new();
-    let mut close_patterns = Vec::new();
-    for tag in tags {
-        open_patterns.push(format!("<{tag}"));
-        close_patterns.push(format!("</{tag}>"));
-    }
-
-    let ac_open = AhoCorasick::new(&open_patterns).expect("patrones AC inválidos");
-    let mut result = html.to_string();
-
-    loop {
-        let mut changed = false;
-        let bytes = result.as_bytes();
-
-        if let Some(mat) = ac_open.find(bytes) {
-            let open_start = mat.start();
-            let tag_name = &tags[mat.pattern().as_usize()];
-
-            let close_tag = format!("</{tag_name}>");
-            let search_from = mat.end();
-            let remaining = &result[search_from..];
-
-            if let Some(close_pos) = find_matching_close(remaining, tag_name) {
-                let close_end = search_from + close_pos + close_tag.len();
-                result.replace_range(open_start..close_end, "");
-                changed = true;
-            } else {
-                let tag_end = result[open_start..].find('>').map(|p| open_start + p + 1);
-                if let Some(end) = tag_end {
-                    result.replace_range(open_start..end, "");
-                    changed = true;
-                } else {
-                    break;
-                }
+        for name in attr_names {
+            if !PRESERVED_ATTRS.contains(&name.as_str()) {
+                let _ = el.remove_attribute(&name);
             }
         }
+        Ok(())
+    }));
 
-        if !changed {
-            break;
+    match rewrite_str(
+        html,
+        RewriteStrSettings {
+            element_content_handlers: handlers,
+            ..RewriteStrSettings::new()
+        },
+    ) {
+        Ok(result) => normalize_whitespace(&result),
+        Err(e) => {
+            tracing::warn!("error reescribiendo HTML con lol_html: {e}");
+            html.to_string()
         }
     }
-
-    result
-}
-
-/// Find the matching closing tag, accounting for nesting of the same tag.
-fn find_matching_close(html: &str, tag_name: &str) -> Option<usize> {
-    let open_tag = format!("<{tag_name}");
-    let close_tag = format!("</{tag_name}>");
-    let mut depth = 0;
-    let mut pos = 0;
-
-    while pos < html.len() {
-        if html[pos..].starts_with(&close_tag) {
-            if depth == 0 {
-                return Some(pos);
-            }
-            depth -= 1;
-            pos += close_tag.len();
-        } else if html[pos..].starts_with(&open_tag) {
-            let after = html[pos + open_tag.len()..].chars().next();
-            if matches!(after, Some(' ') | Some('>') | Some('/') | Some('\n') | Some('\t')) {
-                depth += 1;
-            }
-            pos += open_tag.len();
-        } else {
-            pos += 1;
-        }
-    }
-
-    None
-}
-
-/// Remove elements that match class selector patterns.
-fn remove_by_selector_patterns(html: &str, patterns: &[&str]) -> String {
-    let mut result = html.to_string();
-
-    for pattern in patterns {
-        let class_name = pattern
-            .strip_prefix("class=\"")
-            .and_then(|s| s.strip_suffix('"'))
-            .unwrap_or(pattern);
-
-        loop {
-            let class_attr = format!("class=\"{}\"", class_name);
-            let class_attr_multi = format!("class=\"{} ", class_name);
-            let class_attr_end = format!(" {}\"", class_name);
-            let class_attr_mid = format!(" {} ", class_name);
-
-            let pos = result
-                .find(&class_attr)
-                .or_else(|| result.find(&class_attr_multi))
-                .or_else(|| result.find(&class_attr_end))
-                .or_else(|| result.find(&class_attr_mid));
-
-            let Some(class_pos) = pos else { break };
-
-            let tag_start = result[..class_pos].rfind('<').unwrap_or(0);
-            let tag_name_start = tag_start + 1;
-            let tag_content = &result[tag_name_start..];
-            let tag_name: String = tag_content
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '-')
-                .collect();
-
-            if tag_name.is_empty() {
-                break;
-            }
-
-            let open_tag_end = result[tag_start..]
-                .find('>')
-                .map(|p| tag_start + p + 1);
-
-            let Some(open_end) = open_tag_end else { break };
-
-            let close_tag = format!("</{}>", tag_name);
-            let close_pos = find_matching_close(&result[open_end..], &tag_name)
-                .map(|p| open_end + p + close_tag.len());
-
-            match close_pos {
-                Some(end) => {
-                    result.replace_range(tag_start..end, "");
-                }
-                None => {
-                    result.replace_range(tag_start..open_end, "");
-                }
-            }
-        }
-    }
-
-    result
-}
-
-/// Strip attributes not in PRESERVED_ATTRS from HTML tags.
-fn strip_attributes(html: &str) -> String {
-    let mut result = String::with_capacity(html.len());
-    let mut chars = html.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        if ch == '<' {
-            result.push('<');
-            let mut tag = String::new();
-
-            while let Some(&c) = chars.peek() {
-                chars.next();
-                if c == '>' {
-                    break;
-                }
-                tag.push(c);
-            }
-
-            if let Some(space_pos) = tag.find(' ') {
-                let (tag_name, attrs_part) = tag.split_at(space_pos);
-                result.push_str(tag_name);
-
-                let filtered: Vec<&str> = attrs_part
-                    .split_inclusive(' ')
-                    .filter(|part| {
-                        let trimmed = part.trim();
-                        if trimmed.is_empty() {
-                            return false;
-                        }
-                        let attr_name = trimmed.split('=').next().unwrap_or("").trim();
-                        PRESERVED_ATTRS.contains(&attr_name)
-                    })
-                    .collect();
-
-                if !filtered.is_empty() {
-                    result.push(' ');
-                    for part in filtered {
-                        result.push_str(part.trim());
-                        result.push(' ');
-                    }
-                    if result.ends_with(' ') {
-                        result.pop();
-                    }
-                }
-
-                if tag.ends_with('/') {
-                    result.push_str(" /");
-                }
-            } else {
-                result.push_str(&tag);
-            }
-
-            result.push('>');
-        } else {
-            result.push(ch);
-        }
-    }
-
-    result
 }
 
 /// Collapse consecutive whitespace into single spaces.

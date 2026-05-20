@@ -55,9 +55,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # HTML Parsing for CSS selectors
-# scraper 0.27 uses selectors 0.38. html-cleaning→dom_query 0.24 uses selectors 0.33.
-# Down from 3 versions (0.26, 0.33, 0.35) to 2 (0.33, 0.38).
+# scraper 0.27 uses selectors 0.38. html-cleaning/dom_query removed.
+# Down from 3 versions (0.26, 0.33, 0.35) to 2 (0.35, 0.38).
 scraper = "0.27"
+
+# Streaming HTML rewriter with CSS selector API (Cloudflare)
+# Used for HTML boilerplate removal — no selectors dependency
+lol_html = "2"
 
 # Async runtime
 # NOTE: "full" includes "unstable" for tokio-console support
