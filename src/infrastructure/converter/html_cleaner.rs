@@ -1,7 +1,63 @@
 //! HTML boilerplate removal before Markdown conversion.
 //!
-//! Uses `html-cleaning` to strip navigation, sidebars, scripts,
-//! SVGs, and other non-content elements before converting to Markdown.
+//! Uses Cloudflare's `lol_html` streaming rewriter for fast, CSS-selector-based
+//! element removal. Zero dependency on the `selectors` crate.
+
+use lol_html::{element, rewrite_str, RewriteStrSettings};
+
+/// Tags to remove entirely (element + all content).
+const TAGS_TO_REMOVE: &[&str] = &[
+    "script",
+    "style",
+    "noscript",
+    "form",
+    "iframe",
+    "object",
+    "embed",
+    "svg",
+    "canvas",
+    "video",
+    "audio",
+    "nav",
+    "header",
+    "footer",
+    "aside",
+];
+
+/// CSS selectors for elements to remove (class-based, attribute-based).
+const SELECTORS_TO_REMOVE: &[&str] = &[
+    // Starlight/Astro navigation and sidebar
+    ".site-title",
+    ".global-nav",
+    ".global-nav-list",
+    ".mobile-menu-wrapper",
+    ".right-sidebar",
+    ".right-sidebar-container",
+    ".mobile-toc",
+    ".sl-sidebar",
+    ".sl-mobile-toc",
+    // Search and feedback
+    ".search",
+    ".site-search",
+    ".social-icons",
+    ".page-feedback",
+    ".feedback",
+    // Breadcrumb and pagination
+    ".sl-breadcrumbs",
+    ".pagination",
+    // Accessibility-hidden elements
+    "[class*='sr-only']",
+    "[aria-hidden='true']",
+    "[hidden]",
+    // Copy-to-clipboard and utility buttons
+    ".copy-markdown-btn",
+    ".copy-code-button",
+    // Skip links
+    ".skip-link",
+];
+
+/// Attributes to preserve — all others are stripped from elements.
+const PRESERVED_ATTRS: &[&str] = &["href", "src", "alt", "id", "class", "dir", "code"];
 
 /// Clean HTML by removing boilerplate (nav, sidebar, scripts, SVGs).
 ///
@@ -10,83 +66,77 @@
 /// - `form`, `iframe`, `object`, `embed` (interactive)
 /// - `svg`, `canvas`, `video`, `audio` (media)
 /// - `nav`, `header`, `footer`, `aside` (page chrome)
-/// - Prunes empty elements, normalizes whitespace, strips attributes
+/// - Elements matching CSS selectors (sidebars, search, breadcrumbs)
+/// - Strips non-preserved attributes (keeps href, src, alt, id, class, dir, code)
 ///
 /// Returns the cleaned HTML as a string.
 pub fn clean_html(html: &str) -> String {
-    use html_cleaning::HtmlCleaner;
+    if html.is_empty() {
+        return String::new();
+    }
 
-    let options = html_cleaning::CleaningOptions {
-        tags_to_remove: vec![
-            // Scripts and styles
-            "script".into(),
-            "style".into(),
-            "noscript".into(),
-            // Interactive/embedded
-            "form".into(),
-            "iframe".into(),
-            "object".into(),
-            "embed".into(),
-            // Media (SVGs, canvas, video, audio)
-            "svg".into(),
-            "canvas".into(),
-            "video".into(),
-            "audio".into(),
-            // Page chrome (navigation, header, footer, sidebar)
-            "nav".into(),
-            "header".into(),
-            "footer".into(),
-            "aside".into(),
-        ],
-        selectors_to_remove: vec![
-            // Starlight/Astro navigation and sidebar
-            ".site-title".into(),
-            ".global-nav".into(),
-            ".global-nav-list".into(),
-            ".mobile-menu-wrapper".into(),
-            ".right-sidebar".into(),
-            ".right-sidebar-container".into(),
-            ".mobile-toc".into(),
-            ".sl-sidebar".into(),
-            ".sl-mobile-toc".into(),
-            // Search and feedback
-            ".search".into(),
-            ".site-search".into(),
-            ".social-icons".into(),
-            ".page-feedback".into(),
-            ".feedback".into(),
-            // Breadcrumb and pagination
-            ".sl-breadcrumbs".into(),
-            ".pagination".into(),
-            // Meta tags and hidden elements
-            "[class*='sr-only']".into(),
-            "[aria-hidden='true']".into(),
-            "[hidden]".into(),
-            // Copy-to-clipboard and utility buttons
-            ".copy-markdown-btn".into(),
-            ".copy-code-button".into(),
-            // Skip links
-            ".skip-link".into(),
-        ],
-        prune_empty: true,
-        normalize_whitespace: true,
-        strip_attributes: true,
-        preserved_attributes: vec![
-            "href".into(),
-            "src".into(),
-            "alt".into(),
-            "id".into(),
-            "class".into(),
-            "dir".into(),
-            "code".into(),
-        ],
-        ..Default::default()
-    };
+    // Build element handlers: one per selector (tag or CSS)
+    let mut handlers: Vec<_> = TAGS_TO_REMOVE
+        .iter()
+        .chain(SELECTORS_TO_REMOVE.iter())
+        .map(|selector| {
+            let sel = *selector;
+            element!(sel, |el| {
+                el.remove();
+                Ok(())
+            })
+        })
+        .collect();
 
-    let cleaner = HtmlCleaner::with_options(options);
-    let doc = dom_query::Document::from(html);
-    cleaner.clean(&doc);
-    doc.html().to_string()
+    // Attribute stripping handler — runs on ALL elements (*)
+    handlers.push(element!("*", |el| {
+        let attr_names: Vec<String> = el
+            .attributes()
+            .iter()
+            .map(|attr| attr.name().to_string())
+            .collect();
+
+        for name in attr_names {
+            if !PRESERVED_ATTRS.contains(&name.as_str()) {
+                let _ = el.remove_attribute(&name);
+            }
+        }
+        Ok(())
+    }));
+
+    match rewrite_str(
+        html,
+        RewriteStrSettings {
+            element_content_handlers: handlers,
+            ..RewriteStrSettings::new()
+        },
+    ) {
+        Ok(result) => normalize_whitespace(&result),
+        Err(e) => {
+            tracing::warn!("error reescribiendo HTML con lol_html: {e}");
+            html.to_string()
+        }
+    }
+}
+
+/// Collapse consecutive whitespace into single spaces.
+fn normalize_whitespace(html: &str) -> String {
+    let mut result = String::with_capacity(html.len());
+    let mut in_whitespace = false;
+
+    for ch in html.chars() {
+        if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
+            if !in_whitespace {
+                result.push(' ');
+                in_whitespace = true;
+            }
+        } else {
+            result.push(ch);
+            in_whitespace = false;
+        }
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -123,13 +173,8 @@ mod tests {
     fn test_clean_empty_html() {
         let html = "";
         let cleaned = clean_html(html);
-        // Should not panic
-        assert!(cleaned.is_empty() || cleaned.contains("<html>"));
+        assert!(cleaned.is_empty());
     }
-
-    // ============================================================================
-    // Error path tests
-    // ============================================================================
 
     #[test]
     fn test_clean_removes_css_selectors() {
@@ -170,21 +215,14 @@ mod tests {
 
     #[test]
     fn test_clean_whitespace_normalization() {
-        let html = "<html><body><p>  Too   many    spaces  </p><p>
-
-	Newlines		</p></body></html>";
+        let html = "<html><body><p>  Too   many    spaces  </p><p>\n\n\tNewlines\t\t</p></body></html>";
         let cleaned = clean_html(html);
-        // Whitespace should be normalized (collapsed)
         assert!(
             !cleaned.contains("   "),
             "multiple spaces should be collapsed"
         );
         assert!(
-            !cleaned.contains(
-                "
-
-"
-            ),
+            !cleaned.contains("\n\n"),
             "multiple newlines should be collapsed"
         );
     }

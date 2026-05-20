@@ -55,9 +55,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 # HTML Parsing for CSS selectors
-# NOTE: scraper brings in selectors 0.26. legible→dom_query brings selectors 0.35.
-# Both are needed. Do NOT try to unify — they come from different upstream crates.
-scraper = "0.22"
+# scraper 0.27 uses selectors 0.38. html-cleaning/dom_query removed.
+# Down from 3 versions (0.26, 0.33, 0.35) to 2 (0.35, 0.38).
+scraper = "0.27"
+
+# Streaming HTML rewriter with CSS selector API (Cloudflare)
+# Used for HTML boilerplate removal — no selectors dependency
+lol_html = "2"
 
 # Async runtime
 # NOTE: "full" includes "unstable" for tokio-console support
@@ -84,13 +88,6 @@ futures = "0.3"
 # Pinned to <2.21 to avoid edition2024 requirement (needs Rust 1.85+)
 html-to-markdown-rs = ">=2.3, <2.21"
 
-# HTML cleaning / boilerplate removal (nav, sidebar, SVG, scripts)
-# Used before Markdown conversion for Obsidian-quality output
-html-cleaning = "0.3"
-
-# DOM manipulation for HTML cleaning pipeline
-# Pinned to 0.24 to match html-cleaning's dependency
-dom_query = "0.24"
 
 # Syntax highlighting for code blocks
 syntect = "5"
