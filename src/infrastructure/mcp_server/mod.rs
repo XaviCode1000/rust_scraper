@@ -235,6 +235,67 @@ struct DownloadAssetsParams {
     documents: Option<bool>,
 }
 
+// Params for tools that accept free-form JSON input
+#[allow(dead_code)]
+#[derive(Deserialize, JsonSchema, Debug)]
+struct GenerateFrontmatterParams {
+    /// Document title
+    title: Option<String>,
+    /// Source URL
+    url: Option<String>,
+    /// Author name
+    author: Option<String>,
+    /// Excerpt or summary
+    excerpt: Option<String>,
+    /// Tags
+    tags: Option<Vec<String>>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize, JsonSchema, Debug)]
+struct GenerateRichMetadataParams {
+    /// Document content for analysis
+    content: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize, JsonSchema, Debug)]
+struct ExportJsonlParams {
+    /// Output directory path
+    output_dir: Option<String>,
+    /// Filename (without extension)
+    filename: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize, JsonSchema, Debug)]
+struct ExportVectorParams {
+    /// Output directory path
+    output_dir: Option<String>,
+    /// Filename (without extension)
+    filename: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize, JsonSchema, Debug)]
+struct ProcessExportPipelineParams {
+    /// URL to scrape and export
+    url: Option<String>,
+    /// Export format
+    format: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize, JsonSchema, Debug)]
+struct VerifyWafIntegrityParams {
+    /// HTML body to inspect
+    html: Option<String>,
+}
+
+// Empty params for tools that take no arguments (MCP spec requires type: "object")
+#[derive(Deserialize, JsonSchema, Debug)]
+struct EmptyParams {}
+
 // ============================================================================
 // Tool implementations — organized by category
 // ============================================================================
@@ -727,7 +788,7 @@ impl McpHandler {
     #[instrument(skip(self), fields(params = ?params))]
     async fn generate_frontmatter(
         &self,
-        Parameters(params): Parameters<serde_json::Value>,
+        Parameters(params): Parameters<GenerateFrontmatterParams>,
     ) -> Result<CallToolResult, McpError> {
         let _permit = self
             .state
@@ -737,11 +798,8 @@ impl McpHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
 
-        let title = params
-            .get("title")
-            .and_then(|v| v.as_str())
-            .unwrap_or("Untitled");
-        let url = params.get("url").and_then(|v| v.as_str()).unwrap_or("");
+        let title = params.title.as_deref().unwrap_or("Untitled");
+        let url = params.url.as_deref().unwrap_or("");
         let fm = crate::infrastructure::output::frontmatter::generate_with_metadata(
             title,
             url,
@@ -761,7 +819,7 @@ impl McpHandler {
     #[instrument(skip(self), fields(params = ?params))]
     async fn generate_rich_metadata(
         &self,
-        Parameters(params): Parameters<serde_json::Value>,
+        Parameters(params): Parameters<GenerateRichMetadataParams>,
     ) -> Result<CallToolResult, McpError> {
         let _permit = self
             .state
@@ -771,7 +829,7 @@ impl McpHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
 
-        let content = params.get("content").and_then(|v| v.as_str()).unwrap_or("");
+        let content = params.content.as_deref().unwrap_or("");
 
         let word_count = crate::infrastructure::obsidian::metadata::compute_word_count(content);
         let reading_time =
@@ -832,7 +890,7 @@ impl McpHandler {
     #[instrument(skip(self), fields(params = ?params))]
     async fn export_jsonl(
         &self,
-        Parameters(params): Parameters<serde_json::Value>,
+        Parameters(params): Parameters<ExportJsonlParams>,
     ) -> Result<CallToolResult, McpError> {
         let _permit = self
             .state
@@ -842,14 +900,8 @@ impl McpHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
 
-        let output_dir = params
-            .get("output_dir")
-            .and_then(|v| v.as_str())
-            .unwrap_or("./output");
-        let filename = params
-            .get("filename")
-            .and_then(|v| v.as_str())
-            .unwrap_or("export");
+        let output_dir = params.output_dir.as_deref().unwrap_or("./output");
+        let filename = params.filename.as_deref().unwrap_or("export");
         Ok(CallToolResult::success(vec![Content::text(format!(
             "JSONL exporter ready at: {}/{}.jsonl",
             output_dir, filename
@@ -863,7 +915,7 @@ impl McpHandler {
     #[instrument(skip(self), fields(params = ?params))]
     async fn export_vector(
         &self,
-        Parameters(params): Parameters<serde_json::Value>,
+        Parameters(params): Parameters<ExportVectorParams>,
     ) -> Result<CallToolResult, McpError> {
         let _permit = self
             .state
@@ -873,14 +925,8 @@ impl McpHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
 
-        let output_dir = params
-            .get("output_dir")
-            .and_then(|v| v.as_str())
-            .unwrap_or("./output");
-        let filename = params
-            .get("filename")
-            .and_then(|v| v.as_str())
-            .unwrap_or("export");
+        let output_dir = params.output_dir.as_deref().unwrap_or("./output");
+        let filename = params.filename.as_deref().unwrap_or("export");
         Ok(CallToolResult::success(vec![Content::text(format!(
             "Vector exporter ready at: {}/{}.json",
             output_dir, filename
@@ -894,7 +940,7 @@ impl McpHandler {
     #[instrument(skip(self), fields(params = ?params))]
     async fn process_export_pipeline(
         &self,
-        Parameters(params): Parameters<serde_json::Value>,
+        Parameters(params): Parameters<ProcessExportPipelineParams>,
     ) -> Result<CallToolResult, McpError> {
         let _permit = self
             .state
@@ -904,18 +950,11 @@ impl McpHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
 
-        let url = params.get("url").and_then(|v| v.as_str()).unwrap_or("");
-        let output_dir = params
-            .get("output_dir")
-            .and_then(|v| v.as_str())
-            .unwrap_or("./output");
-        let format = params
-            .get("format")
-            .and_then(|v| v.as_str())
-            .unwrap_or("jsonl");
+        let url = params.url.as_deref().unwrap_or("");
+        let format = params.format.as_deref().unwrap_or("jsonl");
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Pipeline queued for: {} → {}/ [{}]",
-            url, output_dir, format
+            "Pipeline queued for: {} → [{}]",
+            url, format
         ))]))
     }
 
@@ -1142,7 +1181,7 @@ impl McpHandler {
     #[instrument(skip(self), fields(params = ?params))]
     async fn verify_waf_integrity(
         &self,
-        Parameters(params): Parameters<serde_json::Value>,
+        Parameters(params): Parameters<VerifyWafIntegrityParams>,
     ) -> Result<CallToolResult, McpError> {
         let _permit = self
             .state
@@ -1152,7 +1191,7 @@ impl McpHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
 
-        let html = params.get("html").and_then(|v| v.as_str()).unwrap_or("");
+        let html = params.html.as_deref().unwrap_or("");
         let headers = wreq::header::HeaderMap::new();
         match crate::infrastructure::http::waf_engine::WafInspector::verify_integrity(
             &headers, html,
