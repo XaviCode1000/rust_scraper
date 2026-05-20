@@ -73,9 +73,7 @@ impl MemoryManager {
                 return None;
             }
 
-            let batch_urls: Vec<Url> = queue
-                .drain(..batch_size.min(queue.len()))
-                .collect();
+            let batch_urls: Vec<Url> = queue.drain(..batch_size.min(queue.len())).collect();
 
             let has_more = !queue.is_empty();
             let batch_id = current_batch;
@@ -107,7 +105,9 @@ impl MemoryManager {
         }
 
         // Disk swapping enabled
-        let temp_dir = self.temp_dir.as_ref()
+        let temp_dir = self
+            .temp_dir
+            .as_ref()
             .ok_or_else(|| MemoryError::DiskSwapFailed("temp directory not set".to_string()))?;
 
         // Write URLs to disk in chunks
@@ -120,8 +120,9 @@ impl MemoryManager {
                 content.push('\n');
             }
 
-            std::fs::write(&file_path, content)
-                .map_err(|e| MemoryError::DiskSwapFailed(format!("failed to write chunk {}: {}", chunk_idx, e)))?;
+            std::fs::write(&file_path, content).map_err(|e| {
+                MemoryError::DiskSwapFailed(format!("failed to write chunk {}: {}", chunk_idx, e))
+            })?;
         }
 
         Ok(())
@@ -206,7 +207,7 @@ mod tests {
     #[test]
     fn test_handle_disk_swapping_memory_limit_exceeded() {
         let manager = MemoryManager::with_memory_limit(1); // 1MB limit
-        // 525 URLs * 2000 bytes = 1,050,000 bytes >= 1,048,576 bytes (1MB)
+                                                           // 525 URLs * 2000 bytes = 1,050,000 bytes >= 1,048,576 bytes (1MB)
         let url_count_that_exceeds = 525;
         let urls: Vec<Url> = (0..url_count_that_exceeds)
             .map(|i| Url::parse(&format!("https://example.com/page{}", i)).unwrap())
@@ -215,6 +216,9 @@ mod tests {
         // Should fail due to memory limit when disk swap disabled
         let result = manager.handle_disk_swapping(&urls);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), MemoryError::MemoryLimitExceeded(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            MemoryError::MemoryLimitExceeded(_)
+        ));
     }
 }

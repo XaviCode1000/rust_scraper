@@ -7,8 +7,7 @@ use std::net::SocketAddr;
 
 use axum::Router;
 use rmcp::transport::streamable_http_server::{
-    session::local::LocalSessionManager,
-    tower::StreamableHttpService,
+    session::local::LocalSessionManager, tower::StreamableHttpService,
 };
 use tracing::info;
 
@@ -26,8 +25,7 @@ pub fn build_mcp_router(state: McpState) -> Router {
         Default::default(),
     );
 
-    Router::new()
-        .nest_service("/mcp", service)
+    Router::new().nest_service("/mcp", service)
 }
 
 /// Start the MCP server on the given address.
@@ -55,8 +53,8 @@ async fn shutdown_signal() {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::di::Container;
     use crate::config::Config;
+    use crate::di::Container;
 
     /// Build a test McpHandler with DI container.
     async fn test_handler() -> McpHandler {
@@ -70,7 +68,11 @@ mod tests {
     async fn test_handler_builds_with_all_tools() {
         let handler = test_handler().await;
         let tools = handler.tool_router.list_all();
-        assert!(tools.len() >= 34, "Expected at least 34 tools, got {}", tools.len());
+        assert!(
+            tools.len() >= 34,
+            "Expected at least 34 tools, got {}",
+            tools.len()
+        );
 
         let tool_names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
         assert!(tool_names.contains(&"scrape_url"));
@@ -144,7 +146,8 @@ mod tests {
 
     #[test]
     fn test_output_path_logic() {
-        let path = crate::adapters::url_path::OutputPath::from_url("https://example.com/docs/page").unwrap();
+        let path = crate::adapters::url_path::OutputPath::from_url("https://example.com/docs/page")
+            .unwrap();
         let full = path.to_full_path();
         assert!(full.contains("example.com"));
         assert!(full.contains("docs"));
@@ -167,7 +170,8 @@ mod tests {
     #[test]
     fn test_highlight_code_blocks_logic() {
         let md = "```rust\nfn main() {}\n```";
-        let highlighted = crate::infrastructure::converter::syntax_highlight::highlight_code_blocks(md);
+        let highlighted =
+            crate::infrastructure::converter::syntax_highlight::highlight_code_blocks(md);
         // Syntax highlighting may or may not add markup; just verify it returns something
         assert!(!highlighted.is_empty());
     }
@@ -175,7 +179,8 @@ mod tests {
     #[test]
     fn test_convert_wiki_links_logic() {
         let md = "https://example.com/page";
-        let wikilinks = crate::infrastructure::converter::wikilinks::convert_wiki_links(md, "example.com");
+        let wikilinks =
+            crate::infrastructure::converter::wikilinks::convert_wiki_links(md, "example.com");
         // Wiki link conversion replaces same-domain URLs with [[page]] syntax
         assert!(!wikilinks.is_empty());
     }

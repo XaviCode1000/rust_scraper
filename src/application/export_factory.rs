@@ -145,7 +145,9 @@ pub fn process_results(
 
     for result in results {
         let chunk = DocumentChunkUnvalidated::from_scraped_content(result);
-        let validated = chunk.validate().map_err(|e| ExporterError::InvalidConfig(e.to_string()))?;
+        let validated = chunk
+            .validate()
+            .map_err(|e| ExporterError::InvalidConfig(e.to_string()))?;
 
         // Export the chunk
         exporter.export(validated)?;

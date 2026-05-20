@@ -205,7 +205,7 @@ impl RateLimiter {
             RateLimiterBackend::InMemory => {
                 let limiter = SharedRateLimiter::new(config)?;
                 Ok(RateLimiter::InMemory(limiter))
-            }
+            },
             RateLimiterBackend::Redis => {
                 // Try to create distributed rate limiter
                 match DistributedRateLimiter::new(config).await {
@@ -218,9 +218,9 @@ impl RateLimiter {
                         );
                         let limiter = SharedRateLimiter::new(config)?;
                         Ok(RateLimiter::InMemory(limiter))
-                    }
+                    },
                 }
-            }
+            },
         }
     }
 
@@ -233,7 +233,7 @@ impl RateLimiter {
                 if let Err(e) = distributed.until_ready().await {
                     warn!("Redis failed, using fallback: {}", e);
                 }
-            }
+            },
             RateLimiter::WithFallback {
                 distributed,
                 fallback,
@@ -244,9 +244,9 @@ impl RateLimiter {
                     Err(e) => {
                         tracing::debug!("Distributed failed, falling back: {}", e);
                         fallback.until_ready().await;
-                    }
+                    },
                 }
-            }
+            },
         }
     }
 
@@ -413,10 +413,7 @@ mod tests {
         // delay_ms=0 → debe retornar error, no panic
         let config = RateLimiterConfig::new(0, 1);
         let result = SharedRateLimiter::new(&config);
-        assert!(
-            result.is_err(),
-            "delay_ms=0 debería retornar error"
-        );
+        assert!(result.is_err(), "delay_ms=0 debería retornar error");
     }
 
     #[test]
@@ -424,10 +421,7 @@ mod tests {
         // concurrency=0 → debe retornar error, no panic
         let config = RateLimiterConfig::new(100, 0);
         let result = SharedRateLimiter::new(&config);
-        assert!(
-            result.is_err(),
-            "concurrency=0 debería retornar error"
-        );
+        assert!(result.is_err(), "concurrency=0 debería retornar error");
     }
 
     #[test]

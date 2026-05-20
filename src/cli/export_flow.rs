@@ -8,7 +8,10 @@ use crate::cli::error::CliExit;
 use crate::domain::ScrapedContent;
 use crate::infrastructure::export::state_store::StateStore;
 use crate::infrastructure::output::file_saver::ObsidianOptions;
-use crate::{application::export_factory, infrastructure::output::file_saver::save_results, ExportFormat, OutputFormat};
+use crate::{
+    application::export_factory, infrastructure::output::file_saver::save_results, ExportFormat,
+    OutputFormat,
+};
 
 // ============================================================================
 // Export Results (RAG pipeline)
@@ -80,9 +83,7 @@ fn run_standard_export(config: &ExportConfig<'_>) -> Result<Vec<String>, CliExit
 #[cfg(feature = "ai")]
 async fn run_ai_export(config: &ExportConfig<'_>) -> Result<Vec<String>, CliExit> {
     use crate::domain::DocumentChunk;
-    use crate::infrastructure::ai::semantic_cleaner_impl::{
-        ModelConfig, SemanticCleanerImpl,
-    };
+    use crate::infrastructure::ai::semantic_cleaner_impl::{ModelConfig, SemanticCleanerImpl};
     use crate::SemanticCleaner;
     use std::sync::Arc;
 
@@ -128,8 +129,7 @@ async fn run_ai_export(config: &ExportConfig<'_>) -> Result<Vec<String>, CliExit
 
     let cleaning_results = futures::future::join_all(cleaning_tasks).await;
 
-    let mut cleaned_chunks: Vec<DocumentChunk> =
-        Vec::with_capacity(config.results.len() * 2);
+    let mut cleaned_chunks: Vec<DocumentChunk> = Vec::with_capacity(config.results.len() * 2);
     for (url, chunks_result, result) in cleaning_results {
         match chunks_result {
             Ok(chunks) => {

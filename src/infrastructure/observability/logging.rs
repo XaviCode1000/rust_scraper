@@ -7,9 +7,9 @@
 
 use std::path::Path;
 
-use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 /// Guard for JSON logging - ensures flush on drop (RAII)
 ///
@@ -140,9 +140,11 @@ pub fn init_json_logging_dual(
 
         // NON-BLOCKING: Worker thread handles file I/O, Tokio threads never block
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
-        
+
         // RAII: Return guard to ensure flush on drop
-        let log_guard = LogGuard { _guard: Some(guard) };
+        let log_guard = LogGuard {
+            _guard: Some(guard),
+        };
 
         let json_layer = fmt::layer()
             .with_writer(non_blocking)

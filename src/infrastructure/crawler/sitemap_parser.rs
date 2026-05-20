@@ -194,7 +194,8 @@ impl SitemapParser {
         let base_url = Url::parse(url)?;
 
         // [3.6] RetryPolicy: wrap HTTP request with retry logic
-        let response = self.retry_policy
+        let response = self
+            .retry_policy
             .execute_with_retry(|| {
                 let url = url.to_string();
                 async move {
@@ -203,7 +204,10 @@ impl SitemapParser {
                         .timeout(std::time::Duration::from_secs(10))
                         .build()
                         .expect("BUG: failed to build HTTP client");
-                    client.get(&url).send().await
+                    client
+                        .get(&url)
+                        .send()
+                        .await
                         .map_err(|e| std::io::Error::other(e.to_string()))
                 }
             })
@@ -255,7 +259,8 @@ impl SitemapParser {
         }
 
         // [3.4] CompressionHandler integration: detect and decompress content
-        let decompressed = self.compression_handler
+        let decompressed = self
+            .compression_handler
             .detect_and_decompress(&raw_bytes, url)
             .await
             .map_err(|e| SitemapError::HttpError(e.to_string()))?;
@@ -270,12 +275,12 @@ impl SitemapParser {
         // Check if sitemap index (recursive)
         if self.is_sitemap_index(&urls) {
             tracing::debug!("Detected sitemap index, recursing (depth: {})", depth);
-            
+
             // [3.7] MemoryManager: handle disk swapping for large index
             self.memory_manager
                 .handle_disk_swapping(&urls)
                 .map_err(|e| SitemapError::HttpError(e.to_string()))?;
-            
+
             self.parse_sitemap_index(&urls, depth - 1).await
         } else {
             // [3.7] MemoryManager: check memory limits before returning
@@ -284,8 +289,7 @@ impl SitemapParser {
                 .map_err(|e| SitemapError::HttpError(e.to_string()))?;
 
             // [3.8] BatchProcessor: apply crawl budget optimization
-            let optimized_urls = self.batch_processor
-                .apply_crawl_budget(urls, &self.config);
+            let optimized_urls = self.batch_processor.apply_crawl_budget(urls, &self.config);
 
             Ok(optimized_urls)
         }
@@ -337,14 +341,14 @@ impl SitemapParser {
                             match validation {
                                 crate::domain::ValidationResult::Valid => {
                                     urls.insert(url);
-                                }
+                                },
                                 crate::domain::ValidationResult::Invalid(reason) => {
                                     tracing::debug!("Filtered invalid URL: {} — {}", url, reason);
-                                }
+                                },
                                 crate::domain::ValidationResult::NeedsRedirect(new_url) => {
                                     // Follow redirect by replacing URL
                                     urls.insert(new_url);
-                                }
+                                },
                             }
                         }
                     }
@@ -418,7 +422,10 @@ impl SitemapParser {
         if path.contains("/blog/release/v") {
             if let Some(version_part) = path.split("/blog/release/v").nth(1) {
                 // Extract version number (before any query or fragment)
-                let version = version_part.split(&['?', '#'][..]).next().unwrap_or(version_part);
+                let version = version_part
+                    .split(&['?', '#'][..])
+                    .next()
+                    .unwrap_or(version_part);
 
                 // Check if version has invalid pattern (e.g., v106.0 instead of v10.6.0)
                 // Valid patterns: v0.x.x, v1.x.x, v2.x.x, ..., v9.x.x, v10.x.x, v11.x.x, ..., v99.x.x

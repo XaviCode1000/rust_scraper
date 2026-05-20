@@ -121,7 +121,7 @@ pub fn normalize_url(url: &Url) -> String {
     // Handle default port - add only if not default
     let port_str = match (port, scheme) {
         (None, _) => "",
-        (Some(80), _) => "",  // Remove port 80 regardless of scheme
+        (Some(80), _) => "", // Remove port 80 regardless of scheme
         (Some(443), "https") => "",
         (Some(p), _) => &format!(":{}", p),
     };
@@ -220,12 +220,19 @@ mod tests {
         let dedup = InMemoryDeduplicator::new();
 
         // First time should return false (was inserted)
-        let result = dedup.check_and_mark("https://example.com".to_string()).await;
+        let result = dedup
+            .check_and_mark("https://example.com".to_string())
+            .await;
         assert!(!result, "First insert should return false (URL was added)");
 
         // Second time should return true (already exists)
-        let result = dedup.check_and_mark("https://example.com".to_string()).await;
-        assert!(result, "Second check should return true (URL already visited)");
+        let result = dedup
+            .check_and_mark("https://example.com".to_string())
+            .await;
+        assert!(
+            result,
+            "Second check should return true (URL already visited)"
+        );
     }
 
     #[tokio::test]

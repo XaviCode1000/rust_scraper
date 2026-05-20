@@ -31,8 +31,8 @@ use inquire::Text;
 use rust_scraper::adapters::tui::{restore_terminal, setup_terminal, ConfigFormState};
 use rust_scraper::cli::config::ConfigDefaults;
 use rust_scraper::cli::error::CliExit;
-use rust_scraper::{init_logging_dual, is_no_color, Args, Commands};
 use rust_scraper::cli::preflight;
+use rust_scraper::{init_logging_dual, is_no_color, Args, Commands};
 
 /// Check if running in CI environment.
 fn is_ci() -> bool {
@@ -62,10 +62,7 @@ fn run_config_tui() -> Result<Option<serde_json::Value>, CliExit> {
         Ok(t) => t,
         Err(e) => {
             eprintln!("Error: Failed to setup terminal: {}", e);
-            return Err(CliExit::UsageError(format!(
-                "Terminal setup failed: {}",
-                e
-            )));
+            return Err(CliExit::UsageError(format!("Terminal setup failed: {}", e)));
         },
     };
 

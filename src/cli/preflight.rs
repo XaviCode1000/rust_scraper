@@ -118,8 +118,8 @@ pub fn apply_config_defaults(mut args: Args, config: &ConfigDefaults) -> Args {
 /// This runs after config_tui returns user-submitted values.
 /// Precedence: TUI values > CLI args (they override what was passed).
 pub fn apply_tui_config(mut args: Args, config_values: &serde_json::Value) -> Args {
-    use crate::OutputFormat as O;
     use crate::ExportFormat as E;
+    use crate::OutputFormat as O;
 
     // Output directory
     if let Some(output) = config_values.get("output").and_then(|v| v.as_str()) {
@@ -164,17 +164,26 @@ pub fn apply_tui_config(mut args: Args, config_values: &serde_json::Value) -> Ar
     }
 
     // Behavior: download_images
-    if let Some(v) = config_values.get("download_images").and_then(|v| v.as_bool()) {
+    if let Some(v) = config_values
+        .get("download_images")
+        .and_then(|v| v.as_bool())
+    {
         args.download_images = v;
     }
 
     // Behavior: download_documents
-    if let Some(v) = config_values.get("download_documents").and_then(|v| v.as_bool()) {
+    if let Some(v) = config_values
+        .get("download_documents")
+        .and_then(|v| v.as_bool())
+    {
         args.download_documents = v;
     }
 
     // Obsidian: obsidian_wiki_links
-    if let Some(v) = config_values.get("obsidian_wiki_links").and_then(|v| v.as_bool()) {
+    if let Some(v) = config_values
+        .get("obsidian_wiki_links")
+        .and_then(|v| v.as_bool())
+    {
         args.obsidian_wiki_links = v;
     }
 

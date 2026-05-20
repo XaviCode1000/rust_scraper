@@ -33,7 +33,9 @@ impl BatchProcessor {
 
     /// Create with custom max params threshold
     pub fn with_max_params_threshold(max_params_threshold: usize) -> Self {
-        Self { max_params_threshold }
+        Self {
+            max_params_threshold,
+        }
     }
 
     /// Apply crawl budget optimization to URL collection
@@ -132,9 +134,7 @@ mod tests {
             Url::parse("https://example.com/page3?a=1&b=2&c=3&d=4&e=5&f=6").unwrap(), // 6 params > threshold
         ];
 
-        let config = SitemapConfig::builder()
-            .crawl_budget_enabled(true)
-            .build();
+        let config = SitemapConfig::builder().crawl_budget_enabled(true).build();
 
         let result = processor.apply_crawl_budget(urls, &config);
 
@@ -151,9 +151,7 @@ mod tests {
             Url::parse("https://example.com/page2").unwrap(),
         ];
 
-        let config = SitemapConfig::builder()
-            .crawl_budget_enabled(true)
-            .build();
+        let config = SitemapConfig::builder().crawl_budget_enabled(true).build();
 
         let result = processor.apply_crawl_budget(urls, &config);
 
@@ -164,14 +162,12 @@ mod tests {
     fn test_apply_crawl_budget_sorts_by_depth() {
         let processor = BatchProcessor::new();
         let urls = vec![
-            Url::parse("https://example.com/a").unwrap(),          // depth 1
-            Url::parse("https://example.com/a/b").unwrap(),        // depth 2
-            Url::parse("https://example.com/a/b/c").unwrap(),      // depth 3
+            Url::parse("https://example.com/a").unwrap(), // depth 1
+            Url::parse("https://example.com/a/b").unwrap(), // depth 2
+            Url::parse("https://example.com/a/b/c").unwrap(), // depth 3
         ];
 
-        let config = SitemapConfig::builder()
-            .crawl_budget_enabled(true)
-            .build();
+        let config = SitemapConfig::builder().crawl_budget_enabled(true).build();
 
         let result = processor.apply_crawl_budget(urls, &config);
 
@@ -185,12 +181,11 @@ mod tests {
     fn test_max_params_threshold_custom() {
         let processor = BatchProcessor::with_max_params_threshold(10);
         let urls = vec![
-            Url::parse("https://example.com/page?a=1&b=2&c=3&d=4&e=5&f=6&g=7&h=8&i=9&j=10").unwrap(), // 10 params
+            Url::parse("https://example.com/page?a=1&b=2&c=3&d=4&e=5&f=6&g=7&h=8&i=9&j=10")
+                .unwrap(), // 10 params
         ];
 
-        let config = SitemapConfig::builder()
-            .crawl_budget_enabled(true)
-            .build();
+        let config = SitemapConfig::builder().crawl_budget_enabled(true).build();
 
         let result = processor.apply_crawl_budget(urls, &config);
 

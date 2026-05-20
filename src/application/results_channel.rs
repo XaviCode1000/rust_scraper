@@ -56,15 +56,15 @@ impl CrawlMessage {
 }
 
 /// Results Collector con canal mpsc para DiscoveredUrl
-/// 
+///
 /// Esta estructura es DELGADA: solo provee el transmitter y acceso atómico.
 /// El worker (tokio::spawn) es el único dueño del Vec de resultados.
-/// 
+///
 /// # Uso
-/// 
+///
 /// ```rust
 /// let collector = ResultsCollector::new(512, Some(1000));
-/// 
+///
 /// // En cada worker:
 /// collector.send(CrawlMessage::success(url)).await;
 ///
@@ -92,21 +92,21 @@ impl Clone for ResultsCollector {
 
 impl ResultsCollector {
     /// Crear nuevo collector con capacidad especificada
-    /// 
+    ///
     /// # Arguments
-    /// 
-    /// * `capacity` - Tamaño del buffer del canal (backpressure). 
+    ///
+    /// * `capacity` - Tamaño del buffer del canal (backpressure).
     /// * `max_capacity` - Pre-allocación para el Vec interno
     pub fn new(capacity: usize, max_capacity: Option<usize>) -> Self {
         let (tx, mut rx) = mpsc::channel(capacity);
         let counter = Arc::new(AtomicUsize::new(0));
         let vec_capacity = max_capacity.unwrap_or(capacity);
-        
+
         // Worker dedicado que posee el receiver y el Vec final
         let _counter_clone = Arc::clone(&counter);
         let handle = tokio::spawn(async move {
             let mut results = Vec::with_capacity(vec_capacity);
-            
+
             // El bucle termina cuando rx se cierra (todos los tx muertos)
             while let Some(msg) = rx.recv().await {
                 match msg {
@@ -114,13 +114,13 @@ impl ResultsCollector {
                         debug!("Collected: {}", url.url);
                         results.push(url);
                         // Counter already updated in send()
-                    }
+                    },
                     CrawlMessage::Error { url, error } => {
                         warn!("Error collecting {}: {}", url, error);
-                    }
+                    },
                 }
             }
-            
+
             info!("Collector finished: {} URLs", results.len());
             results
         });
@@ -138,7 +138,7 @@ impl ResultsCollector {
     }
 
     /// Verificar si alcanzamos max_pages (sin lock)
-    /// 
+    ///
     /// Usa AtomicUsize para chequeo O(1) sin bloqueo.
     #[inline]
     pub fn is_full(&self, max_pages: usize) -> bool {
@@ -160,7 +160,10 @@ impl ResultsCollector {
     /// Enviar resultado (con backpressure implícito)
     ///
     /// Si el canal está lleno, esta llamada awaitará.
-    pub async fn send(&self, msg: CrawlMessage) -> Result<(), mpsc::error::SendError<CrawlMessage>> {
+    pub async fn send(
+        &self,
+        msg: CrawlMessage,
+    ) -> Result<(), mpsc::error::SendError<CrawlMessage>> {
         // Update counter synchronously for is_full() checks
         if let CrawlMessage::Success(_) = &msg {
             self.counter.fetch_add(1, Ordering::Relaxed);
@@ -168,21 +171,24 @@ impl ResultsCollector {
         self.tx.send(msg).await
     }
 
-/// Intentar enviar sin esperar
-    /// 
+    /// Intentar enviar sin esperar
+    ///
     /// Útil para manejo custom de backpressure.
     /// Retorna error si el canal está lleno.
-    pub fn try_send(&self, msg: CrawlMessage) -> Result<(), Box<mpsc::error::TrySendError<CrawlMessage>>> {
+    pub fn try_send(
+        &self,
+        msg: CrawlMessage,
+    ) -> Result<(), Box<mpsc::error::TrySendError<CrawlMessage>>> {
         self.tx.try_send(msg).map_err(Box::new)
     }
 
     /// Recolectar y retornar resultados
-    /// 
+    ///
     /// IMPORANTE: Debe llamarse UNA SOLA VEZ al finalizar el crawl.
     pub async fn collect(mut self) -> Vec<DiscoveredUrl> {
         // Cerrar el canal - el worker recibirá None y terminará
         drop(self.tx);
-        
+
         // Esperar al worker
         if let Some(handle) = self.handle.take() {
             match handle.await {
@@ -190,7 +196,7 @@ impl ResultsCollector {
                 Err(e) => {
                     error!("Worker panicked: {}", e);
                     Vec::new()
-                }
+                },
             }
         } else {
             Vec::new()
@@ -205,7 +211,7 @@ impl Default for ResultsCollector {
 }
 
 /// Adapter para compatibilidad con código existente
-/// 
+///
 /// Wrapper más simple si solo necesitas enviar URLs.
 pub struct ResultsAdapter {
     collector: ResultsCollector,
@@ -219,12 +225,19 @@ impl ResultsAdapter {
     }
 
     /// Enviar URL scrapeada exitosamente
-    pub async fn add_success(&self, url: DiscoveredUrl) -> Result<(), mpsc::error::SendError<CrawlMessage>> {
+    pub async fn add_success(
+        &self,
+        url: DiscoveredUrl,
+    ) -> Result<(), mpsc::error::SendError<CrawlMessage>> {
         self.collector.send(CrawlMessage::success(url)).await
     }
 
     /// Enviar error de scrape
-    pub async fn add_error(&self, url: String, error: String) -> Result<(), mpsc::error::SendError<CrawlMessage>> {
+    pub async fn add_error(
+        &self,
+        url: String,
+        error: String,
+    ) -> Result<(), mpsc::error::SendError<CrawlMessage>> {
         self.collector.send(CrawlMessage::error(url, error)).await
     }
 
@@ -259,8 +272,14 @@ mod tests {
     async fn test_collector_basic() {
         let collector = ResultsCollector::new(100, Some(200));
 
-        collector.send(CrawlMessage::success(make_url("https://a.com"))).await.unwrap();
-        collector.send(CrawlMessage::success(make_url("https://b.com"))).await.unwrap();
+        collector
+            .send(CrawlMessage::success(make_url("https://a.com")))
+            .await
+            .unwrap();
+        collector
+            .send(CrawlMessage::success(make_url("https://b.com")))
+            .await
+            .unwrap();
 
         assert_eq!(collector.len(), 2);
 
@@ -273,7 +292,13 @@ mod tests {
         let collector = ResultsCollector::new(100, None);
 
         for i in 0..5 {
-            collector.send(CrawlMessage::success(make_url(&format!("https://{}.com", i)))).await.unwrap();
+            collector
+                .send(CrawlMessage::success(make_url(&format!(
+                    "https://{}.com",
+                    i
+                ))))
+                .await
+                .unwrap();
         }
 
         assert!(collector.is_full(3));

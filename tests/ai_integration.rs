@@ -876,21 +876,11 @@ fn test_relevance_filtering() {
     let reference = vec![1.0f32, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
 
     // High similarity chunk
-    let chunk1 = DocumentChunk::new(
-        uuid::Uuid::new_v4(),
-        "",
-        "",
-        "High similarity",
-    );
+    let chunk1 = DocumentChunk::new(uuid::Uuid::new_v4(), "", "", "High similarity");
     let emb1 = vec![0.9f32, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
 
     // Low similarity chunk (orthogonal)
-    let chunk2 = DocumentChunk::new(
-        uuid::Uuid::new_v4(),
-        "",
-        "",
-        "Low similarity",
-    );
+    let chunk2 = DocumentChunk::new(uuid::Uuid::new_v4(), "", "", "Low similarity");
     let emb2 = vec![0.0f32, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
 
     let chunks = vec![(chunk1, emb1), (chunk2, emb2)];

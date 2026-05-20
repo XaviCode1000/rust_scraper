@@ -4,8 +4,8 @@
 //! highlight_code_blocks, convert_wiki_links, generate_frontmatter,
 //! generate_rich_metadata
 
-use rmcp::handler::server::tool::ToolRouter;
 use super::McpHandler;
+use rmcp::handler::server::tool::ToolRouter;
 
 /// Build the partial tool router for content tools.
 pub fn build_router() -> ToolRouter<McpHandler> {

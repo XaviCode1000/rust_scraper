@@ -209,7 +209,10 @@ async fn test_http_client_rate_limit_rpm_config() {
         ..Default::default()
     };
     let result = HttpClient::new(config);
-    assert!(result.is_ok(), "HttpClient debería crearse con rate_limit_rpm");
+    assert!(
+        result.is_ok(),
+        "HttpClient debería crearse con rate_limit_rpm"
+    );
 }
 
 // ============================================================================

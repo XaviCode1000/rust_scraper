@@ -7,8 +7,8 @@ use std::path::PathBuf;
 
 use tracing::info;
 
-use crate::cli::Args;
 use crate::cli::error::CliExit;
+use crate::cli::Args;
 use crate::infrastructure::obsidian::detect_vault;
 
 /// Common preflight checks for all commands

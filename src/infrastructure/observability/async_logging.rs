@@ -56,7 +56,7 @@ impl AsyncLogWriter {
         // Spawn background writer task
         let app_name = app_name.to_string();
         let config_clone = config.clone();
-        
+
         // Run writer task
         tokio::spawn(async move {
             if let Err(e) = run_writer_task(entries_rx, log_dir, app_name, config_clone).await {
@@ -64,7 +64,7 @@ impl AsyncLogWriter {
             }
         });
 
-Ok(Self {
+        Ok(Self {
             sender: entries_tx,
             config,
             #[allow(non_snake_case)]
@@ -80,7 +80,7 @@ Ok(Self {
             Err(mpsc::error::TrySendError::Full(_)) => {
                 eprintln!("WARN: Log buffer overflow - entry dropped");
                 Ok(()) // Don't block, just drop
-            }
+            },
             Err(e) => anyhow::bail!("Log write error: {}", e),
         }
     }
@@ -126,11 +126,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_async_log_writer_no_blocking() {
-        let writer = AsyncLogWriter::new(
-            None,
-            "test-async",
-            WriterConfig::default(),
-        ).await;
+        let writer = AsyncLogWriter::new(None, "test-async", WriterConfig::default()).await;
 
         // Even without a log dir, writer should create
         assert!(writer.is_ok());

@@ -1,27 +1,24 @@
 //! Scraping flow logic extracted from orchestrator.
 
 use std::path::PathBuf;
-use url::Url;
 use tokio::sync::mpsc;
 use tracing::{info, warn};
+use url::Url;
 
-use crate::{Args, ScraperConfig};
-use crate::{HttpClient, HttpClientConfig};
+use crate::adapters::tui::{ScrapeError, ScrapeProgress, ScrapeStatus};
+use crate::application::export_factory;
 use crate::application::scrape_single_url_for_tui;
 use crate::domain::ScrapedContent;
-use crate::adapters::tui::{ScrapeProgress, ScrapeStatus, ScrapeError};
-use crate::application::export_factory;
 use crate::infrastructure::export::state_store::StateStore;
+use crate::{Args, ScraperConfig};
+use crate::{HttpClient, HttpClientConfig};
 
 /// Apply resume mode filtering.
 pub async fn apply_resume_mode(
     urls_to_scrape: Vec<Url>,
     args: &Args,
     target_url: &str,
-) -> (
-    Vec<Url>,
-    Option<StateStore>,
-) {
+) -> (Vec<Url>, Option<StateStore>) {
     let state_store: Option<StateStore> = if args.resume {
         info!("Resume mode enabled - tracking processed URLs");
         let state_dir = args.state_dir.clone().unwrap_or_else(|| {
@@ -98,10 +95,7 @@ pub async fn scrape_urls(
     scraper_config: &ScraperConfig,
     args: &Args,
     progress_tx: Option<mpsc::Sender<ScrapeProgress>>,
-) -> (
-    Vec<ScrapedContent>,
-    Vec<(String, String)>,
-) {
+) -> (Vec<ScrapedContent>, Vec<(String, String)>) {
     let http_config = HttpClientConfig {
         max_retries: args.max_retries,
         backoff_base_ms: args.backoff_base_ms,

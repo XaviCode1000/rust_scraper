@@ -181,7 +181,7 @@ impl HtmlChunker {
 
             let chunk = DocumentChunk::new(
                 Uuid::new_v4(),
-                String::new(),   // To be filled by caller
+                String::new(), // To be filled by caller
                 String::new(), // To be filled by caller
                 trimmed.to_string(),
             );
@@ -351,16 +351,16 @@ impl HtmlChunker {
                 }
 
                 // Don't forget the last part
-if !current.is_empty() {
-                            result.push(DocumentChunk::with_metadata(
-                                Uuid::new_v4(),
-                                chunk.url.clone(),
-                                chunk.title.clone(),
-                                current.clone(),
-                                chunk.metadata.clone(),
-                            ));
-                            current.clear();
-                        }
+                if !current.is_empty() {
+                    result.push(DocumentChunk::with_metadata(
+                        Uuid::new_v4(),
+                        chunk.url.clone(),
+                        chunk.title.clone(),
+                        current.clone(),
+                        chunk.metadata.clone(),
+                    ));
+                    current.clear();
+                }
             }
         }
 

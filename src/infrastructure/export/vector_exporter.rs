@@ -375,17 +375,20 @@ mod tests {
     fn test_serialize_document_with_embeddings() {
         let config = create_test_config();
         let exporter = VectorExporter::new(config);
-        
+
         // Create document and manually add embeddings
         let mut doc = create_test_chunk();
         doc.embeddings = Some(vec![0.1, 0.2, 0.3, 0.4]); // Add embeddings
-        
+
         let result = exporter.serialize_document(&doc);
         assert!(result.is_ok());
 
         let json_str = result.unwrap();
         // embeddings field present because we added it
-        assert!(json_str.contains("embeddings"), "expected embeddings field when embeddings is Some");
+        assert!(
+            json_str.contains("embeddings"),
+            "expected embeddings field when embeddings is Some"
+        );
         assert!(json_str.contains("Test Document"));
     }
 
@@ -402,7 +405,7 @@ mod tests {
         // Second document with different dimensions - should warn and serialize without embeddings
         let mut doc2 = create_test_chunk();
         doc2.embeddings = Some(vec![0.1, 0.2]); // Only 2 dimensions
-        
+
         let result = exporter.serialize_document(&doc2);
         assert!(
             result.is_ok(),

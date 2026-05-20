@@ -25,7 +25,11 @@ fn make_chunk(title: &str) -> rust_scraper::domain::DocumentChunkValidated {
     let scraped = ScrapedContent {
         title: title.to_string(),
         content: format!("Content for {}", title),
-        url: ValidUrl::parse(&format!("https://example.com/page-{}", title.replace(' ', "-"))).expect("valid URL"),
+        url: ValidUrl::parse(&format!(
+            "https://example.com/page-{}",
+            title.replace(' ', "-")
+        ))
+        .expect("valid URL"),
         excerpt: None,
         author: None,
         date: None,

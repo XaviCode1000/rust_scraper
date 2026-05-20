@@ -135,9 +135,11 @@ fn get_registry_path() -> Option<PathBuf> {
 
     #[cfg(target_os = "windows")]
     {
-        std::env::var("APPDATA")
-            .ok()
-            .map(|appdata| PathBuf::from(appdata).join("Obsidian").join("obsidian.json"))
+        std::env::var("APPDATA").ok().map(|appdata| {
+            PathBuf::from(appdata)
+                .join("Obsidian")
+                .join("obsidian.json")
+        })
     }
 
     #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
@@ -164,7 +166,7 @@ fn get_vault_from_registry() -> Option<PathBuf> {
         Err(e) => {
             tracing::warn!("Failed to read Obsidian registry: {}", e);
             return None;
-        }
+        },
     };
 
     // Parse JSON
@@ -173,7 +175,7 @@ fn get_vault_from_registry() -> Option<PathBuf> {
         Err(e) => {
             tracing::warn!("Failed to parse Obsidian registry: {}", e);
             return None;
-        }
+        },
     };
 
     // Extract vaults object
@@ -200,11 +202,7 @@ fn get_vault_from_registry() -> Option<PathBuf> {
     let (_id, vault_data, ts) = best_vault?;
     let path = vault_data.get("path")?.as_str()?;
 
-    tracing::debug!(
-        "Found vault from registry (ts={}): {}",
-        ts,
-        path
-    );
+    tracing::debug!("Found vault from registry (ts={}): {}", ts, path);
 
     let vault_path = PathBuf::from(path);
 

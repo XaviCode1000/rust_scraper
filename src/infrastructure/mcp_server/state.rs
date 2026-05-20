@@ -34,14 +34,14 @@ pub struct CategoryLimits {
 impl Default for CategoryLimits {
     fn default() -> Self {
         Self {
-            ai: 2,        // Heavy CPU inference — limit strictly
-            scraping: 8,  // Network I/O — can handle more concurrent
-            export: 4,    // File I/O — moderate limit for HDD
-            obsidian: 3,  // Disk scan + embeddings — protect vault I/O
-            content: 6,   // CPU-bound HTML parsing — moderate
+            ai: 2,         // Heavy CPU inference — limit strictly
+            scraping: 8,   // Network I/O — can handle more concurrent
+            export: 4,     // File I/O — moderate limit for HDD
+            obsidian: 3,   // Disk scan + embeddings — protect vault I/O
+            content: 6,    // CPU-bound HTML parsing — moderate
             url_utils: 16, // Lightweight string ops — high limit
-            security: 8,  // WAF detection — moderate
-            assets: 4,    // File downloads — protect HDD
+            security: 8,   // WAF detection — moderate
+            assets: 4,     // File downloads — protect HDD
         }
     }
 }
@@ -120,7 +120,10 @@ mod tests {
         let limits = CategoryLimits::default();
         assert!(limits.ai >= 1, "AI limit must allow at least 1 concurrent");
         assert!(limits.scraping >= 1, "Scraping limit must allow at least 1");
-        assert!(limits.ai < limits.scraping, "AI should be more restricted than scraping");
+        assert!(
+            limits.ai < limits.scraping,
+            "AI should be more restricted than scraping"
+        );
     }
 
     #[test]

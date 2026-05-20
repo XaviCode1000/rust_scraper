@@ -273,8 +273,8 @@ proptest! {
 #[cfg(not(feature = "ai"))]
 #[test]
 fn test_ai_module_returns_empty_router_without_feature() {
-    use rust_scraper::infrastructure::mcp_server::handlers::ai::build_router as ai_build_router;
     use rmcp::handler::server::tool::ToolRouter;
+    use rust_scraper::infrastructure::mcp_server::handlers::ai::build_router as ai_build_router;
     use rust_scraper::infrastructure::mcp_server::McpHandler;
 
     let router: ToolRouter<McpHandler> = ai_build_router();
@@ -293,8 +293,8 @@ fn test_ai_module_returns_empty_router_without_feature() {
 #[cfg(feature = "ai")]
 #[test]
 fn test_ai_module_compiles_with_feature() {
-    use rust_scraper::infrastructure::mcp_server::handlers::ai::build_router as ai_build_router;
     use rmcp::handler::server::tool::ToolRouter;
+    use rust_scraper::infrastructure::mcp_server::handlers::ai::build_router as ai_build_router;
     use rust_scraper::infrastructure::mcp_server::McpHandler;
 
     // This test verifies the AI module compiles with --features ai
@@ -317,11 +317,13 @@ fn test_ai_module_compiles_with_feature() {
 async fn test_mcp_handler_construction_without_ai() {
     use rust_scraper::config::Config;
     use rust_scraper::di::Container;
-    use rust_scraper::infrastructure::mcp_server::McpHandler;
     use rust_scraper::infrastructure::mcp_server::state::McpState;
+    use rust_scraper::infrastructure::mcp_server::McpHandler;
 
     let config = Config::default();
-    let container = Container::new(config).await.expect("container creation failed");
+    let container = Container::new(config)
+        .await
+        .expect("container creation failed");
     let state = McpState::new(container);
     let _handler = McpHandler::new(state);
     // Handler constructed successfully
@@ -333,11 +335,13 @@ async fn test_mcp_handler_construction_without_ai() {
 async fn test_mcp_handler_construction_with_ai() {
     use rust_scraper::config::Config;
     use rust_scraper::di::Container;
-    use rust_scraper::infrastructure::mcp_server::McpHandler;
     use rust_scraper::infrastructure::mcp_server::state::McpState;
+    use rust_scraper::infrastructure::mcp_server::McpHandler;
 
     let config = Config::default();
-    let container = Container::new(config).await.expect("container creation failed");
+    let container = Container::new(config)
+        .await
+        .expect("container creation failed");
     let state = McpState::new(container);
     let _handler = McpHandler::new(state);
     // Handler constructed successfully
@@ -348,11 +352,13 @@ async fn test_mcp_handler_construction_with_ai() {
 async fn test_non_ai_tool_categories_registered() {
     use rust_scraper::config::Config;
     use rust_scraper::di::Container;
-    use rust_scraper::infrastructure::mcp_server::McpHandler;
     use rust_scraper::infrastructure::mcp_server::state::McpState;
+    use rust_scraper::infrastructure::mcp_server::McpHandler;
 
     let config = Config::default();
-    let container = Container::new(config).await.expect("container creation failed");
+    let container = Container::new(config)
+        .await
+        .expect("container creation failed");
     let state = McpState::new(container);
     let handler = McpHandler::new(state);
 
@@ -361,33 +367,90 @@ async fn test_non_ai_tool_categories_registered() {
 
     // Verify core tool categories are present
     // Scraping tools
-    assert!(tool_names.contains(&"scrape_url"), "scrape_url should be registered");
-    assert!(tool_names.contains(&"crawl_site"), "crawl_site should be registered");
-    assert!(tool_names.contains(&"discover_urls"), "discover_urls should be registered");
-    assert!(tool_names.contains(&"detect_spa"), "detect_spa should be registered");
+    assert!(
+        tool_names.contains(&"scrape_url"),
+        "scrape_url should be registered"
+    );
+    assert!(
+        tool_names.contains(&"crawl_site"),
+        "crawl_site should be registered"
+    );
+    assert!(
+        tool_names.contains(&"discover_urls"),
+        "discover_urls should be registered"
+    );
+    assert!(
+        tool_names.contains(&"detect_spa"),
+        "detect_spa should be registered"
+    );
 
     // Content processing tools
-    assert!(tool_names.contains(&"clean_html"), "clean_html should be registered");
-    assert!(tool_names.contains(&"convert_html_to_markdown"), "convert_html_to_markdown should be registered");
-    assert!(tool_names.contains(&"extract_links"), "extract_links should be registered");
+    assert!(
+        tool_names.contains(&"clean_html"),
+        "clean_html should be registered"
+    );
+    assert!(
+        tool_names.contains(&"convert_html_to_markdown"),
+        "convert_html_to_markdown should be registered"
+    );
+    assert!(
+        tool_names.contains(&"extract_links"),
+        "extract_links should be registered"
+    );
 
     // URL utility tools
-    assert!(tool_names.contains(&"validate_url"), "validate_url should be registered");
-    assert!(tool_names.contains(&"normalize_url"), "normalize_url should be registered");
-    assert!(tool_names.contains(&"extract_domain"), "extract_domain should be registered");
-    assert!(tool_names.contains(&"is_internal_link"), "is_internal_link should be registered");
-    assert!(tool_names.contains(&"match_url_pattern"), "match_url_pattern should be registered");
+    assert!(
+        tool_names.contains(&"validate_url"),
+        "validate_url should be registered"
+    );
+    assert!(
+        tool_names.contains(&"normalize_url"),
+        "normalize_url should be registered"
+    );
+    assert!(
+        tool_names.contains(&"extract_domain"),
+        "extract_domain should be registered"
+    );
+    assert!(
+        tool_names.contains(&"is_internal_link"),
+        "is_internal_link should be registered"
+    );
+    assert!(
+        tool_names.contains(&"match_url_pattern"),
+        "match_url_pattern should be registered"
+    );
 
     // Security tools
-    assert!(tool_names.contains(&"detect_waf"), "detect_waf should be registered");
-    assert!(tool_names.contains(&"verify_waf_integrity"), "verify_waf_integrity should be registered");
-    assert!(tool_names.contains(&"list_waf_providers"), "list_waf_providers should be registered");
+    assert!(
+        tool_names.contains(&"detect_waf"),
+        "detect_waf should be registered"
+    );
+    assert!(
+        tool_names.contains(&"verify_waf_integrity"),
+        "verify_waf_integrity should be registered"
+    );
+    assert!(
+        tool_names.contains(&"list_waf_providers"),
+        "list_waf_providers should be registered"
+    );
 
     // Export tools
-    assert!(tool_names.contains(&"export_file"), "export_file should be registered");
-    assert!(tool_names.contains(&"export_jsonl"), "export_jsonl should be registered");
+    assert!(
+        tool_names.contains(&"export_file"),
+        "export_file should be registered"
+    );
+    assert!(
+        tool_names.contains(&"export_jsonl"),
+        "export_jsonl should be registered"
+    );
 
     // Obsidian tools
-    assert!(tool_names.contains(&"detect_obsidian_vault"), "detect_obsidian_vault should be registered");
-    assert!(tool_names.contains(&"build_obsidian_uri"), "build_obsidian_uri should be registered");
+    assert!(
+        tool_names.contains(&"detect_obsidian_vault"),
+        "detect_obsidian_vault should be registered"
+    );
+    assert!(
+        tool_names.contains(&"build_obsidian_uri"),
+        "build_obsidian_uri should be registered"
+    );
 }

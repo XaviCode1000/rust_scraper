@@ -84,7 +84,9 @@ impl UrlValidator {
 
     /// Validate URL by checking HTTP status code
     pub async fn validate_http_status(&self, url: &Url) -> Result<ValidationResult> {
-        let response = self.client.head(url.as_str())
+        let response = self
+            .client
+            .head(url.as_str())
             .send()
             .await
             .map_err(|e| ValidationError::HttpError(e.to_string()))?;
@@ -103,13 +105,15 @@ impl UrlValidator {
                     }
                 }
                 Ok(ValidationResult::Valid) // Treat redirect as valid if we can't follow
-            }
-            404 | 410 => Ok(ValidationResult::Invalid(
-                format!("URL not found (status {})", status)
-            )),
-            _ => Ok(ValidationResult::Invalid(
-                format!("HTTP error (status {})", status)
-            )),
+            },
+            404 | 410 => Ok(ValidationResult::Invalid(format!(
+                "URL not found (status {})",
+                status
+            ))),
+            _ => Ok(ValidationResult::Invalid(format!(
+                "HTTP error (status {})",
+                status
+            ))),
         }
     }
 }

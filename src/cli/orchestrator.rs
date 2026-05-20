@@ -4,18 +4,18 @@
 
 use tracing::info;
 
-use crate::cli::error::CliExit;
 use crate::cli::completions::generate_completions;
+use crate::cli::error::CliExit;
 use crate::cli::export_flow::{run_export, save_files, ExportConfig};
 use crate::cli::scrape_flow::scrape_urls;
 use crate::cli::url_discovery::discover_urls;
 use crate::Args;
-use crate::ScraperConfig;
 use crate::CrawlerConfig;
+use crate::ScraperConfig;
 
+use crate::domain;
 use crate::infrastructure::output::file_saver::ObsidianOptions;
 use crate::Shell;
-use crate::domain;
 
 /// Handle shell completion generation.
 pub fn handle_completions(shell: Shell) -> CliExit {
@@ -81,8 +81,8 @@ pub async fn run(args: Args) -> CliExit {
 
     // Scraping phase
 
-
-    let (results, failures): (Vec<domain::ScrapedContent>, Vec<(String, String)>) = scrape_urls(&urls_to_scrape, &scraper_config, &args, None).await;
+    let (results, failures): (Vec<domain::ScrapedContent>, Vec<(String, String)>) =
+        scrape_urls(&urls_to_scrape, &scraper_config, &args, None).await;
 
     // Report failures
     for (url, error) in &failures {
@@ -145,10 +145,10 @@ pub async fn run(args: Args) -> CliExit {
         Ok(processed_urls) => {
             info!("Export completed for {} URLs", processed_urls.len());
             CliExit::Success
-        }
+        },
         Err(e) => {
             eprintln!("Export failed: {:?}", e);
             e
-        }
+        },
     }
 }

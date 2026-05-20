@@ -10,10 +10,10 @@ use crate::infrastructure::user_agent::UserAgentCache;
 use governor::clock::DefaultClock;
 use governor::state::{InMemoryState, NotKeyed};
 use governor::{Quota, RateLimiter};
+use rand;
 use std::num::NonZeroU32;
 use std::time::Duration;
 use tracing::{debug, warn};
-use rand;
 use url::Url;
 use wreq::header::{HeaderMap, HeaderName, HeaderValue};
 use wreq::Client;
@@ -119,7 +119,9 @@ impl HttpClient {
         // Create rate limiter if configured
         let rate_limiter = if let Some(rpm) = config.rate_limit_rpm {
             if rpm == 0 {
-                return Err(ScraperError::Config("rate_limit_rpm must be greater than 0".into()));
+                return Err(ScraperError::Config(
+                    "rate_limit_rpm must be greater than 0".into(),
+                ));
             }
             let quota = Quota::per_minute(NonZeroU32::new(rpm).unwrap()); // Safe now since rpm > 0
             Some(RateLimiter::direct(quota))
@@ -162,11 +164,14 @@ impl HttpClient {
     /// Returns `HttpError` for failed requests or invalid URLs
     pub async fn get(&self, url: &str) -> HttpResult<String> {
         // Validate URL first
-        let parsed_url = Url::parse(url).map_err(|e| HttpError::Request(format!("Invalid URL: {}", e)))?;
+        let parsed_url =
+            Url::parse(url).map_err(|e| HttpError::Request(format!("Invalid URL: {}", e)))?;
 
         // Ensure URL has http or https scheme
         if !matches!(parsed_url.scheme(), "http" | "https") {
-            return Err(HttpError::Request("URL must use http or https scheme".into()));
+            return Err(HttpError::Request(
+                "URL must use http or https scheme".into(),
+            ));
         }
 
         // Apply rate limiting if configured
@@ -483,8 +488,6 @@ mod tests {
         let result = HttpClient::new(config);
         assert!(result.is_ok());
     }
-
-
 
     #[tokio::test]
     #[ignore = "requires network - run with cargo test --ignored"]

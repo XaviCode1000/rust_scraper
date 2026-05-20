@@ -114,9 +114,7 @@ async fn test_datadome_high_entropy_detection() {
     // string ensures high Shannon entropy (>6.5).
     use rand::Rng;
     let mut rng = rand::thread_rng();
-    let high_entropy_chunk: String = (0..256)
-        .map(|_| rng.gen::<u8>() as char)
-        .collect();
+    let high_entropy_chunk: String = (0..256).map(|_| rng.gen::<u8>() as char).collect();
     let obfuscated_js = high_entropy_chunk.repeat(400); // ~100KB of high-entropy data
 
     // With threshold lowered to 5.5, high-entropy content should be detected
@@ -178,9 +176,9 @@ async fn test_rate_limiting_429_detection() {
 
     Mock::given(method("GET"))
         .and(path("/"))
-        .respond_with(ResponseTemplate::new(429).set_body_string(
-            r#"{"error": "Too many requests"}"#,
-        ))
+        .respond_with(
+            ResponseTemplate::new(429).set_body_string(r#"{"error": "Too many requests"}"#),
+        )
         .mount(&mock_server)
         .await;
 
@@ -235,9 +233,9 @@ async fn test_user_agent_rotation_under_waf_pressure() {
     // First request - normal response
     Mock::given(method("GET"))
         .and(path("/"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(
-            "<html><body>Normal content</body></html>",
-        ))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("<html><body>Normal content</body></html>"),
+        )
         .mount(&mock_server)
         .await;
 
@@ -262,9 +260,9 @@ async fn test_tls_fingerprint_emulation() {
 
     Mock::given(method("GET"))
         .and(path("/"))
-        .respond_with(ResponseTemplate::new(200).set_body_string(
-            "<html><body>Content</body></html>",
-        ))
+        .respond_with(
+            ResponseTemplate::new(200).set_body_string("<html><body>Content</body></html>"),
+        )
         .mount(&mock_server)
         .await;
 
@@ -306,10 +304,7 @@ async fn test_waf_inspector_cloudflare_detection() {
 async fn test_waf_inspector_datadome_header_detection() {
     // RED: Test that WafInspector detects DataDome via header
     let mut headers = HeaderMap::new();
-    headers.insert(
-        "x-datadome-response",
-        "blocked".parse().unwrap(),
-    );
+    headers.insert("x-datadome-response", "blocked".parse().unwrap());
 
     let html = "<html><body>Content</body></html>";
     let result = WafInspector::verify_integrity(&headers, html);

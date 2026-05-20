@@ -25,8 +25,8 @@ pub mod pattern_matching;
 pub mod repositories;
 pub mod result;
 pub mod site;
-pub mod url_validator;
 pub mod url_validation;
+pub mod url_validator;
 pub mod value_objects;
 
 #[cfg(feature = "ai")]
@@ -40,7 +40,7 @@ pub use credentials::{
 
 pub use entities::{
     DocumentChunk, DocumentChunkExported, DocumentChunkUnvalidated, DocumentChunkValidated,
-    DownloadedAsset, Draft, Exported, ExportFormat, ExportState, ScrapedContent, Validated,
+    DownloadedAsset, Draft, ExportFormat, ExportState, Exported, ScrapedContent, Validated,
     ValidationError,
 };
 pub use error::CrawlError;

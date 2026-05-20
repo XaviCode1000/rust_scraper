@@ -3,10 +3,10 @@
 //! Provides centralized dependency injection for the application.
 //! Following Clean Architecture: container lives in application layer.
 
-use std::sync::Arc;
-use crate::config::Config;
 use crate::application::http_client::HttpClient;
+use crate::config::Config;
 use crate::infrastructure::config::ScraperConfig;
+use std::sync::Arc;
 
 /// Dependency Injection Container
 ///

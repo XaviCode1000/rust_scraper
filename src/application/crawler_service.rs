@@ -522,7 +522,8 @@ pub async fn crawl_site(config: CrawlerConfig) -> Result<CrawlResult, CrawlError
     let config_clone = Arc::clone(&config);
 
     // Create rate limiter using SharedRateLimiter (single source of truth)
-    let rate_limiter_config = RateLimiterConfig::new(config_clone.delay_ms, config_clone.concurrency as u32);
+    let rate_limiter_config =
+        RateLimiterConfig::new(config_clone.delay_ms, config_clone.concurrency as u32);
     let rate_limiter = match SharedRateLimiter::new(&rate_limiter_config) {
         Ok(limiter) => limiter,
         Err(e) => return Err(CrawlError::Internal(e.to_string())),

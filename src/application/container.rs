@@ -6,12 +6,9 @@
 
 use std::sync::Arc;
 
-use crate::domain::{
-    repositories::CrawlResultRepository,
-    CrawlerConfig,
-};
-use crate::infrastructure::config::ScraperConfig;
 use crate::application::http_client::{HttpClient, HttpClientConfig};
+use crate::domain::{repositories::CrawlResultRepository, CrawlerConfig};
+use crate::infrastructure::config::ScraperConfig;
 use crate::infrastructure::export::state_store::StateStore;
 
 /// Dependency Injection Container

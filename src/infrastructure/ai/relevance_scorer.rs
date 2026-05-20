@@ -339,12 +339,7 @@ mod tests {
 
     fn create_test_chunk(content: &str) -> (DocumentChunk, Vec<f32>) {
         // Use test_new() constructor - requires DocumentChunk<Draft>
-        let chunk = DocumentChunk::test_new(
-            Uuid::new_v4(),
-            "https://example.com",
-            "Test",
-            content,
-        );
+        let chunk = DocumentChunk::test_new(Uuid::new_v4(), "https://example.com", "Test", content);
 
         // Create a simple embedding (normalized)
         let embedding = [0.5f32; 8];

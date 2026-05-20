@@ -4,8 +4,8 @@
 //!
 //! Feature-gated: only compiled with --features ai
 
-use rmcp::handler::server::tool::ToolRouter;
 use super::McpHandler;
+use rmcp::handler::server::tool::ToolRouter;
 
 /// Build the partial tool router for AI tools.
 #[cfg(feature = "ai")]

@@ -93,7 +93,7 @@ impl RetryPolicy {
                     // Calculate next delay with exponential backoff
                     delay = ((delay as f64) * self.backoff_multiplier) as u64;
                     delay = delay.min(self.max_delay_ms);
-                }
+                },
             }
         }
     }
@@ -121,17 +121,19 @@ mod tests {
         let policy = RetryPolicy::new();
 
         let attempts = AtomicUsize::new(0);
-        let result = policy.execute_with_retry(|| {
-            let attempts = &attempts;
-            async move {
-                let count = attempts.fetch_add(1, Ordering::SeqCst) + 1;
-                if count < 2 {
-                    Err("temporary failure".to_string())
-                } else {
-                    Ok("success".to_string())
+        let result = policy
+            .execute_with_retry(|| {
+                let attempts = &attempts;
+                async move {
+                    let count = attempts.fetch_add(1, Ordering::SeqCst) + 1;
+                    if count < 2 {
+                        Err("temporary failure".to_string())
+                    } else {
+                        Ok("success".to_string())
+                    }
                 }
-            }
-        }).await;
+            })
+            .await;
 
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), "success");
@@ -143,12 +145,12 @@ mod tests {
         let policy = RetryPolicy::with_max_attempts(2);
 
         let attempts = AtomicUsize::new(0);
-        let result: Result<String> = policy.execute_with_retry(|| {
-            let _attempts = &attempts;
-            async move {
-                Err::<String, _>("persistent failure".to_string())
-            }
-        }).await;
+        let result: Result<String> = policy
+            .execute_with_retry(|| {
+                let _attempts = &attempts;
+                async move { Err::<String, _>("persistent failure".to_string()) }
+            })
+            .await;
 
         assert!(result.is_err());
     }
@@ -158,12 +160,12 @@ mod tests {
         let policy = RetryPolicy::new();
 
         let attempts = AtomicUsize::new(0);
-        let result: Result<String> = policy.execute_with_retry(|| {
-            let _attempts = &attempts;
-            async move {
-                Ok::<String, String>("immediate success".to_string())
-            }
-        }).await;
+        let result: Result<String> = policy
+            .execute_with_retry(|| {
+                let _attempts = &attempts;
+                async move { Ok::<String, String>("immediate success".to_string()) }
+            })
+            .await;
 
         assert!(result.is_ok());
     }

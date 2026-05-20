@@ -37,7 +37,9 @@ impl CompressionHandler {
 
     /// Create compression handler with custom max decompressed size
     pub fn with_max_size(max_decompressed_size: usize) -> Self {
-        Self { max_decompressed_size }
+        Self {
+            max_decompressed_size,
+        }
     }
 
     /// Detect compression format from content and URL
@@ -58,13 +60,22 @@ impl CompressionHandler {
         // Check content signatures
         if content.len() >= 2 {
             // Gzip magic: 0x1f 0x8b
-            if content[0] == 0x1f && content[1] == 0x8b && !formats.contains(&CompressionType::Gzip) {
+            if content[0] == 0x1f && content[1] == 0x8b && !formats.contains(&CompressionType::Gzip)
+            {
                 formats.push(CompressionType::Gzip);
             }
             // Zstd magic: 0x28 0xb5 0x2f 0xfd or 0x37 0xa4 0x30 0xec
-            if content.len() >= 4 && !formats.contains(&CompressionType::Zstd)
-                && ((content[0] == 0x28 && content[1] == 0xb5 && content[2] == 0x2f && content[3] == 0xfd) ||
-                   (content[0] == 0x37 && content[1] == 0xa4 && content[2] == 0x30 && content[3] == 0xec)) {
+            if content.len() >= 4
+                && !formats.contains(&CompressionType::Zstd)
+                && ((content[0] == 0x28
+                    && content[1] == 0xb5
+                    && content[2] == 0x2f
+                    && content[3] == 0xfd)
+                    || (content[0] == 0x37
+                        && content[1] == 0xa4
+                        && content[2] == 0x30
+                        && content[3] == 0xec))
+            {
                 formats.push(CompressionType::Zstd);
             }
         }
@@ -88,23 +99,23 @@ impl CompressionHandler {
                     if let Ok(decompressed) = self.decompress_gzip(content).await {
                         return Ok(decompressed);
                     }
-                }
+                },
                 CompressionType::Deflate => {
                     if let Ok(decompressed) = self.decompress_deflate(content).await {
                         return Ok(decompressed);
                     }
-                }
+                },
                 CompressionType::Brotli => {
                     if let Ok(decompressed) = self.decompress_brotli(content).await {
                         return Ok(decompressed);
                     }
-                }
+                },
                 CompressionType::Zstd => {
                     if let Ok(decompressed) = self.decompress_zstd(content).await {
                         return Ok(decompressed);
                     }
-                }
-                CompressionType::None => {}
+                },
+                CompressionType::None => {},
             }
         }
 
@@ -118,11 +129,15 @@ impl CompressionHandler {
         let mut decompressed = Vec::new();
 
         let mut limited = decoder.take(self.max_decompressed_size as u64);
-        limited.read_to_end(&mut decompressed).await
+        limited
+            .read_to_end(&mut decompressed)
+            .await
             .map_err(|e| CompressionError::DecompressionFailed(e.to_string()))?;
 
         if decompressed.len() >= self.max_decompressed_size {
-            return Err(CompressionError::SizeLimitExceeded(self.max_decompressed_size));
+            return Err(CompressionError::SizeLimitExceeded(
+                self.max_decompressed_size,
+            ));
         }
 
         Ok(decompressed)
@@ -134,11 +149,15 @@ impl CompressionHandler {
         let mut decompressed = Vec::new();
 
         let mut limited = decoder.take(self.max_decompressed_size as u64);
-        limited.read_to_end(&mut decompressed).await
+        limited
+            .read_to_end(&mut decompressed)
+            .await
             .map_err(|e| CompressionError::DecompressionFailed(e.to_string()))?;
 
         if decompressed.len() >= self.max_decompressed_size {
-            return Err(CompressionError::SizeLimitExceeded(self.max_decompressed_size));
+            return Err(CompressionError::SizeLimitExceeded(
+                self.max_decompressed_size,
+            ));
         }
 
         Ok(decompressed)
@@ -150,11 +169,15 @@ impl CompressionHandler {
         let mut decompressed = Vec::new();
 
         let mut limited = decoder.take(self.max_decompressed_size as u64);
-        limited.read_to_end(&mut decompressed).await
+        limited
+            .read_to_end(&mut decompressed)
+            .await
             .map_err(|e| CompressionError::DecompressionFailed(e.to_string()))?;
 
         if decompressed.len() >= self.max_decompressed_size {
-            return Err(CompressionError::SizeLimitExceeded(self.max_decompressed_size));
+            return Err(CompressionError::SizeLimitExceeded(
+                self.max_decompressed_size,
+            ));
         }
 
         Ok(decompressed)
@@ -166,11 +189,15 @@ impl CompressionHandler {
         let mut decompressed = Vec::new();
 
         let mut limited = decoder.take(self.max_decompressed_size as u64);
-        limited.read_to_end(&mut decompressed).await
+        limited
+            .read_to_end(&mut decompressed)
+            .await
             .map_err(|e| CompressionError::DecompressionFailed(e.to_string()))?;
 
         if decompressed.len() >= self.max_decompressed_size {
-            return Err(CompressionError::SizeLimitExceeded(self.max_decompressed_size));
+            return Err(CompressionError::SizeLimitExceeded(
+                self.max_decompressed_size,
+            ));
         }
 
         Ok(decompressed)
@@ -208,7 +235,9 @@ mod tests {
         let handler = CompressionHandler::new();
         let content = b"<xml>test</xml>";
 
-        let result = handler.detect_and_decompress(content, "https://example.com/sitemap.xml").await;
+        let result = handler
+            .detect_and_decompress(content, "https://example.com/sitemap.xml")
+            .await;
         assert!(result.is_ok());
         let decompressed = result.unwrap();
         assert_eq!(decompressed, content);

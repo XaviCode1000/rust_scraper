@@ -37,16 +37,16 @@
 //! rust_scraper::infrastructure::observability::init_console();
 //! ```
 
+pub mod async_logging;
 pub mod logging;
 pub mod metrics;
-pub mod async_logging;
 
 /// Initialize tokio-console for runtime debugging
-/// 
+///
 /// # Requires
 /// - RUSTFLAGS="--cfg tokio_unstable" at compile time
 /// - Feature flag `console` enabled
-/// 
+///
 /// # Note
 /// Only available when compiled with `console` feature.
 /// Without the feature, this function is a no-op.
@@ -61,6 +61,8 @@ pub fn init_console() {
     // No-op - console not enabled
 }
 
-pub use logging::{init_json_logging, init_json_logging_dual, init_otel_tracing, LogFormat, LogGuard};
-pub use async_logging::{AsyncLogWriter, WriterConfig, init_async_logging};
+pub use async_logging::{init_async_logging, AsyncLogWriter, WriterConfig};
+pub use logging::{
+    init_json_logging, init_json_logging_dual, init_otel_tracing, LogFormat, LogGuard,
+};
 pub use metrics::MetricsCollector;

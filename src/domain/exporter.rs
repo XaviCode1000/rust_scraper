@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::domain::entities::{DocumentChunkValidated, DocumentChunkUnvalidated, ExportFormat};
+use crate::domain::entities::{DocumentChunkUnvalidated, DocumentChunkValidated, ExportFormat};
 
 /// Errors that can occur during export operations
 #[derive(Error, Debug)]
@@ -188,7 +188,9 @@ pub trait ExporterExt: Exporter {
     /// to DocumentChunk and validates it internally.
     fn export_scraped(&self, scraped: &crate::domain::ScrapedContent) -> ExportResult<()> {
         let chunk = DocumentChunkUnvalidated::from_scraped_content(scraped);
-        let validated = chunk.validate().map_err(|e| ExporterError::InvalidConfig(e.to_string()))?;
+        let validated = chunk
+            .validate()
+            .map_err(|e| ExporterError::InvalidConfig(e.to_string()))?;
         self.export(validated)
     }
 
@@ -201,7 +203,9 @@ pub trait ExporterExt: Exporter {
             .iter()
             .map(|s| {
                 let chunk = DocumentChunkUnvalidated::from_scraped_content(s);
-                chunk.validate().map_err(|e| ExporterError::InvalidConfig(e.to_string()))
+                chunk
+                    .validate()
+                    .map_err(|e| ExporterError::InvalidConfig(e.to_string()))
             })
             .collect::<Result<Vec<_>, _>>()?;
         self.export_batch(&chunks)

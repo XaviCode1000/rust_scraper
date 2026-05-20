@@ -1,16 +1,16 @@
 //! URL discovery logic extracted from orchestrator.
 
-use url::Url;
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use tracing::{info, warn};
+use url::Url;
 
-use crate::Args;
-use crate::CrawlerConfig;
+use crate::adapters;
 use crate::application::discover_urls_for_tui;
 use crate::cli::preflight;
 use crate::cli::SelectedUrls;
-use crate::adapters;
+use crate::Args;
 use crate::CliExit;
+use crate::CrawlerConfig;
 
 /// Discover URLs with progress bar.
 pub async fn discover_urls(crawler_config: &CrawlerConfig, args: &Args) -> Vec<Url> {

@@ -7,17 +7,17 @@
 //! These submodules exist for future modularization but currently return
 //! empty routers.
 
-use rmcp::handler::server::tool::ToolRouter;
 use super::McpHandler;
+use rmcp::handler::server::tool::ToolRouter;
 
-pub mod scraping;
-pub mod content;
-pub mod export;
-pub mod url_utils;
-pub mod security;
-pub mod obsidian;
 pub mod ai;
 pub mod assets;
+pub mod content;
+pub mod export;
+pub mod obsidian;
+pub mod scraping;
+pub mod security;
+pub mod url_utils;
 
 /// Build the combined ToolRouter from all 8 category modules.
 pub fn build_tool_router() -> ToolRouter<McpHandler> {

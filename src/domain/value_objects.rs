@@ -254,13 +254,13 @@ mod tests {
     #[test]
     fn test_correlation_id_new_generates_valid_ids() {
         let corr = CorrelationId::new();
-        
+
         // trace_id should be a valid UUID v7 (version byte = 7)
         let trace_id = corr.trace_id();
         let uuid_bytes = trace_id.as_bytes();
         let version_nibble = (uuid_bytes[6] >> 4) & 0x0F;
         assert_eq!(version_nibble, 7, "trace_id should be UUID v7");
-        
+
         // span_id should be non-zero (random u64)
         assert!(corr.span_id() != 0, "span_id should be non-zero");
     }
@@ -269,13 +269,13 @@ mod tests {
     fn test_correlation_id_to_traceparent_format() {
         let corr = CorrelationId::new();
         let traceparent = corr.to_traceparent();
-        
+
         // Format: 00-{32 hex trace_id}-{16 hex span_id}-01
         // Total length: 2 + 1 + 32 + 1 + 16 + 1 + 2 = 55
         assert_eq!(traceparent.len(), 55, "traceparent should be 55 chars");
         assert!(traceparent.starts_with("00-"), "should start with 00-");
         assert!(traceparent.ends_with("-01"), "should end with -01");
-        
+
         // Middle sections should be valid hex
         let parts: Vec<&str> = traceparent.split('-').collect();
         assert_eq!(parts.len(), 4);
@@ -287,7 +287,7 @@ mod tests {
     fn test_correlation_id_clone_is_identical() {
         let corr = CorrelationId::new();
         let cloned = corr.clone();
-        
+
         assert_eq!(corr.trace_id(), cloned.trace_id());
         assert_eq!(corr.span_id(), cloned.span_id());
         assert_eq!(corr.to_traceparent(), cloned.to_traceparent());
@@ -297,7 +297,7 @@ mod tests {
     fn test_correlation_id_send_sync() {
         // Compile-time check: CorrelationId is Send + Sync
         fn _check_send_sync<T: Send + Sync>(_: &T) {}
-        
+
         let corr = CorrelationId::new();
         _check_send_sync(&corr);
     }
@@ -306,7 +306,7 @@ mod tests {
     fn test_correlation_id_display() {
         let corr = CorrelationId::new();
         let display = format!("{}", corr);
-        
+
         assert!(display.starts_with("00-"));
         assert_eq!(display, corr.to_traceparent());
     }
@@ -315,7 +315,7 @@ mod tests {
     fn test_correlation_id_tracestate() {
         let corr = CorrelationId::new();
         let tracestate = corr.to_tracestate();
-        
+
         // Format: rust-scraper=v1:{32 hex trace_id}
         // rust-scraper=v1: = 16 chars
         // trace_id = 32 chars
