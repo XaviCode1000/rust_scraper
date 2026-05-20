@@ -330,7 +330,6 @@ impl McpHandler {
     #[tool(
         description = "Scrape multiple URLs with concurrency control. Failed URLs are logged but don't stop the batch."
     )]
-    #[instrument(skip(self), fields(url_count = params.urls.len()))]
     async fn scrape_batch(
         &self,
         Parameters(params): Parameters<ScrapeBatchParams>,
@@ -424,7 +423,6 @@ impl McpHandler {
     #[tool(
         description = "Discover URLs from a website's sitemap and crawl them. Auto-discovers sitemap from robots.txt if not provided."
     )]
-    #[instrument(skip(self), fields(url = %params.url))]
     async fn crawl_with_sitemap(
         &self,
         Parameters(params): Parameters<CrawlWithSitemapParams>,

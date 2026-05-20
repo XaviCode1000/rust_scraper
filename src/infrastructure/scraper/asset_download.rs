@@ -33,26 +33,34 @@ pub async fn download_all(
     // Parse HTML for asset extraction
     let document = scraper::Html::parse_document(html);
 
+    // Extract URLs BEFORE any .await — scraper::Html is not Send
+    let image_urls: Vec<crate::adapters::extractor::AssetUrl> = if config.download_images {
+        crate::extractor::extract_images(&document, base_url)
+    } else {
+        Vec::new()
+    };
+
+    let document_urls: Vec<crate::adapters::extractor::AssetUrl> = if config.download_documents {
+        crate::extractor::extract_documents(&document, base_url)
+    } else {
+        Vec::new()
+    };
+
+    // Drop non-Send document before crossing .await boundaries
+    drop(document);
+
     // Download images if enabled
-    if config.download_images {
-        let images = crate::extractor::extract_images(&document, base_url);
-        tracing::info!("🖼️  Extract returned {} images", images.len());
-        if !images.is_empty() {
-            tracing::info!("🖼️  Found {} images to download", images.len());
-            let downloaded = download_image_batch(&images, &config.output_dir).await;
-            assets.extend(downloaded);
-        }
+    if !image_urls.is_empty() {
+        tracing::info!("🖼️  Found {} images to download", image_urls.len());
+        let downloaded = download_image_batch(&image_urls, &config.output_dir).await;
+        assets.extend(downloaded);
     }
 
     // Download documents if enabled
-    if config.download_documents {
-        let documents = crate::extractor::extract_documents(&document, base_url);
-        tracing::info!("📄 Extract returned {} documents", documents.len());
-        if !documents.is_empty() {
-            tracing::info!("📄 Found {} documents to download", documents.len());
-            let downloaded = download_document_batch(&documents, &config.output_dir).await;
-            assets.extend(downloaded);
-        }
+    if !document_urls.is_empty() {
+        tracing::info!("📄 Found {} documents to download", document_urls.len());
+        let downloaded = download_document_batch(&document_urls, &config.output_dir).await;
+        assets.extend(downloaded);
     }
 
     Ok(assets)

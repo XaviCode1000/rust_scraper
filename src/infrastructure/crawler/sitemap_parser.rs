@@ -382,7 +382,7 @@ impl SitemapParser {
 
         let mut all_urls = HashSet::new();
 
-        let results = stream::iter(sitemap_urls)
+        let results = stream::iter(sitemap_urls.iter().cloned())
             .map(|url| async move { self.parse_with_depth(url.as_str(), depth).await })
             .buffered(self.config.concurrency)
             .collect::<Vec<_>>()

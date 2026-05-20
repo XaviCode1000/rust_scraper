@@ -309,13 +309,13 @@ pub async fn scrape_multiple_with_limit(
         config.scraper_concurrency
     );
 
-    let tasks = urls.iter().map(|url| {
-        let client = client.clone();
-        let config = config.clone();
-        async move { scrape_with_config(&client, url, &config).await }
-    });
-
-    let results: Vec<Result<Vec<ScrapedContent>>> = stream::iter(tasks)
+    let results: Vec<Result<Vec<ScrapedContent>>> = stream::iter(urls.to_vec())
+        .map(|url| {
+            let client = client.clone();
+            let config = config.clone();
+            let url = url.clone();
+            async move { scrape_with_config(&client, &url, &config).await }
+        })
         .buffer_unordered(config.scraper_concurrency)
         .collect()
         .await;
