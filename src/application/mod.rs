@@ -4,6 +4,7 @@
 //! using infrastructure services. It depends on both domain and infrastructure.
 
 pub mod container;
+pub mod crawl_result_repository;
 pub mod crawler_service;
 pub mod deduplicator;
 pub mod export_factory;
