@@ -8,10 +8,10 @@
       "timeout": 30000
     },
     "rust-scraper": {
-      "type": "remote",
-      "url": "http://localhost:8080/mcp",
+      "type": "local",
+      "command": ["cargo", "run", "--example", "mcp_server", "--quiet"],
       "enabled": true,
-      "timeout": 10000
+      "timeout": 30000
     }
   }
 }
