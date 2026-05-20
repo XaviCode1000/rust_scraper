@@ -15,6 +15,7 @@
 //! - Sequential append → HDD-friendly sequential write (~120MB/s)
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use dashmap::DashMap;
@@ -35,6 +36,10 @@ pub struct CrawlResultRepositoryImpl {
     tx: mpsc::Sender<WriteCommand>,
     index: Arc<DashMap<String, u64>>,
     log_path: PathBuf,
+    /// Set to true if the background writer encounters an I/O error.
+    /// Subsequent save() calls will fail explicitly instead of silently
+    /// accepting writes that will never be persisted.
+    write_error: Arc<AtomicBool>,
 }
 
 impl CrawlResultRepositoryImpl {
@@ -50,6 +55,7 @@ impl CrawlResultRepositoryImpl {
     pub fn new(log_path: PathBuf, buffer_capacity: usize) -> Result<Self, CrawlError> {
         let (tx, rx) = mpsc::channel(buffer_capacity);
         let index = Arc::new(DashMap::new());
+        let write_error = Arc::new(AtomicBool::new(false));
 
         // Recovery: scan existing log if present
         if log_path.exists() {
@@ -57,10 +63,16 @@ impl CrawlResultRepositoryImpl {
         }
 
         // Spawn background writer
-        let writer = BackgroundWriter::new(log_path.clone(), rx, Arc::clone(&index));
+        let writer =
+            BackgroundWriter::new(log_path.clone(), rx, Arc::clone(&index), Arc::clone(&write_error));
         tokio::spawn(writer.run());
 
-        Ok(Self { tx, index, log_path })
+        Ok(Self {
+            tx,
+            index,
+            log_path,
+            write_error,
+        })
     }
 
     /// Rebuild the DashMap index by scanning the log file sequentially.
@@ -113,16 +125,29 @@ impl CrawlResultRepositoryImpl {
 
 impl CrawlResultRepository for CrawlResultRepositoryImpl {
     fn save(&self, content: &ScrapedContent) -> Result<(), CrawlError> {
+        // Guard: if the background writer is dead, fail explicitly
+        if self.write_error.load(Ordering::Relaxed) {
+            return Err(CrawlError::Storage(
+                "writer caído, datos no persistidos".to_string(),
+            ));
+        }
+
         let payload = serde_json::to_vec(content)
             .map_err(|e| CrawlError::Storage(format!("serialización fallida: {}", e)))?;
 
         let url = content.url.as_str().to_string();
         self.tx
-            .try_send(WriteCommand::Append {
-                url: url.clone(),
-                payload,
-            })
-            .map_err(|_| CrawlError::Storage("canal lleno, backpressure".to_string()))?;
+            .try_send(WriteCommand::Append { url, payload })
+            .map_err(|e| match e {
+                mpsc::error::TrySendError::Full(_) => {
+                    CrawlError::Storage("canal lleno, backpressure".to_string())
+                }
+                mpsc::error::TrySendError::Closed(_) => {
+                    // Writer task dropped the receiver — mark as dead
+                    self.write_error.store(true, Ordering::Relaxed);
+                    CrawlError::Storage("writer caído, canal cerrado".to_string())
+                }
+            })?;
 
         Ok(())
     }
@@ -166,6 +191,7 @@ struct BackgroundWriter {
     rx: mpsc::Receiver<WriteCommand>,
     index: Arc<DashMap<String, u64>>,
     log_path: PathBuf,
+    write_error: Arc<AtomicBool>,
 }
 
 impl BackgroundWriter {
@@ -173,8 +199,14 @@ impl BackgroundWriter {
         log_path: PathBuf,
         rx: mpsc::Receiver<WriteCommand>,
         index: Arc<DashMap<String, u64>>,
+        write_error: Arc<AtomicBool>,
     ) -> Self {
-        Self { rx, index, log_path }
+        Self {
+            rx,
+            index,
+            log_path,
+            write_error,
+        }
     }
 
     async fn run(mut self) {
@@ -188,6 +220,7 @@ impl BackgroundWriter {
             Ok(f) => f,
             Err(e) => {
                 tracing::error!("no se pudo abrir log para escritura: {e}");
+                self.write_error.store(true, Ordering::Relaxed);
                 return;
             }
         };
@@ -197,18 +230,22 @@ impl BackgroundWriter {
                 WriteCommand::Append { url, payload } => {
                     let len = payload.len() as u32;
                     let len_bytes = len.to_le_bytes();
+
                     let offset = file.metadata().map(|m| m.len()).unwrap_or(0);
 
                     if file.write_all(&len_bytes).is_err() {
                         tracing::error!("error escribiendo longitud al log");
+                        self.write_error.store(true, Ordering::Relaxed);
                         continue;
                     }
                     if file.write_all(&payload).is_err() {
                         tracing::error!("error escribiendo payload al log");
+                        self.write_error.store(true, Ordering::Relaxed);
                         continue;
                     }
                     if file.write_all(b"\n").is_err() {
                         tracing::error!("error escribiendo newline al log");
+                        self.write_error.store(true, Ordering::Relaxed);
                         continue;
                     }
                     let _ = file.flush();

@@ -76,3 +76,25 @@ impl Container {
         self.crawl_result_repo.clone()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::CrawlerConfig;
+    use crate::infrastructure::config::ScraperConfig;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_container_wires_crawl_result_repository() {
+        let tmp = TempDir::new().unwrap();
+        let crawler_config = CrawlerConfig::new(url::Url::parse("https://example.com").unwrap());
+        let scraper_config = ScraperConfig {
+            output_dir: tmp.path().to_path_buf(),
+            ..Default::default()
+        };
+
+        let container = Container::new(crawler_config, scraper_config).await.unwrap();
+        let repo = container.crawl_result_repository();
+        assert!(repo.is_some(), "crawl_result_repository() debe retornar Some");
+    }
+}
