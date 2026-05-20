@@ -334,6 +334,10 @@ impl McpHandler {
         &self,
         Parameters(params): Parameters<ScrapeBatchParams>,
     ) -> Result<CallToolResult, McpError> {
+        let span = tracing::info_span!("mcp.scrape_batch", url_count = params.urls.len());
+        let _enter = span.enter();
+
+        tracing::info!("starting batch scrape");
         let _permit = self
             .state
             .semaphores
@@ -366,11 +370,15 @@ impl McpHandler {
         .await
         {
             Ok(results) => {
+                tracing::info!("batch scrape complete: {} pages", results.len());
                 let content = serde_json::to_string_pretty(&results)
                     .unwrap_or_else(|_| "failed to serialize".into());
                 Ok(CallToolResult::success(vec![Content::text(content)]))
             },
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+            Err(e) => {
+                tracing::error!("batch scrape failed: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(e.to_string())]))
+            },
         }
     }
 
@@ -427,15 +435,23 @@ impl McpHandler {
         &self,
         Parameters(params): Parameters<CrawlWithSitemapParams>,
     ) -> Result<CallToolResult, McpError> {
+        let span = tracing::info_span!("mcp.crawl_with_sitemap", url = %params.url);
+        let _enter = span.enter();
+
+        tracing::info!("starting sitemap crawl");
         let _permit = self
             .state
             .semaphores
             .scraping
             .acquire()
             .await
-            .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
+            .map_err(|e| {
+                tracing::error!("semaphore acquire failed: {}", e);
+                McpError::internal_error(format!("semaphore error: {e}"), None)
+            })?;
 
         let seed_url = url::Url::parse(&params.url).map_err(|e| {
+            tracing::error!("invalid URL: {}", e);
             McpError::invalid_params(
                 format!("invalid URL: {e}"),
                 Some(serde_json::Value::String("url".to_string())),
@@ -450,12 +466,16 @@ impl McpHandler {
         .await
         {
             Ok(urls) => {
+                tracing::info!("sitemap crawl complete: {} urls found", urls.len());
                 let url_strings: Vec<String> = urls.iter().map(|u| u.url.to_string()).collect();
                 Ok(CallToolResult::success(vec![Content::text(
                     serde_json::to_string_pretty(&url_strings).unwrap(),
                 )]))
             },
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+            Err(e) => {
+                tracing::error!("sitemap crawl failed: {}", e);
+                Ok(CallToolResult::error(vec![Content::text(e.to_string())]))
+            },
         }
     }
 

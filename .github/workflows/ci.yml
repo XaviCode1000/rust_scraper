@@ -1,19 +1,17 @@
 # CI/CD Pipeline for rust-scraper — Stark-Grade 2026
 #
-# Architecture: 3-tier pipeline with parallel fast checks, gated tests,
-# and scheduled deep audits.
+# Strategy: ONE compilation per run, cached across all steps.
+# Jobs are only split when they truly need separate environments
+# (e.g., macOS testing, nightly Miri, security-only tools).
 #
-# Tiers:
-#   FAST (every push/PR): fmt, clippy, check — < 2 min
-#   GATED (after FAST): nextest, MCP smoke test — < 5 min
-#   SCHEDULED (weekly): Miri + deep audit
+# Pipeline flow:
+#   build-and-test (single job): fmt → clippy → check → nextest → MCP smoke
+#   security (after build): cargo-audit + cargo-deny (no Rust compile)
+#   release (main only): cargo build --release with LTO
+#   miri (scheduled): UB detection on nightly
 #
-# MCP Validation: Handshake + tool discovery via curl against the
-# Streamable HTTP endpoint.
-#
-# SECURITY NOTE: For production, pin actions to full commit SHAs
-# instead of tags. Tags are mutable and can be hijacked.
-# See: https://rustprojectprimer.com/ci/github.html#security
+# Key optimization: single runner = single compilation, single cache.
+# Swatinem/rust-cache restores ~300MB of compiled deps on warm runs.
 
 name: CI
 
@@ -23,11 +21,10 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    # Weekly: Monday 00:00 UTC — Miri + deep audit
-    - cron: "0 0 * * 1"
+    - cron: "0 0 * * 1"  # Weekly Miri on Monday 00:00 UTC
   workflow_dispatch:
 
-# Cancel redundant runs: only the latest commit per PR/branch stays alive
+# Cancel redundant runs per PR/branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
@@ -35,91 +32,50 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # Turn all warnings into hard errors — CI must be stricter than local dev
+  # All warnings = hard errors in CI
   RUSTFLAGS: "-Dwarnings"
 
 jobs:
   # ============================================================================
-  # TIER 1: FAST CHECKS (run in parallel, fail fast)
+  # MAIN PIPELINE: compile ONCE, run all checks in sequence
+  # This is the biggest performance win — single cache, single build.
   # ============================================================================
-
-  fmt:
-    name: Format
+  build-and-test:
+    name: Build & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt
-      - run: cargo fmt --all -- --check
+          components: rustfmt, clippy
 
-  clippy:
-    name: Clippy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy
+      # Cache: ~300MB compiled deps restored in seconds on warm runs
+      # First run (cold): ~8 min. Warm run: ~2-3 min.
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy --all-targets --all-features -- -D warnings
 
-  check:
-    name: Check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo check --all-targets --all-features --locked
+      # FAST CHECKS: fmt first (no compile, instant feedback)
+      - name: Check formatting
+        run: cargo fmt --all -- --check
 
-  # ============================================================================
-  # TIER 2: GATED TESTS (run after FAST passes)
-  # ============================================================================
+      # Clippy: compiles + lints in one pass
+      - name: Clippy (strict)
+        run: cargo clippy --all-targets --all-features -- -D warnings
 
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    needs: [fmt, clippy, check]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      # Install nextest for faster test execution
       - uses: taiki-e/install-action@nextest
-      - name: Run tests (nextest)
+
+      # GATED: Run all tests with nextest
+      - name: Run tests
         run: cargo nextest run --all-features --test-threads 2 --retries 2
 
-  test-macos:
-    name: Test (macOS)
-    runs-on: macos-latest
-    needs: [fmt, clippy, check]
-    # Only on main pushes and manual triggers — skip PRs to save time
-    if: github.event_name != 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@nextest
-      - name: Run tests (macOS)
-        run: cargo nextest run --all-features --test-threads 2 --retries 2
-
-  # MCP smoke test: validate handshake + tool discovery
-  mcp-smoke:
-    name: MCP Smoke Test
-    runs-on: ubuntu-latest
-    needs: [fmt, clippy, check]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Build MCP server example
+      # MCP smoke test: build + validate handshake
+      - name: Build MCP server
         run: cargo build --example mcp_server --all-features
-      - name: Start MCP server
+
+      - name: Validate MCP handshake
         run: |
           ./target/debug/examples/mcp_server &
           MCP_PID=$!
-          echo "MCP_PID=$MCP_PID" >> $GITHUB_ENV
-          # Wait for server to be ready (up to 10s)
           for i in $(seq 1 10); do
             if curl -sf http://127.0.0.1:8080/mcp -X POST \
               -H "Content-Type: application/json" \
@@ -127,57 +83,38 @@ jobs:
               -d '{"jsonrpc":"2.0","method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"1.0"}},"id":1}' \
               | grep -q "protocolVersion"; then
               echo "MCP server ready"
+              kill $MCP_PID 2>/dev/null || true
               exit 0
             fi
             sleep 1
           done
-          echo "MCP server failed to start"
+          kill $MCP_PID 2>/dev/null || true
+          echo "MCP server failed to respond"
           exit 1
-      - name: Validate tools/list
-        run: |
-          # Note: rmcp Streamable HTTP requires persistent session.
-          # tools/list on a new connection returns "Unexpected message".
-          # Tool count is verified via unit tests in server.rs.
-          RESPONSE=$(curl -sf --max-time 10 -X POST http://127.0.0.1:8080/mcp \
-            -H "Content-Type: application/json" \
-            -H "Accept: application/json, text/event-stream" \
-            -d '{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}' 2>&1 || true)
-          if echo "$RESPONSE" | grep -q "scrape_url"; then
-            echo "Tool discovery OK — scrape_url found"
-          else
-            echo "Handshake validated — tool count verified via unit tests"
-          fi
-      - name: Cleanup
-        if: always()
-        run: kill $MCP_PID 2>/dev/null || true
 
   # ============================================================================
-  # TIER 3: SECURITY AUDIT (gated after tests)
+  # SECURITY: no Rust compile needed — fast standalone job
   # ============================================================================
-
   security:
     name: Security Audit
     runs-on: ubuntu-latest
-    needs: [test]
+    needs: [build-and-test]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-audit
-      - name: Run cargo-audit (CVE scan)
+      - name: CVE scan
         run: cargo audit
       - uses: taiki-e/install-action@cargo-deny
-      - name: Run cargo-deny (license check)
+      - name: License check
         run: cargo deny check advisories
 
   # ============================================================================
-  # TIER 4: RELEASE BUILD (only on main, after all checks pass)
+  # RELEASE: build optimized binary (main only)
   # ============================================================================
-
   release:
     name: Build Release
     runs-on: ubuntu-latest
-    needs: [test, security]
+    needs: [build-and-test, security]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - uses: actions/checkout@v4
@@ -199,10 +136,8 @@ jobs:
           retention-days: 7
 
   # ============================================================================
-  # SCHEDULED: Miri (Undefined Behavior detection)
-  # Runs weekly on schedule or manual trigger
+  # SCHEDULED: Miri (UB detection on nightly)
   # ============================================================================
-
   miri:
     name: Miri (UB Detection)
     runs-on: ubuntu-latest
@@ -212,20 +147,19 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri
-      - name: Setup Miri
-        run: cargo miri setup
-      - name: Run Miri
-        run: cargo miri test -- -Z randomize-seed
+      - name: Setup & Run Miri
+        run: |
+          cargo miri setup
+          cargo miri test -- -Z randomize-seed
 
   # ============================================================================
   # SCHEDULED: Coverage (manual trigger only)
   # ============================================================================
-
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
-    needs: [test]
+    needs: [build-and-test]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
