@@ -165,7 +165,7 @@ pub struct ScrapedContent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub html: Option<String>,
     /// Downloaded assets (images, documents)
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub assets: Vec<DownloadedAsset>,
 }
 

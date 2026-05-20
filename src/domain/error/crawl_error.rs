@@ -83,6 +83,10 @@ pub enum CrawlError {
     /// Sitemap not found during auto-discovery
     #[error("sitemap not found for {0}")]
     SitemapNotFound(String),
+
+    /// Storage error (append-only log corruption, backpressure, serialization)
+    #[error("error de almacenamiento: {0}")]
+    Storage(String),
 }
 
 #[cfg(test)]
@@ -127,6 +131,23 @@ mod tests {
     fn test_crawl_error_internal() {
         let error = CrawlError::Internal("something went wrong".to_string());
         assert!(error.to_string().contains("something went wrong"));
+    }
+
+    #[test]
+    fn test_crawl_error_storage_display() {
+        let error = CrawlError::Storage("archivo corrupto".to_string());
+        assert!(
+            error.to_string().contains("error de almacenamiento"),
+            "expected Storage display to contain 'error de almacenamiento', got: {}",
+            error
+        );
+        assert!(error.to_string().contains("archivo corrupto"));
+    }
+
+    #[test]
+    fn test_crawl_error_storage_empty_message() {
+        let error = CrawlError::Storage(String::new());
+        assert!(error.to_string().contains("error de almacenamiento"));
     }
 
     #[test]
