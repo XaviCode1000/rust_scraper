@@ -1,137 +1,70 @@
-# 🕷️ Rust Scraper
+# rust_scraper
 
 **Extrae contenido de cualquier sitio web y guárdalo en Markdown, JSON o directamente en tu Obsidian.**
 
----
+[![CI](https://github.com/XaviCode1000/rust-scraper/actions/workflows/ci.yml/badge.svg)](https://github.com/XaviCode1000/rust-scraper/actions)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.88+-orange)](https://rust-lang.org)
 
-## 🚀 ¿Qué hace?
-
-Rust Scraper es una herramienta de línea de comandos que te permite descargar páginas web completas con contenido limpio y bien organizado.
-
-- **Modo interactivo** — Explora las URLs de un sitio, elige cuáles descargar y confirma antes de empezar
-- **Exportación a Obsidian** — Guarda artículos directamente en tu vault con wiki-links y metadatos
-- **Limpieza con IA** — Extrae solo el contenido relevante, ignora menús y publicidad
-- **Sitemaps automáticos** — Encuentra todas las páginas de un sitio sin que tengas que decírselas
-- **Descarga de imágenes y documentos** — PDFs, imágenes, presentaciones — todo se descarga automáticamente
-- **Múltiples formatos** — Markdown, JSON, JSONL (para RAG) y Vector (con embeddings)
+[Quick Start](#-quick-start) · [Features](#-features) · [MCP Server](#-mcp-server) · [Docs](#-documentation) · [Contributing](#-contributing)
 
 ---
 
-## 📦 Instalación
-
-### Opción 1: Instalar con Cargo (Recomendado)
+## Quick Start
 
 ```bash
-cd rust-scraper
-cargo install --path . --features "ai,full"
-```
-
-Esto compila en modo release e instala el binario automáticamente en `~/.cargo/bin/`, listo para usar desde cualquier directorio:
-
-```bash
-rust_scraper --help
-```
-
-**Features incluidas con `ai,full`:**
-- ✅ Limpieza semántica con IA (modelo ONNX local)
-- ✅ Detección y descarga de imágenes
-- ✅ Detección y descarga de documentos (PDF, DOCX, XLSX)
-
-> **Nota:** La primera compilación tarda ~4 minutos. El modelo de IA (~90MB) se descarga y cachea automáticamente en `~/.cache/rust_scraper/models/` al primer uso.
-
-### Opción 2: Compilar manualmente
-
-```bash
+# Instalar
 git clone https://github.com/XaviCode1000/rust-scraper.git
 cd rust-scraper
-cargo build --release
+cargo install --path .
+
+# Extraer una página
+rust_scraper --url https://example.com
+
+# Descubrir todo un sitio
+rust_scraper --url https://example.com --use-sitemap --max-pages 50
 ```
 
-Luego copia el binario a tu PATH:
-
-```bash
-cp target/release/rust_scraper ~/.local/bin/rust_scraper
-# o en tu sistema:
-sudo cp target/release/rust_scraper /usr/local/bin/rust_scraper
-```
-
-### Requisitos del sistema
-
-- **Rust:** 1.88 o superior
-- **Sistema operativo:** Linux, macOS o Windows
+El contenido se guarda en `output/` como Markdown por defecto.
 
 ---
 
-## 🎯 Uso rápido
+## Features
 
-Una vez instalado, ejecuta `rust_scraper` desde tu terminal:
+| Feature | Qué hace |
+|---------|----------|
+| **Limpieza de contenido** | Extrae solo el texto relevante (Readability) — ignora menús, ads, sidebar |
+| **Limpieza con IA** | Filtra contenido irrelevante con embeddings ONNX (feature `ai`) |
+| **Exportación múltiple** | Markdown, JSON, JSONL (RAG), Vector (embeddings) |
+| **Integración Obsidian** | Guarda directo en tu vault con wiki-links y metadatos |
+| **Detección de sitemaps** | Encuentra todas las páginas automáticamente |
+| **Descarga de assets** | Imágenes y documentos (PDF, DOCX, XLSX) |
+| **WAF detection** | Detecta Cloudflare, reCAPTCHA, hCaptcha, DataDome |
+| **MCP Server** | 34 herramientas para agentes AI |
+| **Rate limiting** | Configurable, respeta Retry-After |
+| **Reanudación** | Continúa crawls interrumpidos con `--resume` |
 
-### Tu primer raspado
+---
+
+## Uso
+
+### Modo básico
 
 ```bash
 rust_scraper --url https://example.com
 ```
 
-Esto descarga la página principal y guarda el contenido en Markdown en la carpeta `output/`.
-
-### Descubrir páginas automáticamente
+### Con sitemap
 
 ```bash
-rust_scraper --url https://example.com --use-sitemap
+rust_scraper --url https://example.com --use-sitemap --max-pages 100
 ```
 
-Encuentra todas las páginas del sitio usando su sitemap.
-
-### Modo automático (sin argumentos)
+### En Obsidian
 
 ```bash
-# Sin --url — detecta terminal y pregunta interactivamente
-rust_scraper
-# → "Enter the URL to scrape: https://example.com"
-```
-
-El scraper detecta automáticamente si estás en un terminal interactivo y te pide la URL. En pipelines o scripts, falla gracefully con mensaje de error claro.
-
-**Control automático:**
-
-| Entorno | Comportamiento |
-|---------|-------------|
-| Terminal | Pide la URL interactivamente |
-| Pipe | Error: "--url is required" |
-| CI=true | Error: "--url is required (CI mode)" |
-
-### Modo interactivo (TUI completo)
-
-```bash
-rust_scraper --url https://example.com --interactive
-```
-
-Se abre una interfaz en la terminal donde puedes:
-- Ver todas las URLs encontradas
-- Seleccionar cuáles quieres descargar
-- Ver progreso en tiempo real durante scraping
-- Ver errores mientras ocurren
-
-**Controles del TUI:**
-
-| Fase | Tecla | Acción |
-|------|-------|--------|
-| Selección | `↑` / `↓` | Navegar entre URLs |
-| Selección | `Espacio` | Seleccionar / deseleccionar |
-| Selección | `A` | Seleccionar todo |
-| Selección | `D` | Deseleccionar todo |
-| Selección | `Enter` | Confirmar y empezar |
-| Scraping | `j` / `k` | Scroll errores |
-| Cualquiera | `q` | Salir |
-
-### Guardar en Obsidian
-
-```bash
-# Guardar directamente en tu vault
 rust_scraper --url https://example.com/articulo --obsidian-wiki-links --quick-save
 ```
-
-Detecta tu vault automáticamente y guarda la nota en `_inbox/`.
 
 ### Con limpieza de IA
 
@@ -139,110 +72,149 @@ Detecta tu vault automáticamente y guarda la nota en `_inbox/`.
 rust_scraper --url https://example.com --clean-ai --export-format jsonl
 ```
 
-La IA filtra menús, publicidad y contenido irrelevante, quedándose solo con el texto importante.
-
----
-
-## 📚 Formatos de exportación
-
-| Formato | Para qué sirve |
-|---------|---------------|
-| `markdown` | Lectura humana, documentación (por defecto) |
-| `json` | Integración con otras aplicaciones |
-| `jsonl` | Pipelines de RAG e inteligencia artificial |
-| `vector` | Bases de datos vectoriales con embeddings |
-
----
-
-## ⚙️ Opciones más usadas
+### Opciones principales
 
 ```bash
-# Guardar en una carpeta específica
-rust_scraper --url https://example.com --output ./mi-carpeta
+# Formato de salida
+rust_scraper --url https://example.com --format markdown  # (default)
+rust_scraper --url https://example.com --format json
+rust_scraper --url https://example.com --export-format jsonl
+rust_scraper --url https://example.com --export-format vector
 
-# Descargar imágenes y documentos
+# Control de crawl
+rust_scraper --url https://example.com --max-pages 50 --delay-ms 1000
+rust_scraper --url https://example.com --concurrency 4
+
+# Descarga de assets
 rust_scraper --url https://example.com --download-images --download-documents
 
-# Limitar a 50 páginas con 2 segundos entre peticiones
-rust_scraper --url https://example.com --max-pages 50 --delay-ms 2000
-
-# Previsualizar URLs sin descargar nada
+# Previsualizar
 rust_scraper --url https://example.com --dry-run
 
-# Modo silencioso (sin barras de progreso)
+# Modo silencioso
 rust_scraper --url https://example.com --quiet
 ```
 
-### Reanudar un raspado interrumpido
-
-```bash
-rust_scraper --url https://example.com --use-sitemap --max-pages 100 --resume
-```
-
-Si se interrumpe, vuelve a ejecutar el mismo comando y continúa donde lo dejó.
-
 ### Referencia completa
-
-Para ver todas las opciones disponibles, ejecuta:
 
 ```bash
 rust_scraper --help
 ```
 
-O consulta la [referencia completa del CLI](docs/CLI.md) con todas las opciones, variables de entorno y ejemplos avanzados.
+---
+
+## MCP Server
+
+rust_scraper incluye un servidor MCP con **34 herramientas** para agentes AI:
+
+```bash
+# Servidor stdio (para OpenCode, Claude Desktop, Cursor, etc.)
+cargo run --example mcp_server_stdio --quiet
+
+# Servidor HTTP
+cargo run --example mcp_server
+```
+
+**Herramientas disponibles:**
+
+| Categoría | Tools |
+|-----------|-------|
+| Scraping | `scrape_url`, `scrape_batch`, `crawl_site`, `crawl_with_sitemap` |
+| Contenido | `clean_html`, `extract_links`, `convert_html_to_markdown` |
+| WAF | `detect_waf`, `verify_waf_integrity`, `list_waf_providers` |
+| Export | `export_file`, `export_jsonl`, `export_vector` |
+| Obsidian | `detect_obsidian_vault`, `search_obsidian`, `build_obsidian_uri` |
+| URLs | `validate_url`, `normalize_url`, `is_internal_link` |
+
+Configuración para OpenCode (`opencode.json`):
+
+```json
+{
+  "mcp": {
+    "rust_scraper": {
+      "type": "local",
+      "command": ["cargo", "run", "--example", "mcp_server_stdio", "--quiet"]
+    }
+  }
+}
+```
 
 ---
 
-## 🔧 Configuración
+## Configuración
 
-Puedes crear un archivo con tus preferencias en `~/.config/rust_scraper/config.toml`:
+Archivo: `~/.config/rust_scraper/config.toml`
 
 ```toml
-# Valores por defecto para cada ejecución
 format = "markdown"
 max_pages = 50
 delay_ms = 500
 use_sitemap = true
 ```
 
-Las opciones que pases en la línea de comandos siempre tienen prioridad sobre este archivo.
+Los argumentos de línea de comandos tienen prioridad sobre este archivo.
 
 ---
 
-## 📖 Documentación
+## Features de compilación
 
-| Recurso | Para quién |
+| Feature | Qué activa | Instalación |
+|---------|-----------|-------------|
+| `ai` | Limpieza semántica con ONNX (~90MB modelo) | `cargo install --path . --features ai` |
+| `images` | Detección y descarga de imágenes | `cargo install --path . --features images` |
+| `documents` | Detección y descarga de documentos | `cargo install --path . --features documents` |
+| `full` | Todas las features | `cargo install --path . --features full` |
+| `console` | Tokio console (debugging) | `cargo install --path . --features console` |
+
+---
+
+## Para desarrolladores
+
+```bash
+# Verificación rápida (fmt + clippy + tests)
+just test-ci
+
+# Tests durante desarrollo
+just test-dev
+
+# Coverage
+just cov
+
+# Audit de seguridad
+just audit
+```
+
+**Stack:** Rust 1.88 · Tokio · wreq (TLS fingerprint) · ratatui (TUI) · scraper 0.27 · lol_html
+
+**CI:** GitHub Actions ejecuta fmt, clippy, tests, Miri (UB detection), coverage, y security audit en cada push.
+
+---
+
+## Documentación
+
+| Recurso | Qué cubre |
 |---------|-----------|
-| [Guía del CLI](docs/CLI.md) | Todos los usuarios — referencia completa de opciones |
-| [Modo interactivo TUI](docs/TUI.md) | Guía completa del selector de URLs |
-| [Guía de uso](docs/USAGE.md) | Ejemplos prácticos y resolución de problemas |
-| [Integración con Obsidian](docs/OBSIDIAN.md) | Usuarios de Obsidian — vault, wiki-links, metadatos |
-| [Limpieza con IA](docs/AI-SEMANTIC-CLEANING.md) | Usuarios avanzados — pipeline RAG |
-| [Exportación RAG](docs/RAG-EXPORT.md) | Desarrolladores — JSONL, embeddings, state store |
-| [Arquitectura](docs/ARCHITECTURE.md) | Desarrolladores — diseño interno del proyecto |
-| [Guía de desarrollo](DEVELOPMENT.md) | Contribuidores — cómo compilar, probar y contribuir |
-| [CHANGELOG](CHANGELOG.md) | Historial de cambios por versión |
+| [Wiki (38 páginas)](docs/wiki/) | Arquitectura, módulos, flujos de ejecución |
+| [Viewer interactivo](docs/wiki/index.html) | Navegación con búsqueda |
+| [AGENTS.md](AGENTS.md) | Instrucciones para agentes AI |
+| `rust_scraper --help` | Referencia CLI completa |
+
+La wiki se genera automáticamente desde el grafo de conocimiento del proyecto:
+
+```bash
+gitnexus wiki --model openrouter/auto --concurrency 1 --force
+```
 
 ---
 
-## 📄 Licencia
+## Contributing
+
+1. Fork → branch `feature/nombre` → commit → PR
+2. Tests deben pasar: `just test-ci`
+3. Commits en formato Conventional Commits: `feat:`, `fix:`, `refactor:`, `ci:`, `docs:`
+
+---
+
+## Licencia
 
 MIT OR Apache-2.0
-
----
-
-## 🧪 Testing
-
-**Suite de tests:** 613 unit tests passing  
-**Tests de integración:** 18 tests skipped (dependen de red externa)
-
-**Estado CI:** Los 613 tests unitarios pasan automáticamente. Los 18 tests de integración
-requieren servidores externos y están deshabilitados en CI para estabilidad.
-
-**Mejora pendiente:** Implementar `wiremock` para simular respuestas HTTP localmente
-y habilitar los tests de integración sin depender de red externa.
-
-**Para ejecutar tests:**
-```bash
-cargo nextest run
-```
