@@ -144,18 +144,10 @@ jobs:
           components: miri
       - name: Setup & Run Miri
         env:
-          MIRIFLAGS: -Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-seed=42
+          MIRIFLAGS: -Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-disable-ffi -Zmiri-seed=42
         run: |
           cargo miri setup
-          cargo miri test --lib -- \
-            --skip downloader \
-            --skip http_client \
-            --skip crawler \
-            --skip scrape \
-            --skip export_pipeline \
-            --skip test_ai \
-            --skip integration \
-            --skip tui
+          cargo miri test --lib
 
   # ============================================================================
   # SCHEDULED: Coverage (manual trigger only)
