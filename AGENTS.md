@@ -272,6 +272,35 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 - Modify `target/`, `dist/`, or `build/` directories
 - Run `cargo build --release` during development (use `cargo check`)
 
+### 🚫 NEVER ON THIS MACHINE (HDD + 8GB RAM)
+
+**These commands WILL freeze the system and crash the terminal. Executing them is a discipline failure.**
+
+| Comando | Por qué es peligroso | Alternativa |
+|---------|---------------------|-------------|
+| `cargo nextest run` | Compila + ejecuta 680 tests — 5-10 min, 100% CPU + HDD | `gh workflow run ci.yml` |
+| `cargo nextest run --all-features` | Incluye AI (90MB modelo) — congelamiento total | CI en la nube |
+| `cargo build --release` | Compilación optimizada — 10+ min | CI en la nube |
+| `cargo build` | Más lento que `cargo check` | `cargo check` |
+| `cargo test` | Sin nextest, más lento | `cargo check` |
+| `just test-ci` | Ejecuta todo el gate — 10+ min | `gh workflow run ci.yml` |
+| `cargo llvm-cov` | Instrumenta + compila + tests — 15+ min | CI en la nube |
+| `cargo miri test` | Interpreta cada instrucción — 30+ min | CI en la nube |
+
+**Regla simple para agentes:**
+
+```
+LOCAL:  cargo check, cargo clippy, cargo fmt --check (total <30s)
+NUBE:   gh workflow run ci.yml && gh run watch
+```
+
+**Si necesitás tests locales** (debugging específico), usar filtro preciso:
+```bash
+cargo nextest run --test-threads 2 -E 'test(mi_test_especifico)'
+```
+
+**NUNCA** ejecutar la suite completa localmente. SIEMPRE delegar a la nube.
+
 ---
 
 ## Resources

@@ -5,9 +5,14 @@ edition = "2021"
 description = "Production-ready web scraper with Clean Architecture, TUI selector, and sitemap support"
 authors = ["GazaDev"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/XaviCode1000/rust_scraper"
-homepage = "https://github.com/XaviCode1000/rust_scraper"
+repository = "https://github.com/XaviCode1000/rust-scraper"
+homepage = "https://github.com/XaviCode1000/rust-scraper"
 documentation = "https://docs.rs/rust_scraper"
+
+# HDD-safe: limit local compilation to 1 core to prevent thrashing
+# Cloud CI ignores this — uses all available cores
+[build]
+jobs = 1
 keywords = ["scraper", "web", "crawler", "rag", "tui"]
 categories = ["command-line-utilities", "web-programming"]
 rust-version = "1.88"
