@@ -252,14 +252,27 @@ impl DerefMut for Tui {
 mod tests {
     use super::*;
 
+    /// Returns true if running in an environment with a real terminal (TTY).
+    /// CI runners (GitHub Actions, etc.) do not have a TTY, so crossterm
+    /// initialization will fail with "Resource temporarily unavailable".
+    fn has_terminal() -> bool {
+        std::io::stdout().is_terminal()
+    }
+
     #[test]
     fn test_tui_new() {
+        if !has_terminal() {
+            return; // skip in CI — no TTY available
+        }
         let tui = Tui::new();
         assert!(tui.is_ok());
     }
 
     #[test]
     fn test_tui_builder() {
+        if !has_terminal() {
+            return; // skip in CI — no TTY available
+        }
         let tui = Tui::new().unwrap().tick_rate(8.0).frame_rate(30.0);
         assert!((tui.tick_rate - 8.0).abs() < f64::EPSILON);
         assert!((tui.frame_rate - 30.0).abs() < f64::EPSILON);
@@ -267,6 +280,9 @@ mod tests {
 
     #[test]
     fn test_event_channel_creation() {
+        if !has_terminal() {
+            return; // skip in CI — no TTY available
+        }
         let tui = Tui::new().unwrap();
         // Sender and receiver should work
         assert!(tui.event_tx.send(Event::Tick).is_ok());
