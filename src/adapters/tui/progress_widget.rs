@@ -515,6 +515,9 @@ impl Component for ProgressWidget {
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Result<Option<Action>> {
+        if key.code == KeyCode::Char('?') {
+            return Ok(Some(Action::ToggleHelp));
+        }
         if key.code == KeyCode::Char('q') || key.code == KeyCode::Char('Q') {
             return Ok(Some(Action::Quit));
         }

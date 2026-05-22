@@ -25,6 +25,7 @@ use url::Url;
 use super::action::Action;
 use super::app::{App, AppResult};
 use super::component::{AppMode, Component, Header, StatusBar};
+use super::modal::HelpModal;
 use super::theme::Theme;
 
 /// URL selector state (testable without rendering)
@@ -342,6 +343,11 @@ impl Component for UrlSelectorState {
                 self.exit_confirm_mode();
             },
 
+            // Show help overlay
+            KeyCode::Char('?') => {
+                return Ok(Some(Action::ToggleHelp));
+            },
+
             // Quit without selection
             KeyCode::Esc | KeyCode::Char('q') => {
                 return Ok(Some(Action::UrlCancelled));
@@ -406,6 +412,16 @@ impl Component for UrlSelectorState {
 /// # }
 /// ```
 pub async fn run_selector(urls: &[Url]) -> Result<Vec<Url>> {
+    let help_bindings: Vec<(String, String)> = vec![
+        ("↑↓".into(), "Navegar".into()),
+        ("Space".into(), "Seleccionar/Deseleccionar".into()),
+        ("Enter".into(), "Confirmar URLs".into()),
+        ("a/A".into(), "Seleccionar todo".into()),
+        ("d/D".into(), "Deseleccionar todo".into()),
+        ("?".into(), "Mostrar ayuda".into()),
+        ("Esc/q".into(), "Cancelar".into()),
+    ];
+
     let mut app = App::new(AppMode::Selector)?
         .with_component(Header::new(AppMode::Selector))
         .with_component(UrlSelectorState::new(urls))
@@ -414,7 +430,11 @@ pub async fn run_selector(urls: &[Url]) -> Result<Vec<Url>> {
             ("Space", "Seleccionar"),
             ("Enter", "Confirmar"),
             ("Esc/q", "Cancelar"),
-        ]));
+        ]))
+        .with_modal(HelpModal::new(
+            "Ayuda — Selector de URLs".into(),
+            help_bindings,
+        ));
 
     match app.run().await? {
         AppResult::Urls(urls) => Ok(urls

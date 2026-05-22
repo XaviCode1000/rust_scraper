@@ -40,6 +40,7 @@ use url::Url;
 use crate::adapters::tui::{
     app::App,
     component::{AppMode, Header, StatusBar},
+    modal::HelpModal,
     progress_types::ScrapeProgress,
     ErrorLogWidget, ProgressWidget,
 };
@@ -67,13 +68,19 @@ pub async fn run_progress_view(
     progress_rx: mpsc::Receiver<ScrapeProgress>,
     urls: &[Url],
 ) -> io::Result<()> {
+    let help_bindings: Vec<(String, String)> = vec![
+        ("?".into(), "Mostrar ayuda".into()),
+        ("q".into(), "Salir".into()),
+    ];
+
     let mut app = App::new(AppMode::Progress)
         .map_err(|e| io::Error::other(format!("Error al crear app: {}", e)))?
         .with_component(Header::new(AppMode::Progress))
         .with_component(ProgressWidget::new(urls))
         .with_component(ErrorLogWidget::new())
         .with_component(StatusBar::new().with_items(vec![("q", "Salir")]))
-        .with_progress_bridge(progress_rx);
+        .with_progress_bridge(progress_rx)
+        .with_modal(HelpModal::new("Ayuda — Progreso".into(), help_bindings));
 
     let _ = app.run().await;
     Ok(())

@@ -35,6 +35,7 @@ pub mod tui_terminal;
 
 mod config_form;
 mod error_log_widget;
+pub mod modal;
 mod progress_types;
 mod progress_view;
 mod progress_widget;

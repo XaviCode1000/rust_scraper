@@ -157,6 +157,11 @@ impl Component for ConfigFormState {
     }
 
     fn handle_key_event(&mut self, key: crossterm::event::KeyEvent) -> Result<Option<Action>> {
+        // '?' para mostrar ayuda
+        if matches!(key.code, KeyCode::Char('?')) {
+            return Ok(Some(Action::ToggleHelp));
+        }
+
         // 'q' como atajo rápido para cancelar
         if matches!(key.code, KeyCode::Char('q' | 'Q')) {
             self.cancelled = true;

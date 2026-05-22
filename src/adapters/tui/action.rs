@@ -41,8 +41,11 @@ pub enum Action {
     ClearScreen,
     /// An error occurred with a description
     Error(String),
-    /// Show help screen
-    Help,
+    /// Toggle help overlay
+    ToggleHelp,
+    /// Close the currently open modal
+    #[serde(skip)]
+    CloseModal,
     /// URLs were confirmed by the user
     UrlConfirmed(Vec<String>),
     /// URL selection was cancelled
@@ -67,7 +70,8 @@ impl fmt::Display for Action {
             Self::Quit => write!(f, "Quit"),
             Self::ClearScreen => write!(f, "ClearScreen"),
             Self::Error(e) => write!(f, "Error({})", e),
-            Self::Help => write!(f, "Help"),
+            Self::ToggleHelp => write!(f, "ToggleHelp"),
+            Self::CloseModal => write!(f, "CloseModal"),
             Self::UrlConfirmed(urls) => write!(f, "UrlConfirmed({} urls)", urls.len()),
             Self::UrlCancelled => write!(f, "UrlCancelled"),
             Self::ConfigDone(_) => write!(f, "ConfigDone"),

@@ -27,6 +27,7 @@ use std::io::{self, IsTerminal};
 
 use clap::Parser;
 use inquire::Text;
+use rust_scraper::adapters::tui::modal::HelpModal;
 use rust_scraper::adapters::tui::{App, AppMode, AppResult, ConfigFormState, Header, StatusBar};
 use rust_scraper::cli::config::ConfigDefaults;
 use rust_scraper::cli::error::CliExit;
@@ -72,7 +73,16 @@ async fn run_config_tui() -> Result<Option<serde_json::Value>, CliExit> {
         ("↑↓", "Navegar"),
         ("Enter", "Confirmar"),
         ("q", "Salir"),
-    ]));
+    ]))
+    .with_modal(HelpModal::new(
+        "Ayuda — Configuración".into(),
+        vec![
+            ("↑↓".into(), "Navegar campos".into()),
+            ("Enter".into(), "Editar campo / Confirmar".into()),
+            ("?".into(), "Mostrar ayuda".into()),
+            ("q".into(), "Salir".into()),
+        ],
+    ));
 
     match app.run().await {
         Ok(AppResult::Config(values)) => Ok(values),

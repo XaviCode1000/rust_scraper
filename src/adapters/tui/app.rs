@@ -18,11 +18,13 @@
 
 use anyhow::Result;
 use ratatui::prelude::*;
+use ratatui::widgets::Clear;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
 use super::action::Action;
 use super::component::{AppMode, Component};
 use super::event::Event;
+use super::modal::centered_rect;
 use super::progress_types::ScrapeProgress;
 use super::tui_terminal::Tui;
 
@@ -57,6 +59,10 @@ pub enum AppResult {
 pub struct App {
     /// All registered components (drawn in order)
     pub components: Vec<Box<dyn Component>>,
+    /// Optional modal overlay component
+    pub modal: Option<Box<dyn Component>>,
+    /// Whether a modal is currently visible
+    pub should_show_modal: bool,
     /// Sender for dispatching actions
     pub action_tx: UnboundedSender<Action>,
     /// Receiver for consuming actions
@@ -79,6 +85,8 @@ impl App {
         let (action_tx, action_rx) = mpsc::unbounded_channel();
         Ok(Self {
             components: Vec::new(),
+            modal: None,
+            should_show_modal: false,
             action_tx,
             action_rx,
             should_quit: false,
@@ -93,6 +101,16 @@ impl App {
     #[must_use]
     pub fn with_component(mut self, component: impl Component + 'static) -> Self {
         self.components.push(Box::new(component));
+        self
+    }
+
+    /// Add a modal overlay component to the app.
+    ///
+    /// The modal will be rendered on top of other components and
+    /// intercept events when `should_show_modal` is true.
+    #[must_use]
+    pub fn with_modal(mut self, modal: impl Component + 'static) -> Self {
+        self.modal = Some(Box::new(modal));
         self
     }
 
@@ -136,15 +154,21 @@ impl App {
         let mut tui = Tui::new()?;
         tui.enter()?;
 
-        // Phase 1: Register action handlers on all components
+        // Phase 1: Register action handlers on all components (and modal if present)
         for component in self.components.iter_mut() {
             component.register_action_handler(self.action_tx.clone())?;
         }
+        if let Some(modal) = &mut self.modal {
+            modal.register_action_handler(self.action_tx.clone())?;
+        }
 
-        // Phase 2: Initialize all components with the terminal size
+        // Phase 2: Initialize all components (and modal if present) with terminal size
         let size = tui.size()?;
         for component in self.components.iter_mut() {
             component.init(size)?;
+        }
+        if let Some(modal) = &mut self.modal {
+            modal.init(size)?;
         }
 
         // Phase 3: Main event loop
@@ -167,7 +191,8 @@ impl App {
     /// Process incoming events from the Tui event loop.
     ///
     /// Converts terminal events into actions and dispatches them.
-    /// Also forwards events to all components for custom handling.
+    /// Also forwards events to components for custom handling.
+    /// When a modal is showing, events are only forwarded to the modal.
     fn handle_events(&mut self, tui: &mut Tui) -> Result<()> {
         if let Some(event) = tui.next_event() {
             // Dispatch basic events as actions
@@ -190,10 +215,19 @@ impl App {
                 _ => {},
             }
 
-            // Forward events to components for custom handling
-            for component in self.components.iter_mut() {
-                if let Some(action) = component.handle_events(Some(event.clone()))? {
-                    let _ = self.action_tx.send(action);
+            if self.should_show_modal {
+                // When modal is showing, only forward events to the modal component
+                if let Some(modal) = &mut self.modal {
+                    if let Some(action) = modal.handle_events(Some(event.clone()))? {
+                        let _ = self.action_tx.send(action);
+                    }
+                }
+            } else {
+                // Forward events to all regular components
+                for component in self.components.iter_mut() {
+                    if let Some(action) = component.handle_events(Some(event.clone()))? {
+                        let _ = self.action_tx.send(action);
+                    }
                 }
             }
         }
@@ -204,12 +238,14 @@ impl App {
     ///
     /// Handles system-level actions (Quit, Render, Resize, etc.)
     /// and forwards all actions to components for state updates.
+    /// When a modal is showing, it also receives updates.
     fn handle_actions(&mut self, tui: &mut Tui) -> Result<()> {
         while let Ok(action) = self.action_rx.try_recv() {
             // Handle system-level actions
             match &action {
                 Action::Render => {
                     let action_tx = self.action_tx.clone();
+                    let should_show = self.should_show_modal;
                     tui.draw(|frame| {
                         for component in self.components.iter_mut() {
                             if let Err(e) = component.draw(frame, frame.area()) {
@@ -217,7 +253,31 @@ impl App {
                                     .send(Action::Error(format!("Error al dibujar: {}", e)));
                             }
                         }
+
+                        // Draw modal overlay on top if active
+                        if should_show {
+                            if let Some(modal) = &mut self.modal {
+                                // Dark overlay background
+                                frame.render_widget(Clear, frame.area());
+
+                                // Calculate centered area (60% width, 50% height)
+                                let modal_rect = centered_rect(60, 50, frame.area());
+
+                                if let Err(e) = modal.draw(frame, modal_rect) {
+                                    let _ = action_tx.send(Action::Error(format!(
+                                        "Error al dibujar modal: {}",
+                                        e
+                                    )));
+                                }
+                            }
+                        }
                     })?;
+                },
+                Action::ToggleHelp => {
+                    self.should_show_modal = !self.should_show_modal;
+                },
+                Action::CloseModal => {
+                    self.should_show_modal = false;
                 },
                 Action::Quit => self.should_quit = true,
                 Action::ClearScreen => {
@@ -253,6 +313,13 @@ impl App {
             // Match on reference above avoids moving `action`
             for component in self.components.iter_mut() {
                 if let Some(new_action) = component.update(action.clone())? {
+                    let _ = self.action_tx.send(new_action);
+                }
+            }
+
+            // Also forward actions to the modal for state updates
+            if let Some(modal) = &mut self.modal {
+                if let Some(new_action) = modal.update(action.clone())? {
                     let _ = self.action_tx.send(new_action);
                 }
             }
