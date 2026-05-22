@@ -1,0 +1,736 @@
+{
+  "fromCommit": "7413cc7d394ca5a9433e3f525271e374a22fc7a7",
+  "generatedAt": "2026-05-22T00:51:36.776Z",
+  "model": "openrouter/auto",
+  "moduleFiles": {
+    "Core Application Logic": [
+      "src/application/container.rs",
+      "src/application/crawl_result_repository.rs",
+      "src/application/crawler_service.rs",
+      "src/application/deduplicator.rs",
+      "src/application/export_factory.rs",
+      "src/application/export_utils.rs",
+      "src/application/rate_limiter.rs",
+      "src/application/results_channel.rs",
+      "src/application/scraper_service.rs",
+      "src/application/url_filter.rs",
+      "src/di.rs"
+    ],
+    "Core Application Logic — application": [
+      "src/application/container.rs",
+      "src/application/crawl_result_repository.rs",
+      "src/application/crawler_service.rs",
+      "src/application/deduplicator.rs",
+      "src/application/export_factory.rs",
+      "src/application/export_utils.rs",
+      "src/application/rate_limiter.rs",
+      "src/application/results_channel.rs",
+      "src/application/scraper_service.rs",
+      "src/application/url_filter.rs"
+    ],
+    "Core Application Logic — src": [
+      "src/di.rs"
+    ],
+    "CLI Interface": [
+      "src/cli/args.rs",
+      "src/cli/commands.rs",
+      "src/cli/completions.rs",
+      "src/cli/config.rs",
+      "src/cli/error.rs",
+      "src/cli/export_flow.rs",
+      "src/cli/orchestrator.rs",
+      "src/cli/preflight.rs",
+      "src/cli/scrape_flow.rs",
+      "src/cli/summary.rs",
+      "src/cli/url_discovery.rs",
+      "src/cli/wizard.rs"
+    ],
+    "Configuration": [
+      "src/config.rs",
+      "src/infrastructure/config.rs"
+    ],
+    "Crawling Engine": [
+      "src/application/crawler/discovery.rs",
+      "src/application/crawler/engine.rs",
+      "src/infrastructure/crawler/batch_processor.rs",
+      "src/infrastructure/crawler/compression_handler.rs",
+      "src/infrastructure/crawler/http_client.rs",
+      "src/infrastructure/crawler/link_extractor.rs",
+      "src/infrastructure/crawler/memory_manager.rs",
+      "src/infrastructure/crawler/mod.rs",
+      "src/infrastructure/crawler/retry_policy.rs",
+      "src/infrastructure/crawler/sitemap_config.rs",
+      "src/infrastructure/crawler/sitemap_parser.rs",
+      "src/infrastructure/crawler/url_queue.rs",
+      "src/infrastructure/crawler/url_validator.rs"
+    ],
+    "Data Extraction and Detection": [
+      "src/adapters/detector/mime.rs",
+      "src/adapters/detector/mod.rs",
+      "src/extractor/mod.rs",
+      "src/infrastructure/scraper/asset_download.rs",
+      "src/infrastructure/scraper/fallback.rs",
+      "src/infrastructure/scraper/mod.rs",
+      "src/infrastructure/scraper/readability.rs"
+    ],
+    "Domain Models and Entities": [
+      "src/domain/crawl_job/entities.rs",
+      "src/domain/crawl_job/mod.rs",
+      "src/domain/crawler_entities.rs",
+      "src/domain/credentials.rs",
+      "src/domain/entities.rs",
+      "src/domain/error/crawl_error.rs",
+      "src/domain/error/mod.rs",
+      "src/domain/exporter.rs",
+      "src/domain/js_renderer.rs",
+      "src/domain/link_extractor.rs",
+      "src/domain/mod.rs",
+      "src/domain/pattern_matching/mod.rs",
+      "src/domain/result/crawl_result.rs",
+      "src/domain/result/mod.rs",
+      "src/domain/semantic_cleaner.rs",
+      "src/domain/site/config.rs",
+      "src/domain/site/mod.rs",
+      "src/domain/url_validation.rs",
+      "src/domain/url_validator.rs",
+      "src/domain/value_objects.rs"
+    ],
+    "Error Handling": [
+      "src/error.rs"
+    ],
+    "HTTP Client": [
+      "src/application/http_client/client.rs",
+      "src/application/http_client/config.rs",
+      "src/application/http_client/error.rs",
+      "src/application/http_client/mod.rs"
+    ],
+    "AI and Machine Learning": [
+      "src/infrastructure/ai/cache_config.rs",
+      "src/infrastructure/ai/chunk_id.rs",
+      "src/infrastructure/ai/chunker.rs",
+      "src/infrastructure/ai/embedding_ops.rs",
+      "src/infrastructure/ai/inference_engine.rs",
+      "src/infrastructure/ai/model_cache.rs",
+      "src/infrastructure/ai/model_downloader.rs",
+      "src/infrastructure/ai/relevance_scorer.rs",
+      "src/infrastructure/ai/semantic_cleaner_impl.rs",
+      "src/infrastructure/ai/sentence.rs",
+      "src/infrastructure/ai/tokenizer.rs",
+      "src/infrastructure/ai/mod.rs",
+      "src/infrastructure/ai/threshold_config.rs"
+    ],
+    "Infrastructure Adapters": [
+      "src/adapters/downloader/mod.rs",
+      "src/adapters/extractor/mod.rs",
+      "src/adapters/mod.rs",
+      "src/adapters/url_path.rs"
+    ],
+    "MCP Server": [
+      "src/infrastructure/mcp_server/handlers/ai.rs",
+      "src/infrastructure/mcp_server/handlers/assets.rs",
+      "src/infrastructure/mcp_server/handlers/content.rs",
+      "src/infrastructure/mcp_server/handlers/export.rs",
+      "src/infrastructure/mcp_server/handlers/mod.rs",
+      "src/infrastructure/mcp_server/handlers/obsidian.rs",
+      "src/infrastructure/mcp_server/handlers/scraping.rs",
+      "src/infrastructure/mcp_server/handlers/security.rs",
+      "src/infrastructure/mcp_server/handlers/url_utils.rs",
+      "src/infrastructure/mcp_server/mod.rs",
+      "src/infrastructure/mcp_server/server.rs",
+      "src/infrastructure/mcp_server/state.rs"
+    ],
+    "Observability": [
+      "src/infrastructure/observability/async_logging.rs",
+      "src/infrastructure/observability/logging.rs",
+      "src/infrastructure/observability/metrics.rs",
+      "src/infrastructure/observability/mod.rs"
+    ],
+    "Obsidian Integration": [
+      "src/infrastructure/obsidian/metadata.rs",
+      "src/infrastructure/obsidian/mod.rs",
+      "src/infrastructure/obsidian/uri.rs",
+      "src/infrastructure/obsidian/vault_detector.rs"
+    ],
+    "Output and Exporting": [
+      "src/infrastructure/export/file_exporter.rs",
+      "src/infrastructure/export/jsonl_exporter.rs",
+      "src/infrastructure/export/mod.rs",
+      "src/infrastructure/export/state_store.rs",
+      "src/infrastructure/export/vector_exporter.rs"
+    ],
+    "Text Conversion": [
+      "src/infrastructure/converter/html_cleaner.rs",
+      "src/infrastructure/converter/html_to_markdown.rs",
+      "src/infrastructure/converter/mod.rs",
+      "src/infrastructure/converter/obsidian.rs",
+      "src/infrastructure/converter/syntax_highlight.rs",
+      "src/infrastructure/converter/wikilinks.rs"
+    ],
+    "Terminal User Interface (TUI)": [
+      "src/adapters/tui/config_form.rs",
+      "src/adapters/tui/error_log_widget.rs",
+      "src/adapters/tui/event_loop.rs",
+      "src/adapters/tui/mod.rs",
+      "src/adapters/tui/progress_types.rs",
+      "src/adapters/tui/progress_view.rs",
+      "src/adapters/tui/progress_widget.rs",
+      "src/adapters/tui/terminal.rs",
+      "src/adapters/tui/url_selector.rs"
+    ],
+    "Utilities": [
+      "src/infrastructure/user_agent.rs",
+      "src/lib.rs"
+    ],
+    "WAF (Web Application Firewall)": [
+      "src/infrastructure/http/waf_engine.rs"
+    ],
+    "Documentation and Examples": [
+      "AGENTS.md",
+      "DEVELOPMENT.md",
+      "README.md",
+      "STATE.md",
+      "docs/AI-SEMANTIC-CLEANING.md",
+      "docs/ARCHITECTURE.md",
+      "docs/AUDITORIA.md",
+      "docs/CHANGES.md",
+      "docs/CLI.md",
+      "docs/OBSIDIAN.md",
+      "docs/PR_DESCRIPTION.md",
+      "docs/RAG-EXPORT.md",
+      "docs/REFACTOR_LOG.md",
+      "docs/TUI.md",
+      "docs/USAGE.md",
+      "docs/research/obsidian-markdown-spec.md",
+      "docs/research/obsidian-user-research.md",
+      "examples/mcp_server.rs",
+      "examples/mcp_server_stdio.rs",
+      "sdd/mpsc-channel-refactor/explore/exploration.md",
+      "sdd/typestate-pattern/design/design.md",
+      "sdd/typestate-pattern/proposal/proposal.md",
+      "sdd/typestate-pattern/tasks/tasks.md",
+      "specs/async-reactive-tui.md"
+    ],
+    "Documentation and Examples — AGENTS.md": [
+      "AGENTS.md"
+    ],
+    "Documentation and Examples — DEVELOPMENT.md": [
+      "DEVELOPMENT.md"
+    ],
+    "Documentation and Examples — README.md": [
+      "README.md"
+    ],
+    "Documentation and Examples — STATE.md": [
+      "STATE.md"
+    ],
+    "Documentation and Examples — docs": [
+      "docs/AI-SEMANTIC-CLEANING.md",
+      "docs/ARCHITECTURE.md",
+      "docs/AUDITORIA.md",
+      "docs/CHANGES.md",
+      "docs/CLI.md",
+      "docs/OBSIDIAN.md",
+      "docs/PR_DESCRIPTION.md",
+      "docs/RAG-EXPORT.md",
+      "docs/REFACTOR_LOG.md",
+      "docs/TUI.md",
+      "docs/USAGE.md"
+    ],
+    "Documentation and Examples — research": [
+      "docs/research/obsidian-markdown-spec.md",
+      "docs/research/obsidian-user-research.md"
+    ],
+    "Documentation and Examples — examples": [
+      "examples/mcp_server.rs",
+      "examples/mcp_server_stdio.rs"
+    ],
+    "Documentation and Examples — mpsc-channel-refactor": [
+      "sdd/mpsc-channel-refactor/explore/exploration.md"
+    ],
+    "Documentation and Examples — typestate-pattern": [
+      "sdd/typestate-pattern/design/design.md",
+      "sdd/typestate-pattern/proposal/proposal.md",
+      "sdd/typestate-pattern/tasks/tasks.md"
+    ],
+    "Documentation and Examples — specs": [
+      "specs/async-reactive-tui.md"
+    ],
+    "Build and Scripting": [
+      "Cargo.toml",
+      "bacon.toml",
+      "build.rs",
+      "deny.toml",
+      "justfile",
+      "opencode.json",
+      "rustfmt.toml",
+      "scripts/coverage.sh",
+      "scripts/dev.sh",
+      "scripts/gen_context.fish"
+    ],
+    "Benchmarking": [
+      "benches/cosine_similarity.rs",
+      "benches/waf_detection.rs"
+    ],
+    "Tests": [
+      "tests/ai_integration.rs",
+      "tests/cli_binary_test.rs",
+      "tests/cli_tests.rs",
+      "tests/concurrency_tests.rs",
+      "tests/crawler_integration.rs",
+      "tests/exporter_integration_test.rs",
+      "tests/http_client_integration.rs",
+      "tests/integration_test.rs",
+      "tests/mcp_proptest.rs",
+      "tests/progress_tui_integration.rs",
+      "tests/property_tests.rs",
+      "tests/rate_limiting_integration.rs",
+      "tests/security_integration.rs",
+      "tests/stress_test.rs",
+      "tests/common/mod.rs"
+    ],
+    "Tests — tests": [
+      "tests/ai_integration.rs",
+      "tests/cli_binary_test.rs",
+      "tests/cli_tests.rs",
+      "tests/concurrency_tests.rs",
+      "tests/crawler_integration.rs",
+      "tests/exporter_integration_test.rs",
+      "tests/http_client_integration.rs",
+      "tests/integration_test.rs",
+      "tests/mcp_proptest.rs",
+      "tests/progress_tui_integration.rs",
+      "tests/property_tests.rs",
+      "tests/rate_limiting_integration.rs",
+      "tests/security_integration.rs",
+      "tests/stress_test.rs"
+    ],
+    "Tests — common": [
+      "tests/common/mod.rs"
+    ],
+    "Other": [
+      "REFACTOR_LOG.md",
+      "src/application/crawler/mod.rs",
+      "src/application/mod.rs",
+      "src/cli/mod.rs",
+      "src/domain/repositories.rs",
+      "src/infrastructure/http/mod.rs",
+      "src/infrastructure/mod.rs",
+      "src/main.rs"
+    ]
+  },
+  "moduleTree": [
+    {
+      "name": "Core Application Logic",
+      "slug": "core-application-logic",
+      "files": [],
+      "children": [
+        {
+          "name": "Core Application Logic — application",
+          "slug": "core-application-logic-application",
+          "files": [
+            "src/application/container.rs",
+            "src/application/crawl_result_repository.rs",
+            "src/application/crawler_service.rs",
+            "src/application/deduplicator.rs",
+            "src/application/export_factory.rs",
+            "src/application/export_utils.rs",
+            "src/application/rate_limiter.rs",
+            "src/application/results_channel.rs",
+            "src/application/scraper_service.rs",
+            "src/application/url_filter.rs"
+          ]
+        },
+        {
+          "name": "Core Application Logic — src",
+          "slug": "core-application-logic-src",
+          "files": [
+            "src/di.rs"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "CLI Interface",
+      "slug": "cli-interface",
+      "files": [
+        "src/cli/args.rs",
+        "src/cli/commands.rs",
+        "src/cli/completions.rs",
+        "src/cli/config.rs",
+        "src/cli/error.rs",
+        "src/cli/export_flow.rs",
+        "src/cli/orchestrator.rs",
+        "src/cli/preflight.rs",
+        "src/cli/scrape_flow.rs",
+        "src/cli/summary.rs",
+        "src/cli/url_discovery.rs",
+        "src/cli/wizard.rs"
+      ]
+    },
+    {
+      "name": "Configuration",
+      "slug": "configuration",
+      "files": [
+        "src/config.rs",
+        "src/infrastructure/config.rs"
+      ]
+    },
+    {
+      "name": "Crawling Engine",
+      "slug": "crawling-engine",
+      "files": [
+        "src/application/crawler/discovery.rs",
+        "src/application/crawler/engine.rs",
+        "src/infrastructure/crawler/batch_processor.rs",
+        "src/infrastructure/crawler/compression_handler.rs",
+        "src/infrastructure/crawler/http_client.rs",
+        "src/infrastructure/crawler/link_extractor.rs",
+        "src/infrastructure/crawler/memory_manager.rs",
+        "src/infrastructure/crawler/mod.rs",
+        "src/infrastructure/crawler/retry_policy.rs",
+        "src/infrastructure/crawler/sitemap_config.rs",
+        "src/infrastructure/crawler/sitemap_parser.rs",
+        "src/infrastructure/crawler/url_queue.rs",
+        "src/infrastructure/crawler/url_validator.rs"
+      ]
+    },
+    {
+      "name": "Data Extraction and Detection",
+      "slug": "data-extraction-and-detection",
+      "files": [
+        "src/adapters/detector/mime.rs",
+        "src/adapters/detector/mod.rs",
+        "src/extractor/mod.rs",
+        "src/infrastructure/scraper/asset_download.rs",
+        "src/infrastructure/scraper/fallback.rs",
+        "src/infrastructure/scraper/mod.rs",
+        "src/infrastructure/scraper/readability.rs"
+      ]
+    },
+    {
+      "name": "Domain Models and Entities",
+      "slug": "domain-models-and-entities",
+      "files": [
+        "src/domain/crawl_job/entities.rs",
+        "src/domain/crawl_job/mod.rs",
+        "src/domain/crawler_entities.rs",
+        "src/domain/credentials.rs",
+        "src/domain/entities.rs",
+        "src/domain/error/crawl_error.rs",
+        "src/domain/error/mod.rs",
+        "src/domain/exporter.rs",
+        "src/domain/js_renderer.rs",
+        "src/domain/link_extractor.rs",
+        "src/domain/mod.rs",
+        "src/domain/pattern_matching/mod.rs",
+        "src/domain/result/crawl_result.rs",
+        "src/domain/result/mod.rs",
+        "src/domain/semantic_cleaner.rs",
+        "src/domain/site/config.rs",
+        "src/domain/site/mod.rs",
+        "src/domain/url_validation.rs",
+        "src/domain/url_validator.rs",
+        "src/domain/value_objects.rs"
+      ]
+    },
+    {
+      "name": "Error Handling",
+      "slug": "error-handling",
+      "files": [
+        "src/error.rs"
+      ]
+    },
+    {
+      "name": "HTTP Client",
+      "slug": "http-client",
+      "files": [
+        "src/application/http_client/client.rs",
+        "src/application/http_client/config.rs",
+        "src/application/http_client/error.rs",
+        "src/application/http_client/mod.rs"
+      ]
+    },
+    {
+      "name": "AI and Machine Learning",
+      "slug": "ai-and-machine-learning",
+      "files": [
+        "src/infrastructure/ai/cache_config.rs",
+        "src/infrastructure/ai/chunk_id.rs",
+        "src/infrastructure/ai/chunker.rs",
+        "src/infrastructure/ai/embedding_ops.rs",
+        "src/infrastructure/ai/inference_engine.rs",
+        "src/infrastructure/ai/model_cache.rs",
+        "src/infrastructure/ai/model_downloader.rs",
+        "src/infrastructure/ai/relevance_scorer.rs",
+        "src/infrastructure/ai/semantic_cleaner_impl.rs",
+        "src/infrastructure/ai/sentence.rs",
+        "src/infrastructure/ai/tokenizer.rs",
+        "src/infrastructure/ai/mod.rs",
+        "src/infrastructure/ai/threshold_config.rs"
+      ]
+    },
+    {
+      "name": "Infrastructure Adapters",
+      "slug": "infrastructure-adapters",
+      "files": [
+        "src/adapters/downloader/mod.rs",
+        "src/adapters/extractor/mod.rs",
+        "src/adapters/mod.rs",
+        "src/adapters/url_path.rs"
+      ]
+    },
+    {
+      "name": "MCP Server",
+      "slug": "mcp-server",
+      "files": [
+        "src/infrastructure/mcp_server/handlers/ai.rs",
+        "src/infrastructure/mcp_server/handlers/assets.rs",
+        "src/infrastructure/mcp_server/handlers/content.rs",
+        "src/infrastructure/mcp_server/handlers/export.rs",
+        "src/infrastructure/mcp_server/handlers/mod.rs",
+        "src/infrastructure/mcp_server/handlers/obsidian.rs",
+        "src/infrastructure/mcp_server/handlers/scraping.rs",
+        "src/infrastructure/mcp_server/handlers/security.rs",
+        "src/infrastructure/mcp_server/handlers/url_utils.rs",
+        "src/infrastructure/mcp_server/mod.rs",
+        "src/infrastructure/mcp_server/server.rs",
+        "src/infrastructure/mcp_server/state.rs"
+      ]
+    },
+    {
+      "name": "Observability",
+      "slug": "observability",
+      "files": [
+        "src/infrastructure/observability/async_logging.rs",
+        "src/infrastructure/observability/logging.rs",
+        "src/infrastructure/observability/metrics.rs",
+        "src/infrastructure/observability/mod.rs"
+      ]
+    },
+    {
+      "name": "Obsidian Integration",
+      "slug": "obsidian-integration",
+      "files": [
+        "src/infrastructure/obsidian/metadata.rs",
+        "src/infrastructure/obsidian/mod.rs",
+        "src/infrastructure/obsidian/uri.rs",
+        "src/infrastructure/obsidian/vault_detector.rs"
+      ]
+    },
+    {
+      "name": "Output and Exporting",
+      "slug": "output-and-exporting",
+      "files": [
+        "src/infrastructure/export/file_exporter.rs",
+        "src/infrastructure/export/jsonl_exporter.rs",
+        "src/infrastructure/export/mod.rs",
+        "src/infrastructure/export/state_store.rs",
+        "src/infrastructure/export/vector_exporter.rs"
+      ]
+    },
+    {
+      "name": "Text Conversion",
+      "slug": "text-conversion",
+      "files": [
+        "src/infrastructure/converter/html_cleaner.rs",
+        "src/infrastructure/converter/html_to_markdown.rs",
+        "src/infrastructure/converter/mod.rs",
+        "src/infrastructure/converter/obsidian.rs",
+        "src/infrastructure/converter/syntax_highlight.rs",
+        "src/infrastructure/converter/wikilinks.rs"
+      ]
+    },
+    {
+      "name": "Terminal User Interface (TUI)",
+      "slug": "terminal-user-interface-tui",
+      "files": [
+        "src/adapters/tui/config_form.rs",
+        "src/adapters/tui/error_log_widget.rs",
+        "src/adapters/tui/event_loop.rs",
+        "src/adapters/tui/mod.rs",
+        "src/adapters/tui/progress_types.rs",
+        "src/adapters/tui/progress_view.rs",
+        "src/adapters/tui/progress_widget.rs",
+        "src/adapters/tui/terminal.rs",
+        "src/adapters/tui/url_selector.rs"
+      ]
+    },
+    {
+      "name": "Utilities",
+      "slug": "utilities",
+      "files": [
+        "src/infrastructure/user_agent.rs",
+        "src/lib.rs"
+      ]
+    },
+    {
+      "name": "WAF (Web Application Firewall)",
+      "slug": "waf-web-application-firewall",
+      "files": [
+        "src/infrastructure/http/waf_engine.rs"
+      ]
+    },
+    {
+      "name": "Documentation and Examples",
+      "slug": "documentation-and-examples",
+      "files": [],
+      "children": [
+        {
+          "name": "Documentation and Examples — AGENTS.md",
+          "slug": "documentation-and-examples-agents-md",
+          "files": [
+            "AGENTS.md"
+          ]
+        },
+        {
+          "name": "Documentation and Examples — DEVELOPMENT.md",
+          "slug": "documentation-and-examples-development-md",
+          "files": [
+            "DEVELOPMENT.md"
+          ]
+        },
+        {
+          "name": "Documentation and Examples — README.md",
+          "slug": "documentation-and-examples-readme-md",
+          "files": [
+            "README.md"
+          ]
+        },
+        {
+          "name": "Documentation and Examples — STATE.md",
+          "slug": "documentation-and-examples-state-md",
+          "files": [
+            "STATE.md"
+          ]
+        },
+        {
+          "name": "Documentation and Examples — docs",
+          "slug": "documentation-and-examples-docs",
+          "files": [
+            "docs/AI-SEMANTIC-CLEANING.md",
+            "docs/ARCHITECTURE.md",
+            "docs/AUDITORIA.md",
+            "docs/CHANGES.md",
+            "docs/CLI.md",
+            "docs/OBSIDIAN.md",
+            "docs/PR_DESCRIPTION.md",
+            "docs/RAG-EXPORT.md",
+            "docs/REFACTOR_LOG.md",
+            "docs/TUI.md",
+            "docs/USAGE.md"
+          ]
+        },
+        {
+          "name": "Documentation and Examples — research",
+          "slug": "documentation-and-examples-research",
+          "files": [
+            "docs/research/obsidian-markdown-spec.md",
+            "docs/research/obsidian-user-research.md"
+          ]
+        },
+        {
+          "name": "Documentation and Examples — examples",
+          "slug": "documentation-and-examples-examples",
+          "files": [
+            "examples/mcp_server.rs",
+            "examples/mcp_server_stdio.rs"
+          ]
+        },
+        {
+          "name": "Documentation and Examples — mpsc-channel-refactor",
+          "slug": "documentation-and-examples-mpsc-channel-refactor",
+          "files": [
+            "sdd/mpsc-channel-refactor/explore/exploration.md"
+          ]
+        },
+        {
+          "name": "Documentation and Examples — typestate-pattern",
+          "slug": "documentation-and-examples-typestate-pattern",
+          "files": [
+            "sdd/typestate-pattern/design/design.md",
+            "sdd/typestate-pattern/proposal/proposal.md",
+            "sdd/typestate-pattern/tasks/tasks.md"
+          ]
+        },
+        {
+          "name": "Documentation and Examples — specs",
+          "slug": "documentation-and-examples-specs",
+          "files": [
+            "specs/async-reactive-tui.md"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Build and Scripting",
+      "slug": "build-and-scripting",
+      "files": [
+        "Cargo.toml",
+        "bacon.toml",
+        "build.rs",
+        "deny.toml",
+        "justfile",
+        "opencode.json",
+        "rustfmt.toml",
+        "scripts/coverage.sh",
+        "scripts/dev.sh",
+        "scripts/gen_context.fish"
+      ]
+    },
+    {
+      "name": "Benchmarking",
+      "slug": "benchmarking",
+      "files": [
+        "benches/cosine_similarity.rs",
+        "benches/waf_detection.rs"
+      ]
+    },
+    {
+      "name": "Tests",
+      "slug": "tests",
+      "files": [],
+      "children": [
+        {
+          "name": "Tests — tests",
+          "slug": "tests-tests",
+          "files": [
+            "tests/ai_integration.rs",
+            "tests/cli_binary_test.rs",
+            "tests/cli_tests.rs",
+            "tests/concurrency_tests.rs",
+            "tests/crawler_integration.rs",
+            "tests/exporter_integration_test.rs",
+            "tests/http_client_integration.rs",
+            "tests/integration_test.rs",
+            "tests/mcp_proptest.rs",
+            "tests/progress_tui_integration.rs",
+            "tests/property_tests.rs",
+            "tests/rate_limiting_integration.rs",
+            "tests/security_integration.rs",
+            "tests/stress_test.rs"
+          ]
+        },
+        {
+          "name": "Tests — common",
+          "slug": "tests-common",
+          "files": [
+            "tests/common/mod.rs"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Other",
+      "slug": "other",
+      "files": [
+        "REFACTOR_LOG.md",
+        "src/application/crawler/mod.rs",
+        "src/application/mod.rs",
+        "src/cli/mod.rs",
+        "src/domain/repositories.rs",
+        "src/infrastructure/http/mod.rs",
+        "src/infrastructure/mod.rs",
+        "src/main.rs"
+      ]
+    }
+  ]
+}
