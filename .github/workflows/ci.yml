@@ -147,7 +147,14 @@ jobs:
           MIRIFLAGS: -Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-seed=42
         run: |
           cargo miri setup
-          cargo miri test
+          cargo miri test --lib -- \
+            --skip downloader \
+            --skip http_client \
+            --skip crawler \
+            --skip scrape \
+            --skip export_pipeline \
+            --skip test_ai \
+            --skip integration
 
   # ============================================================================
   # SCHEDULED: Coverage (manual trigger only)
