@@ -6,8 +6,8 @@ use std::path::PathBuf;
 
 /// Default cache directory path
 ///
-/// Uses XDG cache convention: `~/.cache/rust-scraper/ai_models/`
-const CACHE_DIR_NAME: &str = "rust-scraper";
+/// Uses XDG cache convention: `~/.cache/rust_scraper/ai_models/`
+const CACHE_DIR_NAME: &str = "rust_scraper";
 const AI_MODELS_SUBDIR: &str = "ai_models";
 
 /// Default model repository (Xenova's ONNX-converted version)
@@ -25,7 +25,7 @@ pub const DEFAULT_MODEL_SHA256: &str =
 /// Controls cache behavior and validation settings.
 #[derive(Debug, Clone)]
 pub struct CacheConfig {
-    /// Cache directory path (default: ~/.cache/rust-scraper/ai_models/)
+    /// Cache directory path (default: ~/.cache/rust_scraper/ai_models/)
     pub cache_dir: PathBuf,
     /// Enable SHA256 validation (default: true)
     pub validate_sha256: bool,
@@ -94,7 +94,7 @@ impl CacheConfig {
 
 /// Get the default cache directory path
 ///
-/// Returns `~/.cache/rust-scraper/ai_models/` on Linux/macOS
+/// Returns `~/.cache/rust_scraper/ai_models/` on Linux/macOS
 #[must_use]
 pub fn default_cache_dir() -> PathBuf {
     if let Some(cache_base) = dirs::cache_dir() {

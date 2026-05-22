@@ -1,4 +1,4 @@
-# CLI Reference — rust-scraper
+# CLI Reference — rust_scraper
 
 **Version:** 1.1.0  
 **MSRV:** 1.88  
@@ -148,7 +148,7 @@ cargo run -- --url "https://example.com" \
 
 **Config File:**
 ```toml
-# ~/.config/rust-scraper/config.toml
+# ~/.config/rust_scraper/config.toml
 [obsidian]
 vault_path = "~/Obsidian/MyVault"
 wiki_links = true
@@ -227,7 +227,7 @@ cargo run --features full -- --url "https://example.com" --download-images --dow
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--resume` | `false` | Resume mode - skip URLs already processed |
-| `--state-dir <DIR>` | `~/.cache/rust-scraper/state` | Custom state directory for resume mode |
+| `--state-dir <DIR>` | `~/.cache/rust_scraper/state` | Custom state directory for resume mode |
 
 ### Resume Mode (`--resume`)
 
@@ -323,13 +323,13 @@ cargo run -- --url "https://example.com" -vvv
 
 ```bash
 # Bash
-cargo run -- completions bash > ~/.local/share/bash-completion/completions/rust-scraper
+cargo run -- completions bash > ~/.local/share/bash-completion/completions/rust_scraper
 
 # Fish
-cargo run -- completions fish > ~/.config/fish/completions/rust-scraper.fish
+cargo run -- completions fish > ~/.config/fish/completions/rust_scraper.fish
 
 # Zsh
-cargo run -- completions zsh > ~/.zsh/completions/_rust-scraper
+cargo run -- completions zsh > ~/.zsh/completions/_rust_scraper
 ```
 
 ### NO_COLOR Support
@@ -607,4 +607,4 @@ cargo run -- --url "https://example.com" --delay-ms 3000 --concurrency 1
 ---
 
 **Last Verified:** 2026-04-04 with `cargo run -- --help`  
-**rust-scraper** v1.1.0 — Production-ready web scraper with Clean Architecture
+**rust_scraper** v1.1.0 — Production-ready web scraper with Clean Architecture

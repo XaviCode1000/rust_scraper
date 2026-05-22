@@ -206,7 +206,7 @@ async fn __main() -> CliExit {
     // =========================================================================
     let config_path = dirs::config_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("rust-scraper")
+        .join("rust_scraper")
         .join("config.toml");
     let config_defaults = ConfigDefaults::load(&config_path);
 

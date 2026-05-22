@@ -1,11 +1,11 @@
-//! CLI Arguments for the rust-scraper binary.
+//! CLI Arguments for the rust_scraper binary.
 //!
 //! Parsed using `clap` with derive macros.
 
 use crate::{ConcurrencyConfig, ExportFormat, OutputFormat};
 use clap::Parser;
 
-/// CLI Arguments for the rust-scraper binary.
+/// CLI Arguments for the rust_scraper binary.
 ///
 /// # Examples
 ///
@@ -14,7 +14,7 @@ use clap::Parser;
 /// use clap::Parser;
 ///
 /// let args = Args::parse_from([
-///     "rust-scraper",
+///     "rust_scraper",
 ///     "--url", "https://example.com",
 ///     "--output", "./output",
 ///     "--export-format", "jsonl",
@@ -24,7 +24,7 @@ use clap::Parser;
 /// assert_eq!(args.url, "https://example.com");
 /// ```
 #[derive(Parser, Debug)]
-#[command(name = "rust-scraper", version)]
+#[command(name = "rust_scraper", version)]
 #[command(about = "Production-ready web scraper with Clean Architecture", long_about = None)]
 #[command(args_conflicts_with_subcommands = true)]
 pub struct Args {

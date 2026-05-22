@@ -1,8 +1,8 @@
-# Auditoría de Calidad — rust-scraper v1.1.0
+# Auditoría de Calidad — rust_scraper v1.1.0
 
 **Fecha:** 2026-05-03  
 **Auditor:** XaviCode  
-**Versión:** rust-scraper v1.1.0
+**Versión:** rust_scraper v1.1.0
 
 ---
 
@@ -203,7 +203,7 @@ cargo nextest run --features full
 cargo nextest run --features ai test_ai_
 
 # Integration
-cargo nextest run -p rust-scraper --test integration
+cargo nextest run -p rust_scraper --test integration
 ```
 
 ---
@@ -346,7 +346,7 @@ use tokio::sync::Semaphore;
 let ai_semaphore = Semaphore::new(5); // máx 5 inferencias
 
 // Fase 2: Rate limiting distribuido (Redis)
-// rust-scraper:ai:rate_limit keyspace
+// rust_scraper:ai:rate_limit keyspace
 ```
 
 ---
@@ -405,7 +405,7 @@ let ai_semaphore = Semaphore::new(5); // máx 5 inferencias
 
 | Aspecto | Estado | Notas |
 |--------|--------|-------|
-| Descarga manual | ✅ Disponible | `~/.cache/rust-scraper/ai_models/` |
+| Descarga manual | ✅ Disponible | `~/.cache/rust_scraper/ai_models/` |
 | Validación SHA256 | ⚠️ Configurable | Hash no coincide |
 | Auto-download | ❌ No implementado | Pendiente PR |
 | sandboxing | ✅ spawn_blocking | Aislamiento correcto |

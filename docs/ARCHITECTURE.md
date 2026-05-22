@@ -1,4 +1,4 @@
-# Architecture — rust-scraper
+# Architecture — rust_scraper
 
 **Last Updated:** April 21, 2026
 **Version:** 1.1.0
@@ -8,7 +8,7 @@
 
 ## Overview
 
-The rust-scraper follows **Clean Architecture** with strict separation of concerns. Dependencies point inward: **Domain ← Application ← Infrastructure/Adapters**.
+The rust_scraper follows **Clean Architecture** with strict separation of concerns. Dependencies point inward: **Domain ← Application ← Infrastructure/Adapters**.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐

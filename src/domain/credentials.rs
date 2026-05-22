@@ -1,6 +1,6 @@
 //! Credentials domain module — Secrets protection with zeroize
 //!
-//! Phase 2: Secrets Protection for auditoria-resiliencia-rust-scraper
+//! Phase 2: Secrets Protection for auditoria-resiliencia-rust_scraper
 //! Provides zeroize-based secret types that:
 //! - Automatically zeroize memory on drop
 //! - DON'T leak in logs (Debug shows "[REDACTED]")

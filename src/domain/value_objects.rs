@@ -88,9 +88,9 @@ impl CorrelationId {
 
     /// Generate W3C tracestate header value
     ///
-    /// Returns `rust-scraper=v1:{trace_id}` vendor entry format.
+    /// Returns `rust_scraper=v1:{trace_id}` vendor entry format.
     pub fn to_tracestate(&self) -> String {
-        format!("rust-scraper=v1:{:032x}", self.trace_id.as_u128())
+        format!("rust_scraper=v1:{:032x}", self.trace_id.as_u128())
     }
 }
 
@@ -316,11 +316,11 @@ mod tests {
         let corr = CorrelationId::new();
         let tracestate = corr.to_tracestate();
 
-        // Format: rust-scraper=v1:{32 hex trace_id}
-        // rust-scraper=v1: = 16 chars
+        // Format: rust_scraper=v1:{32 hex trace_id}
+        // rust_scraper=v1: = 16 chars
         // trace_id = 32 chars
         // Total = 48 chars
-        assert!(tracestate.starts_with("rust-scraper=v1:"));
+        assert!(tracestate.starts_with("rust_scraper=v1:"));
         assert!(tracestate.contains('='));
         assert_eq!(tracestate.len(), 48);
     }

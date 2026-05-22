@@ -1,7 +1,7 @@
 # 📋 CHANGES.md - Rust Scraper Project History
 
-**Project**: rust-scraper
-**Repository**: https://github.com/XaviCode1000/rust_scraper
+**Project**: rust_scraper
+**Repository**: https://github.com/XaviCode1000/rust-scraper
 **Last Updated**: 2026-04-07
 **Status**: Production Ready ✅
 

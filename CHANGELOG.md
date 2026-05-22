@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`CliExit` return type** — `main()` now returns `CliExit` with proper `Termination` trait implementation
 - **Sysexits exit codes** — 0 (success), 64 (usage), 69 (network/partial), 74 (IO), 76 (protocol), 78 (config)
 - **Shell completions** — `completions` subcommand for bash, fish, zsh, elvish, powershell
-- **Config file loading** — `~/.config/rust-scraper/config.toml` with TOML defaults and CLI merge
+- **Config file loading** — `~/.config/rust_scraper/config.toml` with TOML defaults and CLI merge
 - **Pre-flight HEAD check** — Fail fast on DNS/connection errors before starting discovery
 - **Progress bars** — `indicatif` spinner for URL discovery, bounded bar for per-URL scraping
 - **Dry-run mode** — `--dry-run` prints discovered URLs to stdout and exits without scraping
@@ -78,7 +78,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### RAG Export Pipeline (Issue #1, PR #10)
 - JSONL export format for RAG ingestion
 - Resume system with `--resume` flag
-- State persistence in `~/.cache/rust-scraper/state/`
+- State persistence in `~/.cache/rust_scraper/state/`
 - Domain extraction and URL filtering
 
 #### Performance & Hardware Awareness

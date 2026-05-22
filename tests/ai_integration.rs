@@ -154,8 +154,8 @@ fn test_default_cache_dir() {
     // Should end with ai_models
     assert!(cache_dir.to_string_lossy().ends_with("ai_models"));
 
-    // Should contain rust-scraper
-    assert!(cache_dir.to_string_lossy().contains("rust-scraper"));
+    // Should contain rust_scraper
+    assert!(cache_dir.to_string_lossy().contains("rust_scraper"));
 }
 
 /// Test that ModelCache can check if a model is cached

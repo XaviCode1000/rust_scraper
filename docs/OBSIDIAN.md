@@ -1,4 +1,4 @@
-# Obsidian Integration — rust-scraper
+# Obsidian Integration — rust_scraper
 
 **Version:** 1.1.0  
 **Last Updated:** 2026-04-04
@@ -7,7 +7,7 @@
 
 ## Overview
 
-rust-scraper provides native Obsidian integration for frictionless URL-to-vault workflows. Scrape any webpage and save it directly to your Obsidian vault with wiki-links, rich metadata, and relative asset paths.
+rust_scraper provides native Obsidian integration for frictionless URL-to-vault workflows. Scrape any webpage and save it directly to your Obsidian vault with wiki-links, rich metadata, and relative asset paths.
 
 ## Features
 
@@ -17,7 +17,7 @@ Automatically finds your Obsidian vault using 4-tier resolution:
 
 1. **CLI flag:** `--vault ~/Obsidian/MyVault` (highest priority)
 2. **Environment variable:** `OBSIDIAN_VAULT=~/Obsidian/MyVault`
-3. **Config file:** `~/.config/rust-scraper/config.toml` → `[obsidian]` section
+3. **Config file:** `~/.config/rust_scraper/config.toml` → `[obsidian]` section
 4. **Auto-scan:** Searches upward from current directory for `.obsidian/app.json`
 
 **Validation:** A valid vault must contain `.obsidian/app.json` — not just the `.obsidian/` directory.
@@ -141,7 +141,7 @@ cargo run --release -- --url https://example.com --obsidian-wiki-links --quick-s
 ### Config File
 
 ```toml
-# ~/.config/rust-scraper/config.toml
+# ~/.config/rust_scraper/config.toml
 [obsidian]
 vault_path = "~/Obsidian/MyVault"
 wiki_links = true

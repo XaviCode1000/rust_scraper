@@ -9,7 +9,7 @@
 //! # Cache Structure
 //!
 //! ```text
-//! ~/.cache/rust-scraper/ai_models/
+//! ~/.cache/rust_scraper/ai_models/
 //! ├── model.onnx              # ONNX model file
 //! ├── model.onnx.sha256       # SHA256 checksum
 //! ├── tokenizer.json          # Tokenizer configuration

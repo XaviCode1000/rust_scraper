@@ -55,7 +55,7 @@ impl StateStore {
         // Get cache directory using dirs crate
         // Following **mem-with-capacity**: Pre-allocate path buffer
         let mut cache_dir = cache_dir().unwrap_or_else(|| PathBuf::from(".cache"));
-        cache_dir.push("rust-scraper");
+        cache_dir.push("rust_scraper");
         cache_dir.push("state");
 
         Self {
@@ -333,7 +333,7 @@ mod tests {
 
         // Verify path structure
         let path_str = path.to_string_lossy();
-        assert!(path_str.contains("rust-scraper/state/test.domain.json"));
+        assert!(path_str.contains("rust_scraper/state/test.domain.json"));
     }
 
     #[test]
@@ -349,7 +349,7 @@ mod tests {
     fn test_save_and_load_state() {
         let dir = tempdir().unwrap();
         let mut cache_dir = dir.path().to_path_buf();
-        cache_dir.push("rust-scraper/state");
+        cache_dir.push("rust_scraper/state");
 
         // Create a store with custom cache dir
         let mut store = StateStore::new("test.com");
@@ -393,7 +393,7 @@ mod tests {
     fn test_load_or_default_existing() {
         let dir = tempdir().unwrap();
         let mut cache_dir = dir.path().to_path_buf();
-        cache_dir.push("rust-scraper/state");
+        cache_dir.push("rust_scraper/state");
         fs::create_dir_all(&cache_dir).unwrap();
 
         // Create a test state file
@@ -435,7 +435,7 @@ mod tests {
     fn test_atomic_save() {
         let dir = tempdir().unwrap();
         let mut cache_dir = dir.path().to_path_buf();
-        cache_dir.push("rust-scraper/state");
+        cache_dir.push("rust_scraper/state");
 
         let mut store = StateStore::new("atomic.com");
         store.cache_dir = cache_dir.clone();

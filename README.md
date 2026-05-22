@@ -37,7 +37,7 @@ rust_scraper --help
 - ✅ Detección y descarga de imágenes
 - ✅ Detección y descarga de documentos (PDF, DOCX, XLSX)
 
-> **Nota:** La primera compilación tarda ~4 minutos. El modelo de IA (~90MB) se descarga y cachea automáticamente en `~/.cache/rust-scraper/models/` al primer uso.
+> **Nota:** La primera compilación tarda ~4 minutos. El modelo de IA (~90MB) se descarga y cachea automáticamente en `~/.cache/rust_scraper/models/` al primer uso.
 
 ### Opción 2: Compilar manualmente
 
@@ -195,7 +195,7 @@ O consulta la [referencia completa del CLI](docs/CLI.md) con todas las opciones,
 
 ## 🔧 Configuración
 
-Puedes crear un archivo con tus preferencias en `~/.config/rust-scraper/config.toml`:
+Puedes crear un archivo con tus preferencias en `~/.config/rust_scraper/config.toml`:
 
 ```toml
 # Valores por defecto para cada ejecución

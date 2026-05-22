@@ -12,7 +12,7 @@
 //! use rust_scraper::infrastructure::observability::{init_json_logging, MetricsCollector};
 //!
 //! // Initialize logging
-//! init_json_logging("info", Some(&log_dir), "rust-scraper")?;
+//! init_json_logging("info", Some(&log_dir), "rust_scraper")?;
 //!
 //! // Use metrics collector
 //! let metrics = MetricsCollector::new();

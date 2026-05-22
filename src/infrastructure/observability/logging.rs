@@ -74,7 +74,7 @@ impl std::fmt::Display for LogFormat {
 ///
 /// * `level` - Log level: "error", "warn", "info", "debug", "trace"
 /// * `log_dir` - Optional directory for log files. If None, logs to stderr only.
-/// * `app_name` - Application name for log file naming (default: "rust-scraper")
+/// * `app_name` - Application name for log file naming (default: "rust_scraper")
 ///
 /// # Returns
 ///

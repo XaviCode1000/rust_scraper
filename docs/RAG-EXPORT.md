@@ -298,7 +298,7 @@ impl StateStore {
     /// Create a new StateStore for a specific domain
     pub fn new(domain: &str) -> Self {
         let mut cache_dir = cache_dir().unwrap_or_else(|| PathBuf::from(".cache"));
-        cache_dir.push("rust-scraper");
+        cache_dir.push("rust_scraper");
         cache_dir.push("state");
         Self {
             domain: domain.to_string(),
@@ -346,7 +346,7 @@ impl ExportState {
 
 ### Storage Location
 
-**Default:** `~/.cache/rust-scraper/state/<domain>.json`
+**Default:** `~/.cache/rust_scraper/state/<domain>.json`
 
 **Custom:** `--state-dir /path/to/state`
 
@@ -387,12 +387,12 @@ State is saved atomically using write-to-temp + rename pattern:
 
 --resume
     Resume mode - skip URLs already processed
-    Saves processing status to cache directory (~/.cache/rust-scraper/state)
+    Saves processing status to cache directory (~/.cache/rust_scraper/state)
     Avoids re-processing URLs already scraped successfully.
 
 --state-dir <STATE_DIR>
     Custom state directory for resume mode
-    Default: ~/.cache/rust-scraper/state
+    Default: ~/.cache/rust_scraper/state
 ```
 
 ### Basic Export
@@ -622,8 +622,8 @@ curl -X PUT "http://localhost:6333/collections/rust_scraper/points" \
 
 **Solution:** Ensure state directory is writable:
 ```bash
-mkdir -p ~/.cache/rust-scraper/state
-chmod 755 ~/.cache/rust-scraper/state
+mkdir -p ~/.cache/rust_scraper/state
+chmod 755 ~/.cache/rust_scraper/state
 ```
 
 ### JSONL Validation
@@ -708,7 +708,7 @@ strip = true
 
 ## Issue #1 Status
 
-**GitHub:** XaviCode1000/rust-scraper#1
+**GitHub:** XaviCode1000/rust_scraper#1
 **Status:** ✅ Closed (100% Complete)
 
 ### Acceptance Criteria (All Met)

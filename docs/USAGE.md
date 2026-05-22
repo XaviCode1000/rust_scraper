@@ -1,4 +1,4 @@
-# Usage Guide — rust-scraper
+# Usage Guide — rust_scraper
 
 **Production-ready web scraper with Clean Architecture**
 
@@ -24,7 +24,7 @@ cargo run -- --help
 >> Rust Scraper v1.1.0 - Clean Architecture
 INFO Target: https://example.com
 INFO Output: output
-INFO Config loaded: ~/.config/rust-scraper/config.toml
+INFO Config loaded: ~/.config/rust_scraper/config.toml
 INFO User agent loaded: 5 agents available
 INFO URL validated: https://example.com/
 INFO Checking connectivity...
@@ -241,7 +241,7 @@ cargo run -- --url https://example.com \
 ```
 
 **State storage:**
-- Default: `~/.cache/rust-scraper/state`
+- Default: `~/.cache/rust_scraper/state`
 - Override with `XDG_CACHE_HOME` environment variable
 - State is organized by domain
 
@@ -488,8 +488,8 @@ cargo build --release
 
 **State store path resolution:**
 1. `--state-dir` (if provided)
-2. `$XDG_CACHE_HOME/rust-scraper/state`
-3. `~/.cache/rust-scraper/state` (default)
+2. `$XDG_CACHE_HOME/rust_scraper/state`
+3. `~/.cache/rust_scraper/state` (default)
 
 ---
 
@@ -560,11 +560,11 @@ cargo run -- --url https://example.com \
 
 ## Configuration File
 
-The scraper loads defaults from `~/.config/rust-scraper/config.toml` if it exists.
+The scraper loads defaults from `~/.config/rust_scraper/config.toml` if it exists.
 CLI arguments always take precedence over config file values.
 
 ```toml
-# ~/.config/rust-scraper/config.toml
+# ~/.config/rust_scraper/config.toml
 format = "markdown"
 export_format = "jsonl"
 concurrency = "auto"
@@ -731,4 +731,4 @@ MIT License — See [LICENSE](../LICENSE) for details.
 ---
 
 **Last updated:** April 2026
-**Version:** rust-scraper v1.1.0
+**Version:** rust_scraper v1.1.0

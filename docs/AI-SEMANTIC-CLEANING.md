@@ -117,7 +117,7 @@ Infrastructure Layer (Implementations)
 ```bash
 # Clone repository
 git clone https://github.com/XaviCode1000/rust-scraper.git
-cd rust-scraper
+cd rust_scraper
 
 # Build with AI feature enabled
 cargo build --release --features ai
@@ -217,10 +217,10 @@ Models are automatically cached in:
 
 ```bash
 # Linux/macOS
-~/.cache/rust-scraper/ai_models/
+~/.cache/rust_scraper/ai_models/
 
 # Windows
-%LOCALAPPDATA%\rust-scraper\ai_models\
+%LOCALAPPDATA%\rust_scraper\ai_models\
 ```
 
 **Cache structure:**
@@ -239,7 +239,7 @@ ai_models/
 ./target/release/rust_scraper --ai-download-model
 
 # Clear model cache
-rm -rf ~/.cache/rust-scraper/ai_models/
+rm -rf ~/.cache/rust_scraper/ai_models/
 ```
 
 ## Performance
@@ -529,7 +529,7 @@ let filtered = scorer.filter_with_embeddings(
 **Solutions:**
 1. Check internet connection
 2. Manually download model from [HuggingFace](https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2)
-3. Place in `~/.cache/rust-scraper/ai_models/`
+3. Place in `~/.cache/rust_scraper/ai_models/`
 
 ### Out of Memory
 

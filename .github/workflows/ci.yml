@@ -1,4 +1,4 @@
-# CI/CD Pipeline for rust-scraper — Stark-Grade 2026
+# CI/CD Pipeline for rust_scraper — Stark-Grade 2026
 #
 # Strategy: ONE compilation per run, cached across all steps.
 # Jobs are only split when they truly need separate environments
@@ -126,7 +126,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rust-scraper-linux-x86_64
+          name: rust_scraper-linux-x86_64
           path: target/release/rust_scraper
           retention-days: 7
 

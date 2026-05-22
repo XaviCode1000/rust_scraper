@@ -7,7 +7,7 @@
       "enabled": true,
       "timeout": 30000
     },
-    "rust-scraper": {
+    "rust_scraper": {
       "type": "local",
       "command": ["/home/xavi/Projects/Rust/rust_scraper/target/release/examples/mcp_server_stdio"],
       "enabled": true,

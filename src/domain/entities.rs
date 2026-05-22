@@ -462,7 +462,7 @@ impl DocumentChunk<Validated> {
 
 /// Metadata for the export state file
 ///
-/// Stored at ~/.cache/rust-scraper/state/<domain>.json
+/// Stored at ~/.cache/rust_scraper/state/<domain>.json
 /// Tracks which URLs have been processed for a given domain
 /// to support incremental exports and resume capability.
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

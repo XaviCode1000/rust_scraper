@@ -42,7 +42,7 @@
 //! - **Format**: ONNX (optimized for inference)
 //! - **Size**: ~90MB
 //! - **Max Tokens**: 512 per chunk
-//! - **Cache Location**: `~/.cache/rust-scraper/ai_models/`
+//! - **Cache Location**: `~/.cache/rust_scraper/ai_models/`
 //!
 //! # Rust-Skills Applied
 //!

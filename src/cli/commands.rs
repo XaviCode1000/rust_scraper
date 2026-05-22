@@ -29,7 +29,7 @@ pub async fn preflight(args: &Args) -> Result<PreflightContext, CliExit> {
     // Config path
     let config_path = dirs::config_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("rust-scraper")
+        .join("rust_scraper")
         .join("config.toml");
 
     if config_path.exists() {

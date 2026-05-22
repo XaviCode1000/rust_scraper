@@ -28,13 +28,13 @@ En lugar de darle una lista de URLs al scraper y esperar que procese todo, puede
 ## Cómo empezar
 
 ```bash
-rust-scraper --url https://example.com --interactive
+rust_scraper --url https://example.com --interactive
 ```
 
 Si también quieres usar el sitemap:
 
 ```bash
-rust-scraper --url https://example.com --use-sitemap --interactive
+rust_scraper --url https://example.com --use-sitemap --interactive
 ```
 
 ---
@@ -106,7 +106,7 @@ Cuando se abre el TUI, verás algo así:
 ## Flujo completo
 
 ```
-1. rust-scraper --url https://example.com --interactive
+1. rust_scraper --url https://example.com --interactive
                           │
 2. Descubre URLs (con spinner)
    ├── Sin sitemap: extrae links de la página
@@ -166,7 +166,7 @@ Esto devuelve la terminal a su estado normal.
 
 | Limitación | Detalle |
 |------------|---------|
-| **No funciona en pipes** | El TUI necesita un terminal interactivo. No puedes hacer `echo "url" \| rust-scraper --interactive` |
+| **No funciona en pipes** | El TUI necesita un terminal interactivo. No puedes hacer `echo "url" \| rust_scraper --interactive` |
 | **SSH** | Funciona sobre SSH siempre que el terminal sea interactivo |
 | **Tamaño mínimo** | Se recomienda un terminal de al menos 80×24 caracteres |
 | **Emojis** | Requiere una fuente que soporte emojis para los iconos ✅⬜▶ |
@@ -179,21 +179,21 @@ Esto devuelve la terminal a su estado normal.
 
 ```bash
 # Descubre todas las entradas del blog y elige cuáles descargar
-rust-scraper --url https://mi-blog.com --use-sitemap --interactive
+rust_scraper --url https://mi-blog.com --use-sitemap --interactive
 ```
 
 ### Elegir documentación específica
 
 ```bash
 # Encuentra todas las páginas del sitio y selecciona solo la docs
-rust-scraper --url https://docs.ejemplo.com --use-sitemap --interactive
+rust_scraper --url https://docs.ejemplo.com --use-sitemap --interactive
 ```
 
 ### Explorar con límite de páginas
 
 ```bash
 # Descubre hasta 50 URLs, elige las que quieras y descarga
-rust-scraper --url https://ejemplo.com --max-pages 50 --interactive
+rust_scraper --url https://ejemplo.com --max-pages 50 --interactive
 ```
 
 ---

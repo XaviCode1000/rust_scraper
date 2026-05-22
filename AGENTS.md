@@ -219,7 +219,7 @@ Responses are scanned for 19 WAF signatures (Cloudflare, reCAPTCHA, hCaptcha, Da
 - `SemanticCleanerImpl::new()` is **async** — loads model once, reuses
 - `cleaner.clean(html)` is **async** — returns `Vec<DocumentChunk>` with embeddings
 - One page → multiple chunks when AI cleaning is active
-- Model cached in `~/.cache/rust-scraper/models/`
+- Model cached in `~/.cache/rust_scraper/models/`
 
 ---
 

@@ -140,7 +140,7 @@ pub fn version_string() -> String {
     let commit = built_info::GIT_COMMIT_HASH_SHORT.unwrap_or("unknown");
     let build = built_info::BUILT_TIME_UTC;
     format!(
-        "rust-scraper {} (commit: {}, build: {})",
+        "rust_scraper {} (commit: {}, build: {})",
         env!("CARGO_PKG_VERSION"),
         commit,
         build

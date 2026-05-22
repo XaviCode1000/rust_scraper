@@ -176,7 +176,7 @@ loop {
 **Steps:**
 
 ```
-1. User runs: rust-scraper --url https://example.com --interactive
+1. User runs: rust_scraper --url https://example.com --interactive
 2. TUI discovers URLs (spinner)
 3. TUI shows URL list, user selects 5 URLs
 4. User presses Enter → Y to confirm
