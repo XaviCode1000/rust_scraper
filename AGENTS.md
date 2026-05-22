@@ -101,11 +101,19 @@ cargo nextest run --test-threads 2 -E 'test(specific_test_name)'
 
 Sub-agents get a fresh context with no memory. The orchestrator controls context access.
 
+### MANDATORY: Sub-agents MUST use GitNexus
+
+**Every sub-agent that reads, writes, or reviews code MUST use GitNexus tools for code investigation.** The orchestrator enforces this by:
+
+1. Always passing `gitnexus-master/SKILL.md` in the skill paths
+2. Including in the sub-agent prompt: `"You MUST use gitnexus_query to find code, gitnexus_impact before editing, and gitnexus_detect_changes before returning. Do NOT grep the project codebase."`
+3. Sub-agents that grep instead of using GitNexus are discipline failures
+
 **Delegate when:**
-- Reading 4+ files to understand codebase → exploration sub-agent
-- Writing code across 2+ files → writer sub-agent
+- Reading 4+ files to understand codebase → exploration sub-agent (with gitnexus-master)
+- Writing code across 2+ files → writer sub-agent (with gitnexus-master + rust-skills)
 - Running tests or CI → sub-agent
-- Multi-step refactoring → sub-agent with gitnexus-master + rust-skills
+- Multi-step refactoring → sub-agent (with gitnexus-master + rust-skills)
 
 **Do inline when:**
 - Reading 1-3 files for decision/verification
@@ -117,6 +125,13 @@ Sub-agents get a fresh context with no memory. The orchestrator controls context
 ## Skills to load before work
 - /path/to/gitnexus-master/SKILL.md
 - /path/to/rust-skills/SKILL.md
+```
+
+Every sub-agent prompt that involves code MUST include:
+```
+MANDATORY: Load gitnexus-master skill. Use gitnexus_query for code search,
+gitnexus_impact before editing, gitnexus_detect_changes before finishing.
+NEVER grep the project codebase when gitnexus_query works.
 ```
 
 ---
