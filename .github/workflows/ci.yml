@@ -132,6 +132,7 @@ jobs:
 
   # ============================================================================
   # SCHEDULED: Miri (UB detection on nightly)
+  # Note: Skips downloader tests due to FFI incompatibility with Miri
   # ============================================================================
   miri:
     name: Miri (UB Detection)
@@ -147,7 +148,7 @@ jobs:
           MIRIFLAGS: -Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-seed=42
         run: |
           cargo miri setup
-          cargo miri test --lib
+          cargo miri test --lib -- --skip downloader
 
   # ============================================================================
   # SCHEDULED: Coverage (manual trigger only)
