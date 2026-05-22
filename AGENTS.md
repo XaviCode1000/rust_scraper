@@ -2,146 +2,59 @@
 
 Production-ready web scraper with Clean Architecture, TUI selector, and AI semantic cleaning.
 
-**Stack:** Rust 1.88 · Tokio · wreq (TLS fingerprint) · ratatui · tract-onnx (feature-gated)  
+**Stack:** Rust 1.88 · Tokio · wreq (TLS fingerprint) · ratatui · tract-onnx (feature-gated)
 **Hardware:** Intel i5-4590 (4C), 8GB DDR3, HDD — all commands are HDD-optimized
 
 ---
 
 ## Key Commands
 
-### Just Recipes (preferred — orchestrate tasks)
+### ✅ Safe for Local (HDD-friendly, <30s)
+
+```bash
+cargo check              # Verify compilation
+cargo check --features ai # With AI feature
+cargo clippy -- -D warnings # Lint
+cargo fmt --check         # Format check
+cargo fmt                 # Format
+```
+
+### Just Recipes
 
 ```bash
 just check          # fmt + clippy strict
 just check-fast     # cargo check (fastest)
-just test           # nextest --test-threads 2
-just test-ai        # nextest with AI features
-just audit          # audit + deny + machete
-just cov            # coverage HTML report
 just fmt            # format code
-just build-release  # optimized build
+just audit          # audit + deny + machete
 ```
 
-### Raw Commands (when Just isn't available)
+### 🚫 NUNCA Ejecutar Localmente (HDD + 8GB RAM)
 
+**Estos comandos CONGELAN el sistema y cierran la terminal. Ejecutarlos es un error de disciplina.**
+
+| Comando | Por qué es peligroso | Alternativa |
+|---------|---------------------|-------------|
+| `cargo nextest run` | 680 tests — 5-10 min, 100% CPU + HDD | `gh workflow run ci.yml` |
+| `cargo nextest run --all-features` | Incluye AI (90MB) — congelamiento total | CI en la nube |
+| `cargo build --release` | Optimización — 10+ min | CI en la nube |
+| `cargo build` | Más lento que `cargo check` | `cargo check` |
+| `just test-ci` | Gate completo — 10+ min | `gh workflow run ci.yml` |
+| `cargo llvm-cov` | Instrumenta + tests — 15+ min | CI en la nube |
+| `cargo miri test` | Interpreta instrucciones — 30+ min | CI en la nube |
+
+**Regla simple para agentes y sub-agentes:**
+
+```
+LOCAL:  cargo check, cargo clippy, cargo fmt --check  (<30s total)
+NUBE:   gh workflow run ci.yml && gh run watch         (todo lo demás)
+```
+
+**Para tests locales** (solo debugging específico, nunca suite completa):
 ```bash
-# Verify compilation (FAST — use this)
-cargo check
-
-# Verify with AI feature
-cargo check --features ai
-
-# Lint (quick pass)
-cargo clippy -- -D warnings
-
-# Full lint with all features
-cargo clippy --all-targets --all-features -- -D warnings
-
-# Run tests (ALWAYS use nextest, never cargo test)
-cargo nextest run --test-threads 2
-cargo nextest run --test-threads 2 --features ai
-
-# Coverage
-cargo llvm-cov --html --output-dir coverage-llvm
-
-# Format check
-cargo fmt --check
-
-# Background checker (auto-runs clippy)
-bacon
+cargo nextest run --test-threads 2 -E 'test(mi_test_especifico)'
 ```
 
-**⚠️ HDD timeout rules:** First `cargo check` takes ~4 min (cold compile, 300 crates). After that, `sccache` makes everything fast. **ALWAYS set explicit timeouts** for heavy commands. Prefer `cargo check` over `cargo build` during development. Never run `cargo build --release` unless explicitly asked.
-
-### 🚀 Estrategia GitNexus + Just (2026 - Anti-Timeout)
-
-**Para agentes de código: Usa esta estrategia OBLIGATORIA para evitar timeouts:**
-
-#### ✅ Secuencia recomendada (iteraciones de 10-30 segundos)
-```bash
-# 1. ANTES de cualquier cambio → refresca GitNexus
-just analyze
-
-# 2. DESPUÉS de cada edición → tests solo de lo afectado
-just test-dev
-
-# 3. Si GitNexus te da un filtro específico → usa filtro preciso
-just test-filter 'package(rust_scraper) + test(contains("scraper"))'
-
-# 4. Solo al FINAL (cuando yo diga "tarea terminada") → suite completa
-just test
-```
-
-#### 🎯 Comandos que el agente debe usar (PIPELINE COMPLETO 2026)
-| Comando | Uso | Tiempo | Cuándo usarlo |
-|---------|-----|--------|--------------|
-| `just analyze` | Refrescar GitNexus | < 8s | Al inicio de sesión |
-| `just watch-dev` | **Modo automático principal** | automático | **Durante TODO el desarrollo** |
-| `just test-dev-with-impact` | Tests inteligentes manuales | 8-25s | Si watch no está corriendo |
-| `just test-filter 'filtro'` | Filtro personalizado | 10-30s | Cuando GitNexus da filtro específico |
-| `just test` | Tests completos | 2-6 min | Alternativa ligera al final |
-| `just test-ci` | **GATE FINAL** (fmt + clippy + tests) | 2-7 min | **Solo cuando yo diga "tarea terminada"** |
-
-### 🚨 Prompts para Agentes de Código (2026 Best Practices)
-
-**Principio clave**: Los agentes empiezan cada sesión sin estado. Un prompt claro mejora dramáticamente la calidad del output (+4 puntos porcentuales según estudio ETH Zurich 2025).
-
-#### 🎯 Prompt Definitivo para Agentes (Copia y Pega)
-
-> **Estrategia anti-timeout OBLIGATORIA 2026 (GitNexus + Just):**
-> 1. Al inicio de la sesión: `just analyze`
-> 2. Inmediatamente después: `just watch-dev` (modo automático)
-> 3. El agente **nunca** ejecuta tests manualmente. Solo edita código y deja que watch-dev haga el resto.
-> 4. Solo cuando yo diga explícitamente **"tarea terminada"** o **"finalizar"**, entonces ejecuta `just test-ci`
-> 5. Si quieres verificar algo específico usa `just test-filter 'filtro'`
-
-#### 📋 Prompts Especializados por Tipo de Tarea
-
-**Para debugging:**
-> Usa GitNexus para impact analysis antes de cualquier cambio. Ejecuta `gitnexus_impact({target: "function_name"})` y reporta riesgos HIGH/CRITICAL.
-
-**Para refactoring:**
-> Ejecuta `gitnexus_detect_changes()` antes de commits. Nunca renombres sin `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})`.
-
-**Para nuevas features:**
-> Sigue Clean Architecture: lógica de negocio en `domain/`, casos de uso en `application/`, adaptadores externos en `infrastructure/`.
-
-#### ⚙️ Configuración de Prompts por Herramienta
-
-```bash
-# Claude Code - symlink para compatibilidad
-ln -sf AGENTS.md CLAUDE.md
-
-# Cursor - reglas específicas
-echo "AGENTS.md contiene instrucciones completas" > .cursorrules
-
-# GitHub Copilot - workspace rules
-mkdir -p .github
-cp AGENTS.md .github/copilot-instructions.md
-```
-
-#### 📊 Efectividad de Prompts (Datos 2026)
-
-- **Archivos humanos**: +4 puntos de mejora vs sin contexto
-- **Archivos auto-generados**: -0.5% a -2% performance
-- **Tamaño óptimo**: ≤150 líneas (60K+ repos adoptaron estándar AAIF)
-- **Jerarquía**: AGENTS.md anidados por directorio tienen precedencia
-
-#### 🎨 Estructura de Prompt Efectiva
-
-1. **Contexto primero**: Stack, herramientas, convenciones
-2. **Comandos críticos**: just analyze, just watch-dev, just test-ci
-3. **Reglas claras**: Qué hacer automáticamente vs pedir permiso
-4. **Ejemplos concretos**: Referencias a archivos reales del repo
-5. **Límites definidos**: Zonas prohibidas, patrones no usar
-
-#### ⚠️ NUNCA uses estos comandos (causan timeouts)
-```bash
-cargo nextest run                    # ❌ Suite completa innecesaria
-cargo nextest run 2>&1 \| tail -5    # ❌ Pipes bloquean output
-just test-ci                         # ❌ Solo para CI
-just test-dev                        # ❌ Usa watch-dev en su lugar
-```
+> **NOTE:** First `cargo check` takes ~4 min (cold compile, 300 crates). After that, `sccache` makes everything fast.
 
 ---
 
@@ -189,7 +102,7 @@ src/
 ```
 
 **Key modules:**
-- `src/application/crawler_service.rs` — Crawling logic with rate limiting
+- `src/application/crawler_service.rs` — Crawling with rate limiting
 - `src/application/scraper_service.rs` — Page scraping with SPA detection
 - `src/infrastructure/ai/semantic_cleaner_impl.rs` — AI content cleaning
 - `src/infrastructure/obsidian/` — Obsidian vault integration
@@ -203,7 +116,7 @@ src/
 
 - `dashmap` 5.x (via governor) + 6.x (direct) — both needed
 - `quick-xml` 0.37 (direct) + 0.38 (via syntect→plist) — both needed
-- `scraper` 0.22 → selectors 0.26, `legible` → dom_query → selectors 0.35 — both needed
+- `scraper` 0.27 → selectors 0.35, `legible` → dom_query → selectors 0.38 — both needed
 
 ### HTTP client: `wreq` not `reqwest`
 
@@ -211,7 +124,7 @@ Uses TLS fingerprint emulation (Chrome 131) for WAF evasion. Layer 2 evasion bui
 
 ### WAF detection on HTTP 200
 
-Responses are scanned for 19 WAF signatures (Cloudflare, reCAPTCHA, hCaptcha, DataDome, PerimeterX, Akamai). If detected, UA is rotated and retried once. Still blocked → `ScraperError::WafBlocked`.
+Responses are scanned for WAF signatures (Cloudflare, reCAPTCHA, hCaptcha, DataDome, PerimeterX, Akamai). If detected, UA is rotated and retried once. Still blocked → `ScraperError::WafBlocked`.
 
 ### AI feature (`--features ai`)
 
@@ -223,27 +136,40 @@ Responses are scanned for 19 WAF signatures (Cloudflare, reCAPTCHA, hCaptcha, Da
 
 ---
 
+## GitNexus — Code Intelligence
+
+Use the `gitnexus-master` skill for all code intelligence operations. The skill is loaded from `~/.config/opencode/skills/gitnexus-master/SKILL.md`.
+
+**Mandatory workflow:**
+
+- **Before editing any symbol:** run `gitnexus_impact({target: "symbolName", direction: "upstream"})`
+- **Before committing:** run `gitnexus_detect_changes()`
+- **HIGH/CRITICAL risk from impact:** stop and warn the user
+- **Before renaming:** use `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})`
+
+**Index:** `gitnexus analyze` · **Status:** `gitnexus status`
+
+---
+
 ## Testing Rules
 
 - Write tests for all new functionality
 - Tests must be deterministic and isolated
 - Mock all external dependencies
-- Run `cargo nextest run` (never `cargo test`) before marking any task complete
-- Use `--test-threads 2` to avoid HDD I/O bottleneck
+- **Never run full suite locally** — use `gh workflow run ci.yml`
+- For specific test debugging: `cargo nextest run --test-threads 2 -E 'test(name)'`
 
-### HDD Configuration (CRÍTICO)
-**Para Intel i5-4590, 8GB RAM, HDD:**
+### HDD Configuration (CRITICAL)
 
 ```toml
 # .config/nextest.toml
 [profile.default]
-threads-required = 2 # MÁXIMO 2 hilos - previene thrashing
+threads-required = 2  # MAX 2 threads — prevents thrashing
 retries = { backoff = "exponential", count = 2, delay = "1s" }
 slow-timeout = { period = "60s", terminate-after = 3 }
 ```
 
-- **nunca** usar más de 2 threads en desarrollo
-- Perfiles nextest: `dev` (rápido), `agent` (conservador), `ci` (completo)
+Perfiles nextest: `dev` (rápido), `agent` (conservador), `ci` (completo)
 
 ---
 
@@ -270,113 +196,13 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 - Use `.unwrap()` in production code — use `?` or `match`
 - Force push to main or protected branches
 - Modify `target/`, `dist/`, or `build/` directories
-- Run `cargo build --release` during development (use `cargo check`)
-
-### 🚫 NEVER ON THIS MACHINE (HDD + 8GB RAM)
-
-**These commands WILL freeze the system and crash the terminal. Executing them is a discipline failure.**
-
-| Comando | Por qué es peligroso | Alternativa |
-|---------|---------------------|-------------|
-| `cargo nextest run` | Compila + ejecuta 680 tests — 5-10 min, 100% CPU + HDD | `gh workflow run ci.yml` |
-| `cargo nextest run --all-features` | Incluye AI (90MB modelo) — congelamiento total | CI en la nube |
-| `cargo build --release` | Compilación optimizada — 10+ min | CI en la nube |
-| `cargo build` | Más lento que `cargo check` | `cargo check` |
-| `cargo test` | Sin nextest, más lento | `cargo check` |
-| `just test-ci` | Ejecuta todo el gate — 10+ min | `gh workflow run ci.yml` |
-| `cargo llvm-cov` | Instrumenta + compila + tests — 15+ min | CI en la nube |
-| `cargo miri test` | Interpreta cada instrucción — 30+ min | CI en la nube |
-
-**Regla simple para agentes:**
-
-```
-LOCAL:  cargo check, cargo clippy, cargo fmt --check (total <30s)
-NUBE:   gh workflow run ci.yml && gh run watch
-```
-
-**Si necesitás tests locales** (debugging específico), usar filtro preciso:
-```bash
-cargo nextest run --test-threads 2 -E 'test(mi_test_especifico)'
-```
-
-**NUNCA** ejecutar la suite completa localmente. SIEMPRE delegar a la nube.
-
----
-
-## Resources
-
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Architecture details
-- [DEVELOPMENT.md](DEVELOPMENT.md) — Dev workflow and tooling
-- [justfile](justfile) — Task recipes (check, test, audit, cov)
-
-## Herramientas de Búsqueda
-
-| Herramienta | Uso |
-|------------|-----|
-| gitnexus_query | Encontrar código por concepto (execution flows) |
-| gitnexus_context | Vista 360° de símbolos |
-| fff_find_files | Encontrar archivos por nombre |
-| fff_grep | Contenido específico |
-
----
-
-## GitNexus — Code Intelligence
-
-This project is indexed by **rust_scraper**: 3963 symbols, 6951 relationships, 300 execution flows, 118 communities.
-
-| Community | Symbols | Cohesion |
-|-----------|---------|----------|
-| Application | 30 | 0.85 |
-| Domain | 26 | 0.54 |
-| Ai | 24-19 | 0.78-1.0 |
-| Export | 22-13 | 0.95-0.98 |
-| Downloader | 16 | 0.94 |
-| Crawler | 12 | 0.63 |
-| Tui | 10 | 0.63 |
-| Scraper | 10 | 0.73 |
-
-> If any GitNexus tool warns the index is stale, run `gitnexus analyze` in terminal first.
-
-### Always Do
-
-- **MUST run impact analysis** before editing any symbol: `gitnexus_impact({target: "symbolName", direction: "upstream"})`
-- **MUST run `gitnexus_detect_changes()`** before committing
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk
-- Use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping
-
-### When Debugging
-
-1. `gitnexus_query({query: "<error or symptom>"})` — find execution flows
-2. `gitnexus_context({name: "<suspect function>"})` — see callers, callees
-3. `READ gitnexus://repo/rust_scraper/process/{processName}` — trace full flow
-
-### When Refactoring
-
-- **Renaming**: MUST use `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})` first
-- **Extracting/Splitting**: MUST run `gitnexus_impact` before moving code
-
-### Tools Quick Reference
-
-| Tool | Command |
-|------|---------|
-| query | `gitnexus_query({query: "concept"})` |
-| context | `gitnexus_context({name: "symbolName"})` |
-| impact | `gitnexus_impact({target: "X", direction: "upstream"})` |
-| detect_changes | `gitnexus_detect_changes({scope: "staged"})` |
-| rename | `gitnexus_rename({symbol_name: "old", new_name: "new", dry_run: true})` |
-
-### Self-Check Before Finishing
-
-1. `gitnexus_impact` was run for all modified symbols
-2. No HIGH/CRITICAL risk warnings were ignored
-3. `gitnexus_detect_changes()` confirms expected scope
-4. All d=1 (WILL BREAK) dependents were updated
+- Run any command from the forbidden table above
 
 ---
 
 ## SDD Workflow
 
-Este proyecto soporta Spec-Driven Development via skills en `./.opencode/skills/`:
+Spec-Driven Development via skills en `~/.config/opencode/skills/`:
 
 | Skill | Propósito |
 |-------|-----------|
@@ -391,14 +217,17 @@ Este proyecto soporta Spec-Driven Development via skills en `./.opencode/skills/
 | sdd-archive | Archivar cambio |
 
 ### Pipeline SDD + GitNexus
-1. `just analyze` → iniciar
-2. `gitnexus_impact` → antes de editar
-3. `gitnexus_detect_changes` → pre-commit
-4. `just test-ci` → verificación final
+1. `gitnexus_impact` → antes de editar
+2. `gitnexus_detect_changes` → pre-commit
+3. `gh workflow run ci.yml` → verificación en nube
+4. `gh run watch` → esperar resultado
+5. `git push` → solo después de ✅ verde
+
+---
 
 ## Rust Best Practices
 
-Este proyecto incluye **50+ reglas de rust-skills** en `.atl/skills/rust-skills/rules/`:
+Este proyecto incluye reglas de rust-skills en `~/.config/opencode/skills/rust-skills/`:
 
 | Categoría | Ejemplos |
 |-----------|----------|
@@ -414,77 +243,12 @@ Cuando el agente escribe código **Rust**, cargar automáticamente:
 ```
 skill(name: "rust-skills")
 ```
-(Path: `.atl/skills/rust-skills/`)
 
 ---
 
-## Skills
-
-| Skill | Location | Trigger |
-|-------|----------|---------|
-| **rust-skills** | `~/.config/opencode/skills/rust-skills/SKILL.md` | Any Rust code |
-| **gitnexus-exploring** | `.opencode/skills/gitnexus/gitnexus-exploring/SKILL.md` | "How does X work?" |
-| **gitnexus-impact-analysis** | `.opencode/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` | "What breaks if I change X?" |
-| **gitnexus-debugging** | `.opencode/skills/gitnexus/gitnexus-debugging/SKILL.md` | "Why is X failing?" |
-| **gitnexus-refactoring** | `.opencode/skills/gitnexus/gitnexus-refactoring/SKILL.md` | Rename, extract, split |
-| **gitnexus-cli** | `.opencode/skills/gitnexus/gitnexus-cli/SKILL.md` | Index, status, clean |
-| **gitnexus-guide** | `.opencode/skills/gitnexus/gitnexus-guide/SKILL.md` | Tools, resources |
-
-### Area-Specific Skills
-
-| Area | Skill File |
-|------|------------|
-| Ai (212 symbols) | `.opencode/skills/generated/ai/SKILL.md` |
-| Application (78 symbols) | `.opencode/skills/generated/application/SKILL.md` |
-| Domain (74 symbols) | `.opencode/skills/generated/domain/SKILL.md` |
-| Export (59 symbols) | `.opencode/skills/generated/export/SKILL.md` |
-| Crawler (51 symbols) | `.opencode/skills/generated/crawler/SKILL.md` |
-| Tui (27 symbols) | `.opencode/skills/generated/tui/SKILL.md` |
-| Obsidian (24 symbols) | `.opencode/skills/generated/obsidian/SKILL.md` |
-| Scraper (19 symbols) | `.opencode/skills/generated/scraper/SKILL.md` |
-
-> Index: `gitnexus analyze` · Status: `gitnexus status`
-
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
-
-This project is indexed by GitNexus as **rust_scraper** (4430 symbols, 8085 relationships, 178 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
-
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
-
-## Always Do
-
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
-
-## Never Do
-
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
-
 ## Resources
 
-| Resource | Use for |
-|----------|---------|
-| `gitnexus://repo/rust_scraper/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/rust_scraper/clusters` | All functional areas |
-| `gitnexus://repo/rust_scraper/processes` | All execution flows |
-| `gitnexus://repo/rust_scraper/process/{name}` | Step-by-step execution trace |
-
-## CLI
-
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-
-<!-- gitnexus:end -->
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Architecture details
+- [DEVELOPMENT.md](DEVELOPMENT.md) — Dev workflow and tooling
+- [justfile](justfile) — Task recipes (check, fmt, audit)
+- [docs/wiki/](docs/wiki/) — GitNexus auto-generated documentation
