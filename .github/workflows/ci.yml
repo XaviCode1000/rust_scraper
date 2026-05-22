@@ -145,7 +145,7 @@ jobs:
       - name: Setup & Run Miri
         run: |
           cargo miri setup
-          cargo miri test -- -Z randomize-seed
+          cargo miri test
 
   # ============================================================================
   # SCHEDULED: Coverage (manual trigger only)
