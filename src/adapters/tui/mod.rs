@@ -39,7 +39,6 @@ pub mod modal;
 mod progress_types;
 mod progress_view;
 mod progress_widget;
-mod terminal;
 mod url_selector;
 
 pub use action::Action;
@@ -56,7 +55,6 @@ pub use progress_types::{
 };
 pub use progress_view::run_progress_view;
 pub use progress_widget::{ProgressIcons, ProgressWidget};
-pub use terminal::{restore_terminal, setup_terminal};
 pub use url_selector::{run_selector, UrlSelector, UrlSelectorState};
 
 use thiserror::Error;

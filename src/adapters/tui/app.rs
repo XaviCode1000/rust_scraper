@@ -4,22 +4,44 @@
 //! 1. Creates the Tui terminal
 //! 2. Registers action handlers on all components
 //! 3. Initializes all components with the terminal size
-//! 4. Runs the event loop (handle events → process actions → render)
+//! 4. Runs the **unified event loop** (crosstrem events → tick → actions → render)
 //! 5. Returns the result (selected URLs, config, or none)
 //!
 //! # Architecture
 //!
-//! The App implements a reactive architecture:
-//! - Events flow IN from the Tui event loop
-//! - Events are converted to Actions
-//! - Actions are dispatched to all components via `update()`
-//! - Components may produce new Actions in response
-//! - The App handles certain Actions directly (Quit, UrlConfirmed, etc.)
+//! The App implements a reactive architecture with a SINGLE event loop
+//! that owns the crossterm EventStream, tick interval, and action channel:
+//!
+//! ```text
+//!                 ┌──────────────────────┐
+//!                 │     App::run()        │
+//!                 │   tokio::select!      │
+//!                 │  (biased priority)    │
+//!                 │                       │
+//!   crossterm ───►│  event_stream.next()  │──► on_event() ──► components
+//!   events        │                       │
+//!   progress  ───►│  action_rx.recv()     │──► dispatch_action() ──► components
+//!   bridge        │                       │
+//!   tick      ───►│  tick_interval.tick() │──► Action::Tick ──► components
+//!   (250ms)       │                       │
+//!                 │  after select:        │
+//!                 │  1. drain actions     │
+//!                 │  2. draw()            │
+//!                 └──────────────────────┘
+//! ```
+//!
+//! No more background event loop task in Tui — App directly manages
+//! everything, eliminating the double-channel bounce and resume() race.
+
+use std::time::Duration;
 
 use anyhow::Result;
+use crossterm::event::{EventStream, KeyEventKind};
+use futures::StreamExt;
 use ratatui::prelude::*;
 use ratatui::widgets::Clear;
 use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::time::interval;
 
 use super::action::Action;
 use super::component::{AppMode, Component};
@@ -42,7 +64,7 @@ pub enum AppResult {
 
 /// Main application orchestrator.
 ///
-/// Manages component lifecycle and the event → action → render loop.
+/// Manages component lifecycle and the unified event → action → render loop.
 ///
 /// # Example
 ///
@@ -143,9 +165,15 @@ impl App {
         self
     }
 
-    /// Run the app: enter TUI, process events, render components.
+    /// Run the app: enter TUI, unify event loop, render components.
     ///
-    /// Returns when the user exits or an action triggers termination.
+    /// The unified event loop uses `tokio::select!` with biased priority:
+    /// 1. **crossterm events** (keyboard, mouse, resize) — user input first
+    /// 2. **action channel** (progress updates, component feedback)
+    /// 3. **tick interval** (250ms heartbeat for animations)
+    ///
+    /// After each select iteration, remaining actions are drained and
+    /// the UI is rendered, guaranteeing responsiveness.
     ///
     /// # Errors
     ///
@@ -171,12 +199,43 @@ impl App {
             modal.init(size)?;
         }
 
-        // Phase 3: Main event loop
+        // Phase 3: Unified event loop
+        let mut event_stream = EventStream::new();
+        let mut tick_interval = interval(Duration::from_millis(250));
+        tick_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
         loop {
-            self.handle_events(&mut tui)?;
-            self.handle_actions(&mut tui)?;
+            tokio::select! {
+                biased;
+
+                // Priority 1: User input — handle immediately
+                Some(Ok(crossterm_event)) = event_stream.next() => {
+                    self.on_event(crossterm_event, &mut tui)?;
+                }
+
+                // Priority 2: Actions from components or progress bridge
+                action = self.action_rx.recv() => {
+                    match action {
+                        Some(a) => self.dispatch_action(a, &mut tui)?,
+                        None => break, // Channel closed
+                    }
+                }
+
+                // Priority 3: Tick for periodic updates
+                _ = tick_interval.tick() => {
+                    let _ = self.action_tx.send(Action::Tick);
+                }
+            }
+
+            // Drain remaining pending actions before rendering
+            while let Ok(action) = self.action_rx.try_recv() {
+                self.dispatch_action(action, &mut tui)?;
+            }
+
+            // Render every iteration
+            self.draw(&mut tui)?;
+
             if self.should_quit {
-                tui.stop()?;
                 break;
             }
         }
@@ -188,142 +247,146 @@ impl App {
         Ok(result)
     }
 
-    /// Process incoming events from the Tui event loop.
+    /// Handle a single raw terminal event from crossterm.
     ///
-    /// Converts terminal events into actions and dispatches them.
-    /// Also forwards events to components for custom handling.
-    /// When a modal is showing, events are only forwarded to the modal.
-    fn handle_events(&mut self, tui: &mut Tui) -> Result<()> {
-        if let Some(event) = tui.next_event() {
-            // Dispatch basic events as actions
-            let action_tx = self.action_tx.clone();
-            match &event {
-                Event::Quit => {
-                    let _ = action_tx.send(Action::Quit);
-                },
-                Event::Tick => {
-                    let _ = action_tx.send(Action::Tick);
-                },
-                Event::Render => {
-                    let _ = action_tx.send(Action::Render);
-                },
-                Event::Resize(w, h) => {
-                    let _ = action_tx.send(Action::Resize(*w, *h));
-                },
-                // Key events are handled by components via handle_events
-                Event::Key(_) => {},
-                _ => {},
-            }
+    /// - Resize is handled immediately (terminal dimensions updated, action sent)
+    /// - Key events are filtered to only press events (ignore release/repeat)
+    /// - Events are forwarded to the active modal (if showing) or all components
+    fn on_event(&mut self, event: crossterm::event::Event, tui: &mut Tui) -> Result<()> {
+        // Handle resize immediately — update terminal and dispatch action
+        if let crossterm::event::Event::Resize(w, h) = event {
+            tui.resize(Rect::new(0, 0, w, h))?;
+            let _ = self.action_tx.send(Action::Resize(w, h));
+            return Ok(());
+        }
 
-            if self.should_show_modal {
-                // When modal is showing, only forward events to the modal component
-                if let Some(modal) = &mut self.modal {
-                    if let Some(action) = modal.handle_events(Some(event.clone()))? {
-                        let _ = self.action_tx.send(action);
-                    }
+        // Convert crossterm event to our Event enum, filtering key press kind
+        let app_event: Option<Event> = match event {
+            crossterm::event::Event::Key(key) if key.kind == KeyEventKind::Press => {
+                Some(Event::Key(key))
+            },
+            crossterm::event::Event::Mouse(mouse) => Some(Event::Mouse(mouse)),
+            crossterm::event::Event::Paste(s) => Some(Event::Paste(s)),
+            crossterm::event::Event::FocusLost => Some(Event::FocusLost),
+            crossterm::event::Event::FocusGained => Some(Event::FocusGained),
+            _ => None, // Ignore key release/repeat and unknown events
+        };
+
+        let Some(app_event) = app_event else {
+            return Ok(());
+        };
+
+        if self.should_show_modal {
+            // When modal is showing, only forward events to the modal component
+            if let Some(modal) = &mut self.modal {
+                if let Some(action) = modal.handle_events(Some(app_event))? {
+                    let _ = self.action_tx.send(action);
                 }
-            } else {
-                // Forward events to all regular components
-                for component in self.components.iter_mut() {
-                    if let Some(action) = component.handle_events(Some(event.clone()))? {
-                        let _ = self.action_tx.send(action);
-                    }
+            }
+        } else {
+            // Forward events to all regular components
+            for component in self.components.iter_mut() {
+                if let Some(action) = component.handle_events(Some(app_event.clone()))? {
+                    let _ = self.action_tx.send(action);
                 }
             }
         }
         Ok(())
     }
 
-    /// Process all pending actions from the action channel.
+    /// Process a single action.
     ///
-    /// Handles system-level actions (Quit, Render, Resize, etc.)
-    /// and forwards all actions to components for state updates.
-    /// When a modal is showing, it also receives updates.
-    fn handle_actions(&mut self, tui: &mut Tui) -> Result<()> {
-        while let Ok(action) = self.action_rx.try_recv() {
-            // Handle system-level actions
-            match &action {
-                Action::Render => {
-                    let action_tx = self.action_tx.clone();
-                    let should_show = self.should_show_modal;
-                    tui.draw(|frame| {
-                        for component in self.components.iter_mut() {
-                            if let Err(e) = component.draw(frame, frame.area()) {
-                                let _ = action_tx
-                                    .send(Action::Error(format!("Error al dibujar: {}", e)));
-                            }
-                        }
+    /// Handles system-level actions (Quit, ToggleHelp, etc.) and forwards
+    /// every action to all components for state updates.
+    fn dispatch_action(&mut self, action: Action, tui: &mut Tui) -> Result<()> {
+        // Handle system-level actions
+        match &action {
+            Action::Quit => self.should_quit = true,
+            Action::ClearScreen => {
+                let _ = tui.terminal.clear();
+            },
+            Action::Resize(w, h) => {
+                tui.resize(Rect::new(0, 0, *w, *h))?;
+            },
+            Action::ToggleHelp => {
+                self.should_show_modal = !self.should_show_modal;
+            },
+            Action::CloseModal => {
+                self.should_show_modal = false;
+            },
 
-                        // Draw modal overlay on top if active
-                        if should_show {
-                            if let Some(modal) = &mut self.modal {
-                                // Dark overlay background
-                                frame.render_widget(Clear, frame.area());
+            // Result actions — set result and quit
+            Action::UrlConfirmed(urls) => {
+                self.result = AppResult::Urls(urls.clone());
+                self.should_quit = true;
+            },
+            Action::UrlCancelled => {
+                self.result = AppResult::Urls(vec![]);
+                self.should_quit = true;
+            },
+            Action::ConfigDone(value) => {
+                self.result = AppResult::Config(value.clone());
+                self.should_quit = true;
+            },
+            Action::ConfigCancelled => {
+                self.result = AppResult::Config(None);
+                self.should_quit = true;
+            },
 
-                                // Calculate centered area (60% width, 50% height)
-                                let modal_rect = centered_rect(60, 50, frame.area());
+            // Tick, Render, Suspend, Resume, Error, Progress
+            // — forwarded to components below, no system-level handling
+            _ => {},
+        }
 
-                                if let Err(e) = modal.draw(frame, modal_rect) {
-                                    let _ = action_tx.send(Action::Error(format!(
-                                        "Error al dibujar modal: {}",
-                                        e
-                                    )));
-                                }
-                            }
-                        }
-                    })?;
-                },
-                Action::ToggleHelp => {
-                    self.should_show_modal = !self.should_show_modal;
-                },
-                Action::CloseModal => {
-                    self.should_show_modal = false;
-                },
-                Action::Quit => self.should_quit = true,
-                Action::ClearScreen => {
-                    let _ = tui.terminal.clear();
-                },
-                Action::Resize(w, h) => {
-                    tui.resize(Rect::new(0, 0, *w, *h))?;
-                },
-
-                // Result actions — set result and quit
-                Action::UrlConfirmed(urls) => {
-                    self.result = AppResult::Urls(urls.clone());
-                    self.should_quit = true;
-                },
-                Action::UrlCancelled => {
-                    self.result = AppResult::Urls(vec![]);
-                    self.should_quit = true;
-                },
-                Action::ConfigDone(value) => {
-                    self.result = AppResult::Config(value.clone());
-                    self.should_quit = true;
-                },
-                Action::ConfigCancelled => {
-                    self.result = AppResult::Config(None);
-                    self.should_quit = true;
-                },
-
-                // Tick and other actions are forwarded to components
-                _ => {},
-            }
-
-            // Forward all actions to components for state updates
-            // Match on reference above avoids moving `action`
-            for component in self.components.iter_mut() {
-                if let Some(new_action) = component.update(action.clone())? {
-                    let _ = self.action_tx.send(new_action);
-                }
-            }
-
-            // Also forward actions to the modal for state updates
-            if let Some(modal) = &mut self.modal {
-                if let Some(new_action) = modal.update(action.clone())? {
-                    let _ = self.action_tx.send(new_action);
-                }
+        // Forward all actions to components for state updates
+        for component in self.components.iter_mut() {
+            if let Some(new_action) = component.update(action.clone())? {
+                let _ = self.action_tx.send(new_action);
             }
         }
+
+        // Also forward actions to the modal for state updates
+        if let Some(modal) = &mut self.modal {
+            if let Some(new_action) = modal.update(action.clone())? {
+                let _ = self.action_tx.send(new_action);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Render all components to the terminal.
+    ///
+    /// Draws each component in order, then renders the modal overlay
+    /// on top if one is active.
+    fn draw(&mut self, tui: &mut Tui) -> Result<()> {
+        let action_tx = self.action_tx.clone();
+        let should_show = self.should_show_modal;
+
+        tui.draw(|frame| {
+            for component in self.components.iter_mut() {
+                if let Err(e) = component.draw(frame, frame.area()) {
+                    let _ = action_tx.send(Action::Error(format!("Error al dibujar: {}", e)));
+                }
+            }
+
+            // Draw modal overlay on top if active
+            if should_show {
+                if let Some(modal) = &mut self.modal {
+                    // Dark overlay background
+                    frame.render_widget(Clear, frame.area());
+
+                    // Calculate centered area (60% width, 50% height)
+                    let modal_rect = centered_rect(60, 50, frame.area());
+
+                    if let Err(e) = modal.draw(frame, modal_rect) {
+                        let _ =
+                            action_tx.send(Action::Error(format!("Error al dibujar modal: {}", e)));
+                    }
+                }
+            }
+        })?;
+
         Ok(())
     }
 }

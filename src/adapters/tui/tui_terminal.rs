@@ -1,186 +1,95 @@
-//! Tui struct — terminal management and async event loop.
+//! Tui struct — terminal management only.
 //!
-//! Based on the ratatui Component Architecture pattern:
-//! <https://github.com/ratatui/templates/tree/main/component>
+//! Wraps a ratatui Terminal with setup, teardown, drawing, and sizing.
+//! Does NOT manage the event loop — that's handled by `App::run()`.
 //!
 //! # Architecture
 //!
-//! The Tui struct wraps a ratatui Terminal and manages:
-//! - Terminal setup/teardown (alternate screen, raw mode)
-//! - Async event loop (crossterm events, tick, render)
-//! - Event channel (unbounded MPSC) for dispatching to components
-//! - Graceful cancellation via AtomicBool
+//! Tui is the I/O layer for terminal operations:
+//! - Terminal setup/teardown (alternate screen, raw mode, mouse capture)
+//! - Panic hook to restore terminal on crash
+//! - Drawing and sizing helpers
 //!
-//! Cancellation uses `Arc<AtomicBool>` instead of `tokio_util::CancellationToken`
-//! because `tokio-util` is not a project dependency.
+//! The event loop lives in App, which owns the crossterm EventStream
+//! and manages tick/render intervals directly via `tokio::select!`.
+//!
+//! # Usage
+//!
+//! ```no_run
+//! # use anyhow::Result;
+//! # async fn example() -> Result<()> {
+//! let mut tui = rust_scraper::adapters::tui::Tui::new()?;
+//! tui.enter()?;
+//! // ... event loop managed by App ...
+//! tui.exit()?;
+//! # Ok(())
+//! # }
+//! ```
 
 use std::io::{stdout, Stdout};
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
-use std::time::Duration;
 
 use anyhow::Result;
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture, EventStream, KeyEventKind};
-use crossterm::terminal::{EnterAlternateScreen, LeaveAlternateScreen};
-use futures::{FutureExt, StreamExt};
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
+use crossterm::terminal::{
+    disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
+};
 use ratatui::prelude::*;
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
 
-use super::Event;
+use crossterm::execute;
 
 /// Convenience alias for ratatui Frame.
 pub type Frame<'a> = ratatui::Frame<'a>;
 
-/// Terminal manager and async event loop.
+/// Terminal manager — setup, teardown, draw, resize.
 ///
-/// Usage:
-/// ```no_run
-/// # use anyhow::Result;
-/// # async fn example() -> Result<()> {
-/// let mut tui = Tui::new()?;
-/// tui.enter()?;
-/// // ... event loop ...
-/// tui.exit()?;
-/// # Ok(())
-/// # }
-/// ```
+/// Does NOT manage the event loop. Use [`super::app::App::run()`] for the
+/// unified event loop that combines crossterm events, tick
+/// intervals, and action processing.
 pub struct Tui {
     /// The underlying ratatui Terminal
     pub terminal: Terminal<CrosstermBackend<Stdout>>,
-    /// Sender for dispatching terminal events
-    pub event_tx: UnboundedSender<Event>,
-    /// Receiver for consuming terminal events
-    event_rx: UnboundedReceiver<Event>,
-    /// Cancellation flag — set to true to stop the event loop
-    cancelled: Arc<AtomicBool>,
-    /// Tick rate in Hz (default: 4.0 = 250ms)
-    tick_rate: f64,
-    /// Frame rate in Hz (default: 60.0 = ~16ms)
-    frame_rate: f64,
 }
 
 impl Tui {
     /// Create a new Tui instance.
     ///
-    /// Does NOT enter the terminal — call `enter()` to do that.
+    /// Does NOT enter the terminal — call [`enter()`](Self::enter) to do that.
     ///
     /// # Errors
     ///
     /// Returns an error if terminal creation fails.
     pub fn new() -> Result<Self> {
         let terminal = Terminal::new(CrosstermBackend::new(stdout()))?;
-        let (event_tx, event_rx) = mpsc::unbounded_channel();
-        Ok(Self {
-            terminal,
-            event_tx,
-            event_rx,
-            cancelled: Arc::new(AtomicBool::new(false)),
-            tick_rate: 4.0,
-            frame_rate: 60.0,
-        })
+        Ok(Self { terminal })
     }
 
-    /// Set the tick rate in Hz (default: 4.0).
-    #[must_use]
-    pub fn tick_rate(mut self, rate: f64) -> Self {
-        self.tick_rate = rate;
-        self
-    }
-
-    /// Set the frame rate in Hz (default: 60.0).
-    #[must_use]
-    pub fn frame_rate(mut self, rate: f64) -> Self {
-        self.frame_rate = rate;
-        self
-    }
-
-    /// Enter the terminal: enable raw mode, alternate screen, and start the event loop.
+    /// Enter the terminal: enable raw mode, alternate screen, and mouse capture.
     ///
-    /// Spawns a tokio task that listens for:
-    /// - crossterm keyboard/mouse/resize events
-    /// - Periodic tick events
-    /// - Periodic render events
+    /// Also sets up a panic hook so the terminal is restored on crash.
     ///
     /// # Errors
     ///
     /// Returns an error if terminal setup fails.
     pub fn enter(&mut self) -> Result<()> {
-        self.cancelled.store(false, Ordering::Relaxed);
-
-        crossterm::terminal::enable_raw_mode()?;
-        crossterm::execute!(stdout(), EnterAlternateScreen, EnableMouseCapture)?;
+        enable_raw_mode()?;
+        execute!(stdout(), EnterAlternateScreen, EnableMouseCapture)?;
         self.terminal.clear()?;
         self.terminal.hide_cursor()?;
-
-        let event_tx = self.event_tx.clone();
-        let cancelled = self.cancelled.clone();
-        let tick_rate = self.tick_rate;
-        let frame_rate = self.frame_rate;
-
-        // Spawn async event loop
-        tokio::spawn(async move {
-            let mut event_stream = EventStream::new();
-            let mut tick_interval = tokio::time::interval(Duration::from_secs_f64(1.0 / tick_rate));
-            let mut render_interval =
-                tokio::time::interval(Duration::from_secs_f64(1.0 / frame_rate));
-
-            let _ = event_tx.send(Event::Init);
-
-            loop {
-                // Check for cancellation before select
-                if cancelled.load(Ordering::Relaxed) {
-                    break;
-                }
-
-                let event = tokio::select! {
-                    _ = tick_interval.tick() => Event::Tick,
-                    _ = render_interval.tick() => Event::Render,
-                    crossterm_event = event_stream.next().fuse() => {
-                        match crossterm_event {
-                            Some(Ok(event)) => match event {
-                                crossterm::event::Event::Key(key)
-                                    if key.kind == KeyEventKind::Press => Event::Key(key),
-                                crossterm::event::Event::Mouse(mouse) => Event::Mouse(mouse),
-                                crossterm::event::Event::Resize(x, y) => Event::Resize(x, y),
-                                crossterm::event::Event::FocusLost => Event::FocusLost,
-                                crossterm::event::Event::FocusGained => Event::FocusGained,
-                                crossterm::event::Event::Paste(s) => Event::Paste(s),
-                                _ => continue,
-                            },
-                            Some(Err(_)) => Event::Error,
-                            None => break,
-                        }
-                    }
-                };
-
-                if event_tx.send(event).is_err() {
-                    break;
-                }
-            }
-        });
-
+        setup_panic_hook();
         Ok(())
     }
 
-    /// Exit the terminal: restore normal mode and stop the event loop.
+    /// Exit the terminal: restore raw mode, leave alternate screen.
     ///
     /// # Errors
     ///
     /// Returns an error if terminal restoration fails.
     pub fn exit(&mut self) -> Result<()> {
-        self.cancelled.store(true, Ordering::Relaxed);
-        crossterm::terminal::disable_raw_mode()?;
-        crossterm::execute!(stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
+        disable_raw_mode()?;
+        execute!(stdout(), LeaveAlternateScreen, DisableMouseCapture)?;
         self.terminal.show_cursor()?;
         Ok(())
-    }
-
-    /// Try to receive the next event from the event channel (non-blocking).
-    ///
-    /// Returns `None` if no event is available.
-    pub fn next_event(&mut self) -> Option<Event> {
-        self.event_rx.try_recv().ok()
     }
 
     /// Draw to the terminal using the provided drawing function.
@@ -223,15 +132,6 @@ impl Tui {
         self.enter()?;
         Ok(())
     }
-
-    /// Stop the event loop without restoring the terminal.
-    ///
-    /// Useful when you want to stop event processing but keep the terminal
-    /// in TUI mode (e.g., for a brief pause).
-    pub fn stop(&mut self) -> Result<()> {
-        self.cancelled.store(true, Ordering::Relaxed);
-        Ok(())
-    }
 }
 
 impl Deref for Tui {
@@ -248,6 +148,23 @@ impl DerefMut for Tui {
     }
 }
 
+/// Set up a panic hook that restores the terminal on panic.
+///
+/// Each restoration step runs independently so that a partial
+/// failure (e.g., broken stdout) doesn't prevent other steps.
+fn setup_panic_hook() {
+    let original_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        // Each step runs independently — failure in one doesn't block others
+        // Following **err-result-over-panic**: ignore errors in cleanup path
+        let _ = disable_raw_mode();
+        let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
+        let _ = execute!(std::io::stdout(), crossterm::cursor::Show);
+        eprintln!("Application panicked. Terminal restored.");
+        original_hook(panic_info);
+    }));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -255,8 +172,6 @@ mod tests {
     /// Returns true if running outside CI.
     /// CI runners (GitHub Actions, etc.) do not have a TTY, so crossterm
     /// initialization will fail with "Resource temporarily unavailable".
-    /// This avoids depending on `std::io::IsTerminal` which may not be
-    /// available on all toolchains.
     fn has_terminal() -> bool {
         std::env::var("CI").is_err()
     }
@@ -264,29 +179,21 @@ mod tests {
     #[test]
     fn test_tui_new() {
         if !has_terminal() {
-            return; // skip in CI — no TTY available
+            return;
         }
         let tui = Tui::new();
         assert!(tui.is_ok());
     }
 
     #[test]
-    fn test_tui_builder() {
+    fn test_tui_suspend_resume() {
         if !has_terminal() {
-            return; // skip in CI — no TTY available
+            return;
         }
-        let tui = Tui::new().unwrap().tick_rate(8.0).frame_rate(30.0);
-        assert!((tui.tick_rate - 8.0).abs() < f64::EPSILON);
-        assert!((tui.frame_rate - 30.0).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn test_event_channel_creation() {
-        if !has_terminal() {
-            return; // skip in CI — no TTY available
-        }
-        let tui = Tui::new().unwrap();
-        // Sender and receiver should work
-        assert!(tui.event_tx.send(Event::Tick).is_ok());
+        let mut tui = Tui::new().unwrap();
+        assert!(tui.enter().is_ok());
+        assert!(tui.suspend().is_ok());
+        assert!(tui.resume().is_ok());
+        assert!(tui.exit().is_ok());
     }
 }
