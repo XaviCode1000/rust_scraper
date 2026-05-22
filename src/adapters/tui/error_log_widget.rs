@@ -299,6 +299,7 @@ mod tests {
     use super::*;
     use std::time::SystemTime;
 
+    #[expect(dead_code)]
     fn sample_errors() -> Vec<ErrorEntry> {
         vec![
             ErrorEntry {
