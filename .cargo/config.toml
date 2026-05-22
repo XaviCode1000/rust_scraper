@@ -10,3 +10,8 @@ console = "run --features console"
 # Build with tokio_unstable (for tokio-console)
 # Usage: RUSTFLAGS="--cfg tokio_unstable" cargo debug
 debug = "build --features console"
+
+# HDD-safe: limit local compilation to 1 core to prevent thrashing
+# Cloud CI ignores this — uses all available cores
+[build]
+jobs = 1

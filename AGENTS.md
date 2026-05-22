@@ -218,7 +218,7 @@ Skills contain tool details (parameters, flags, schemas). This file contains wor
 
 This project is indexed by GitNexus as **rust_scraper** (4346 symbols, 8004 relationships, 190 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+> If any GitNexus tool warns the index is stale, run `gitnexus analyze` in terminal first. If it crashes (Napi::Error), run `gitnexus clean -f && gitnexus analyze`.
 
 ## Always Do
 
