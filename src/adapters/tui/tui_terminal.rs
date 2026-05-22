@@ -252,11 +252,13 @@ impl DerefMut for Tui {
 mod tests {
     use super::*;
 
-    /// Returns true if running in an environment with a real terminal (TTY).
+    /// Returns true if running outside CI.
     /// CI runners (GitHub Actions, etc.) do not have a TTY, so crossterm
     /// initialization will fail with "Resource temporarily unavailable".
+    /// This avoids depending on `std::io::IsTerminal` which may not be
+    /// available on all toolchains.
     fn has_terminal() -> bool {
-        std::io::stdout().is_terminal()
+        std::env::var("CI").is_err()
     }
 
     #[test]
