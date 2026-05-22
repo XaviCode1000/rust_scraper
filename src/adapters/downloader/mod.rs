@@ -307,6 +307,7 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
+    #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
     #[tokio::test]
     async fn test_downloader_creation() {
         let temp_dir = TempDir::new().unwrap();
@@ -318,6 +319,7 @@ mod tests {
         assert!(downloader.is_ok());
     }
 
+    #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
     #[tokio::test]
     async fn test_downloader_precreates_directories() {
         let temp_dir = TempDir::new().unwrap();
@@ -388,6 +390,7 @@ mod tests {
         assert_eq!(mime_type_to_extension(""), None);
     }
 
+    #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
     #[test]
     fn test_generate_filename_from_hash() {
         let temp_dir = TempDir::new().unwrap();
@@ -416,6 +419,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
     #[tokio::test]
     async fn test_download_streaming_limit() {
         let temp_dir = TempDir::new().unwrap();
@@ -428,6 +432,7 @@ mod tests {
         assert_eq!(downloader.config.max_file_size, 1024);
     }
 
+    #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
     #[tokio::test]
     async fn test_download_batch_empty() {
         let temp_dir = TempDir::new().unwrap();

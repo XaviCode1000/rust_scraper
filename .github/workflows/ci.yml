@@ -132,7 +132,16 @@ jobs:
 
   # ============================================================================
   # SCHEDULED: Miri (UB detection on nightly)
-  # Note: Skips downloader tests due to FFI incompatibility with Miri
+  #
+  # Design (three-layer defence):
+  #   1. Code level: tests that depend on boring-sys2 FFI (boring2/wreq) use
+  #      #[cfg_attr(miri, ignore)] or live in #[cfg(not(miri))] modules.
+  #      Miri cannot execute C FFI — the team explicitly stated they will
+  #      never add shims for OpenSSL/BoringSSL (rust-lang/miri#2057).
+  #   2. CI safety net: --skip downloader catches any missed FFI tests.
+  #   3. Flags: -Zmiri-disable-ffi was REMOVED (deprecated in nightly 2026).
+  #      Current MIRIFLAGS: disable-isolation (filesystem), ignore-leaks
+  #      (false positives), seed=42 (deterministic scheduling).
   # ============================================================================
   miri:
     name: Miri (UB Detection)

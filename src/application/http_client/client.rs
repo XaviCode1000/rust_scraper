@@ -423,6 +423,7 @@ pub fn get_random_user_agent_from_pool(pool: &[String]) -> String {
 }
 
 #[cfg(test)]
+#[cfg(not(miri))] // all tests create wreq::Client with boring-sys2 FFI (unsupported by Miri)
 mod tests {
     use super::*;
     use crate::application::http_client::config::HttpClientConfig;
@@ -504,6 +505,7 @@ mod tests {
 }
 
 #[cfg(test)]
+#[cfg(not(miri))] // all tests create wreq::Client with boring-sys2 FFI (unsupported by Miri)
 mod wiremock_tests {
     use super::*;
     use crate::application::http_client::config::HttpClientConfig;
@@ -648,6 +650,7 @@ mod wiremock_tests {
 }
 
 #[cfg(test)]
+#[cfg(not(miri))] // all tests create wreq::Client with boring-sys2 FFI (unsupported by Miri)
 mod waf_detection_tests {
     use super::*;
     use crate::application::http_client::config::HttpClientConfig;
