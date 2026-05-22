@@ -134,8 +134,9 @@ Sub-agents get a fresh context with no memory. The orchestrator controls context
 
 Every sub-agent prompt that involves code MUST include:
 ```
-MANDATORY: Load gitnexus-master skill. Use gitnexus_query for code search,
-gitnexus_impact before editing, gitnexus_detect_changes before finishing.
+MANDATORY: Load gitnexus-master skill. Use MCP tools (gitnexus_query,
+gitnexus_impact, gitnexus_detect_changes) — NEVER shell out to `gitnexus`
+CLI for analysis. MCP tools are instant. CLI is only for analyze/clean/wiki.
 NEVER grep the project codebase when gitnexus_query works.
 ```
 
@@ -215,7 +216,7 @@ Skills contain tool details (parameters, flags, schemas). This file contains wor
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **rust_scraper** (4341 symbols, 7999 relationships, 190 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **rust_scraper** (4346 symbols, 8004 relationships, 190 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
