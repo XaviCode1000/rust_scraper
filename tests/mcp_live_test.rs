@@ -12,22 +12,41 @@
 use assert_cmd::Command;
 use std::time::Duration;
 
-/// Helper: send a JSON-RPC request and return parsed response
-fn send_request(cmd: &mut Command, request: &str) -> serde_json::Value {
-    cmd.write_stdin(request).assert().success();
+/// MCP initialize handshake — required before any tool call.
+/// Per the MCP spec, the first message MUST be `initialize`, then
+/// the client sends a `notifications/initialized` notification.
+const MCP_INIT: &str = r#"{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"rust_scraper_test","version":"1.0"}}}"#;
+const MCP_INITIALIZED: &str = r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#;
 
-    let output = cmd.output().expect("failed to get output");
+/// Helper: send a JSON-RPC request and return parsed response.
+///
+/// Automatically performs the MCP initialize handshake first, then
+/// sends the actual tool request. All messages are piped to stdin
+/// at once; the server processes them sequentially and exits when
+/// stdin closes.
+fn send_request(cmd: &mut Command, request: &str) -> serde_json::Value {
+    let input = format!("{MCP_INIT}\n{MCP_INITIALIZED}\n{request}\n");
+    cmd.write_stdin(input);
+
+    let output = cmd.output().expect("failed to get MCP output");
+    assert!(
+        output.status.success(),
+        "MCP process exited with code {}",
+        output.status
+    );
+
     let stdout = String::from_utf8_lossy(&output.stdout);
-    // MCP may send multiple messages, find the response
+    // MCP sends multiple responses (initialize + tool result).
+    // Find the tool response (any id that is NOT 0).
     for line in stdout.lines() {
         if let Ok(val) = serde_json::from_str::<serde_json::Value>(line) {
-            if val.get("id").is_some() {
+            if val.get("id").and_then(|id| id.as_u64()) != Some(0) {
                 return val;
             }
         }
     }
     panic!(
-        "No valid JSON-RPC response found in output:\n{}",
+        "No valid JSON-RPC tool response found in MCP output:\n{}",
         stdout.chars().take(500).collect::<String>()
     );
 }
