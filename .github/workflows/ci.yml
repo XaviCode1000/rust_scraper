@@ -134,30 +134,53 @@ jobs:
   # SCHEDULED: Miri (UB detection on nightly)
   #
   # Design (three-layer defence):
-  #   1. Code level: tests that depend on boring-sys2 FFI (boring2/wreq) use
-  #      #[cfg_attr(miri, ignore)] or live in #[cfg(not(miri))] modules.
-  #      Miri cannot execute C FFI — the team explicitly stated they will
-  #      never add shims for OpenSSL/BoringSSL (rust-lang/miri#2057).
+  #   1. Code level: tests that depend on boring-sys2 FFI (boring2/wreq) or
+  #      onig-sys (syntect) use #[cfg_attr(miri, ignore)] or live in
+  #      #[cfg(not(miri))] modules. Miri cannot execute C FFI nor inline
+  #      assembly (raw-cpuid via quanta/governor).
   #   2. CI safety net: --skip downloader catches any missed FFI tests.
-  #   3. Flags: -Zmiri-disable-ffi was REMOVED (deprecated in nightly 2026).
-  #      Current MIRIFLAGS: disable-isolation (filesystem), ignore-leaks
-  #      (false positives), seed=42 (deterministic scheduling).
+  #   3. Matrix: tests split into parallel groups so ALL failures surface
+  #      in ONE run instead of blocking on the first UB.
+  #   4. Sysroot cache: cargo miri setup drops from ~15min to ~2s warm.
+  #   5. Flags: MIRIFLAGS with disable-isolation, ignore-leaks, seed=42.
   # ============================================================================
   miri:
-    name: Miri (UB Detection)
+    name: Miri (${{ matrix.group }})
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    strategy:
+      fail-fast: false  # show ALL failures, not just the first UB
+      matrix:
+        group:
+          - name: core
+            filter: "-- adapters:: application:: cli:: config:: di:: error::"
+          - name: domain
+            filter: "-- domain::"
+          - name: infra
+            filter: "-- infrastructure::"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri
-      - name: Setup & Run Miri
+
+      # Cache Miri sysroot: ~1GB compiled stdlib, reuses across runs.
+      # No rust-toolchain.toml exists — key by OS + manual nightly stamp.
+      # On nightly update the cache misses (cold setup once), then repopulates.
+      - name: Cache Miri sysroot
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/miri
+          key: miri-sysroot-${{ runner.os }}-2026-05-23
+          restore-keys: |
+            miri-sysroot-${{ runner.os }}-
+
+      - name: Setup & Run Miri (${{ matrix.group.name }})
         env:
           MIRIFLAGS: -Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-seed=42
         run: |
           cargo miri setup
-          cargo miri test --lib -- --skip downloader
+          cargo miri test --lib -- --skip downloader ${{ matrix.group.filter }}
 
   # ============================================================================
   # SCHEDULED: Coverage (manual trigger only)
