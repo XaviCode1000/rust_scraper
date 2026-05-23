@@ -71,7 +71,7 @@ pub fn highlight_code_blocks(markdown: &str) -> String {
         .to_string()
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use super::*;
 
