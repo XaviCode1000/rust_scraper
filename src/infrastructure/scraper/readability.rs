@@ -58,7 +58,7 @@ pub fn parse(html: &str, url: Option<&str>) -> Result<Article> {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use super::*;
 
