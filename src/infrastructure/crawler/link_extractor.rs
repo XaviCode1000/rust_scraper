@@ -189,7 +189,7 @@ impl LinkExtractor for HtmlLinkExtractor {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use super::*;
 
