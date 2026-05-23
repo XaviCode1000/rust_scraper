@@ -151,12 +151,13 @@ jobs:
     strategy:
       fail-fast: false  # show ALL failures, not just the first UB
       matrix:
-        group:
-          - name: core
+        group: [core, domain, infra]
+        include:
+          - group: core
             filter: "-- adapters:: application:: cli:: config:: di:: error::"
-          - name: domain
+          - group: domain
             filter: "-- domain::"
-          - name: infra
+          - group: infra
             filter: "-- infrastructure::"
     steps:
       - uses: actions/checkout@v4
@@ -175,12 +176,12 @@ jobs:
           restore-keys: |
             miri-sysroot-${{ runner.os }}-
 
-      - name: Setup & Run Miri (${{ matrix.group.name }})
+      - name: Setup & Run Miri (${{ matrix.group }})
         env:
           MIRIFLAGS: -Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-seed=42
         run: |
           cargo miri setup
-          cargo miri test --lib -- --skip downloader ${{ matrix.group.filter }}
+          cargo miri test --lib -- --skip downloader ${{ matrix.filter }}
 
   # ============================================================================
   # SCHEDULED: Coverage (manual trigger only)
