@@ -40,7 +40,7 @@ pub fn convert_to_markdown(html: &str) -> String {
     })
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use super::*;
 
