@@ -365,6 +365,7 @@ mod tests {
     use super::*;
     use crate::application::http_client::create_http_client;
 
+    #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
     #[tokio::test]
     async fn test_scrape_with_config_invalid_url() {
         let client = create_http_client().unwrap();

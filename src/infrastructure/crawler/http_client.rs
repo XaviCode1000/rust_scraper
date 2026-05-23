@@ -107,6 +107,7 @@ pub async fn fetch_url(url: &str, config: &CrawlerConfig) -> Result<String, Craw
 }
 
 #[cfg(test)]
+#[cfg(not(miri))] // all tests create wreq::Client with boring-sys2 FFI (unsupported by Miri)
 mod tests {
     use super::*;
 

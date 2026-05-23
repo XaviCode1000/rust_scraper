@@ -1290,6 +1290,7 @@ mod tests {
         assert!(urls.is_empty());
     }
 
+    #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
     #[tokio::test]
     #[allow(deprecated)]
     async fn test_discover_urls_invalid_url() {
