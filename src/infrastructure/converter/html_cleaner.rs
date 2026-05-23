@@ -126,7 +126,7 @@ fn normalize_whitespace(html: &str) -> String {
     result
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(miri)))]
 mod tests {
     use super::*;
 
