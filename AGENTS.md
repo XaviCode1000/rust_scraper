@@ -22,20 +22,23 @@ sudo dnf install cmake
 ### 1. Session Start
 
 ```
-gitnexus analyze                    # Refresh index (re-run after branch switch)
-gitnexus analyze --skills           # Regenerate skill files if communities changed
+gitnexus analyze --index-only --skip-agents-md    # Refresh index on a clean tree without touching AGENTS.md
+gitnexus analyze --skills --index-only --skip-agents-md  # Regenerate skill files if communities changed
 codedb_status                       # Verify CodeDB index is fresh
 ```
 
 If you see "Index is stale" from any gitnexus tool → stop and run `gitnexus analyze` first.
 If `codedb_status` shows stale index → run `codedb_index` to rebuild.
 
+Before reindexing, make sure the worktree is clean. If you still need `gitnexus_detect_changes()` later in the session, do not rerun `gitnexus analyze` after editing files.
+
 If `gitnexus analyze` crashes with `Napi::Error` or hangs → clean first:
 ```bash
-gitnexus clean -f && gitnexus analyze
+gitnexus clean -f && gitnexus analyze --index-only --skip-agents-md
 ```
 
-**Never** run `gitnexus analyze --skip-agents-md` or add `--no-stats` — we want AGENTS.md to stay in sync.
+**Use** `--skip-agents-md` whenever you want to refresh the index without modifying `AGENTS.md`. Use `--index-only` for pure index mode when you do not want file injection at all.
+**Do not** rerun `gitnexus analyze` in a dirty worktree if you still need `gitnexus_detect_changes()` to report your current edits.
 
 ### 2. Before Editing Code
 
@@ -215,9 +218,9 @@ Skills are auto-discovered by OpenCode from `~/.config/opencode/skills/`. Refere
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **rust_scraper** (4460 symbols, 9232 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **rust_scraper** (4465 symbols, 9237 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
-> Index stale? Run `gitnexus analyze` from the project root.
+> Index stale? Run `gitnexus analyze --index-only --skip-agents-md` from the project root. Use `gitnexus analyze --skills --index-only --skip-agents-md` only when regenerating skill files.
 
 ## Always Do
 
