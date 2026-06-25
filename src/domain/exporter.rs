@@ -109,7 +109,7 @@ impl ExporterConfig {
         let state_dir = self.output_dir.join("state");
         // Extract domain from filename if possible, otherwise use filename
         let domain = self.filename.clone();
-        state_dir.join(format!("{}.json", domain))
+        state_dir.join(format!("{domain}.json"))
     }
 }
 

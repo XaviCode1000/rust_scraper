@@ -84,7 +84,7 @@ impl CrawlResultRepositoryImpl {
         use std::io::Read;
 
         let file = std::fs::File::open(path)
-            .map_err(|e| CrawlError::Storage(format!("no se pudo abrir log: {}", e)))?;
+            .map_err(|e| CrawlError::Storage(format!("no se pudo abrir log: {e}")))?;
         let mut reader = std::io::BufReader::new(file);
         let mut offset: u64 = 0;
 
@@ -137,7 +137,7 @@ impl CrawlResultRepository for CrawlResultRepositoryImpl {
         }
 
         let payload = serde_json::to_vec(content)
-            .map_err(|e| CrawlError::Storage(format!("serialización fallida: {}", e)))?;
+            .map_err(|e| CrawlError::Storage(format!("serialización fallida: {e}")))?;
 
         let url = content.url.as_str().to_string();
         self.tx
@@ -165,22 +165,22 @@ impl CrawlResultRepository for CrawlResultRepositoryImpl {
         };
 
         let mut file = std::fs::File::open(&self.log_path)
-            .map_err(|e| CrawlError::Storage(format!("no se pudo abrir log: {}", e)))?;
+            .map_err(|e| CrawlError::Storage(format!("no se pudo abrir log: {e}")))?;
 
         file.seek(SeekFrom::Start(offset))
-            .map_err(|e| CrawlError::Storage(format!("seek fallido: {}", e)))?;
+            .map_err(|e| CrawlError::Storage(format!("seek fallido: {e}")))?;
 
         let mut len_buf = [0u8; 4];
         file.read_exact(&mut len_buf)
-            .map_err(|e| CrawlError::Storage(format!("lectura de longitud fallida: {}", e)))?;
+            .map_err(|e| CrawlError::Storage(format!("lectura de longitud fallida: {e}")))?;
         let len = u32::from_le_bytes(len_buf) as usize;
 
         let mut payload = vec![0u8; len];
         file.read_exact(&mut payload)
-            .map_err(|e| CrawlError::Storage(format!("lectura de payload fallida: {}", e)))?;
+            .map_err(|e| CrawlError::Storage(format!("lectura de payload fallida: {e}")))?;
 
         let result: ScrapedContent = serde_json::from_slice(&payload)
-            .map_err(|e| CrawlError::Storage(format!("deserialización fallida: {}", e)))?;
+            .map_err(|e| CrawlError::Storage(format!("deserialización fallida: {e}")))?;
 
         Ok(Some(result))
     }

@@ -45,7 +45,7 @@ pub async fn run(args: Args) -> CliExit {
 
     let target_url = match url::Url::parse(target_url_str) {
         Ok(url) => url,
-        Err(e) => return CliExit::UsageError(format!("Invalid URL: {}", e)),
+        Err(e) => return CliExit::UsageError(format!("Invalid URL: {e}")),
     };
 
     // Create crawler config from args
@@ -86,7 +86,7 @@ pub async fn run(args: Args) -> CliExit {
 
     // Report failures
     for (url, error) in &failures {
-        eprintln!("Failed to scrape {}: {}", url, error);
+        eprintln!("Failed to scrape {url}: {error}");
     }
 
     if results.is_empty() {
@@ -147,7 +147,7 @@ pub async fn run(args: Args) -> CliExit {
             CliExit::Success
         },
         Err(e) => {
-            eprintln!("Export failed: {:?}", e);
+            eprintln!("Export failed: {e:?}");
             e
         },
     }

@@ -43,9 +43,8 @@ pub fn extract_links(html: &str, base_url: &str) -> Result<Vec<String>, crate::d
     debug!("Extracting links from HTML (base_url={})", base_url);
 
     let document = Html::parse_document(html);
-    let selector = Selector::parse("a[href]").map_err(|e| {
-        crate::domain::CrawlError::Parse(format!("Failed to parse selector: {}", e))
-    })?;
+    let selector = Selector::parse("a[href]")
+        .map_err(|e| crate::domain::CrawlError::Parse(format!("Failed to parse selector: {e}")))?;
 
     // Parse base URL once
     let base =
@@ -102,7 +101,7 @@ pub fn extract_links(html: &str, base_url: &str) -> Result<Vec<String>, crate::d
 #[must_use]
 pub fn is_internal_link(url: &str, domain: &str) -> bool {
     extract_domain(url)
-        .map(|url_domain| url_domain == domain || url_domain.ends_with(&format!(".{}", domain)))
+        .map(|url_domain| url_domain == domain || url_domain.ends_with(&format!(".{domain}")))
         .unwrap_or(false)
 }
 

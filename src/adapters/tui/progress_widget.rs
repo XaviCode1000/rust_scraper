@@ -274,8 +274,8 @@ impl ProgressWidget {
         let total = self.state.total;
 
         // Format label: "40% (2/5)  Est: 12s"
-        let percentage_str = format!("{:3.0}%", percent);
-        let count_str = format!("({}/{})", processed, total);
+        let percentage_str = format!("{percent:3.0}%");
+        let count_str = format!("({processed}/{total})");
         let eta_str = match self.state.eta_seconds {
             Some(secs) => {
                 if secs == 0 && processed < total {
@@ -283,11 +283,11 @@ impl ProgressWidget {
                 } else if secs == 0 {
                     "Est: done".to_string()
                 } else if secs < 60 {
-                    format!("Est: {}s", secs)
+                    format!("Est: {secs}s")
                 } else {
                     let mins = secs / 60;
                     let secs_rem = secs % 60;
-                    format!("Est: {}m {}s", mins, secs_rem)
+                    format!("Est: {mins}m {secs_rem}s")
                 }
             },
             None => "Est: --".to_string(),
@@ -295,9 +295,9 @@ impl ProgressWidget {
 
         // Build label with spinner if still processing
         let label = if processed < total {
-            format!("{} {} {}", percentage_str, count_str, eta_str)
+            format!("{percentage_str} {count_str} {eta_str}")
         } else {
-            format!("{} {} ✅", percentage_str, count_str)
+            format!("{percentage_str} {count_str} ✅")
         };
 
         // Choose color based on state
@@ -339,7 +339,7 @@ impl ProgressWidget {
                 let status_text = match url_state.status {
                     ScrapeStatus::Completed => {
                         if let Some(chars) = url_state.chars {
-                            format!("Completed  {} chars", chars)
+                            format!("Completed  {chars} chars")
                         } else {
                             "Completed".to_string()
                         }
@@ -409,7 +409,7 @@ impl ProgressWidget {
         use ratatui::widgets::{List, ListItem, Paragraph};
 
         let error_count = self.state.errors.len();
-        let title = format!("Errors ({})", error_count);
+        let title = format!("Errors ({error_count})");
         let block = Block::default().borders(Borders::ALL).title(title.as_str());
 
         if error_count == 0 {
@@ -469,26 +469,24 @@ impl ProgressWidget {
             .saturating_sub(completed + self.state.failed);
         let failed = self.state.failed;
 
-        let status_line = format!(
-            "📊 {} completed | {} remaining | {} failed",
-            completed, remaining, failed
-        );
+        let status_line =
+            format!("📊 {completed} completed | {remaining} remaining | {failed} failed");
 
         // ETA on footer as well
         let eta_line = match self.state.eta_seconds {
             Some(secs) if secs > 0 && remaining > 0 => {
                 if secs < 60 {
-                    format!("⏱ {}s", secs)
+                    format!("⏱ {secs}s")
                 } else {
                     let mins = secs / 60;
                     let s = secs % 60;
-                    format!("⏱ {}m {}s", mins, s)
+                    format!("⏱ {mins}m {s}s")
                 }
             },
             _ => "⏱ done".to_string(),
         };
 
-        let combined = format!("{}    {}", status_line, eta_line);
+        let combined = format!("{status_line}    {eta_line}");
 
         let footer = Paragraph::new(combined)
             .style(Style::default().fg(Theme::text()))

@@ -62,14 +62,13 @@ pub fn validate_and_parse_url(url: &str) -> Result<url::Url> {
     }
 
     let parsed = url::Url::parse(url.trim())
-        .map_err(|e| ScraperError::invalid_url(format!("Failed to parse URL '{}': {}", url, e)))?;
+        .map_err(|e| ScraperError::invalid_url(format!("Failed to parse URL '{url}': {e}")))?;
 
     match parsed.scheme() {
         "http" | "https" => {},
         scheme => {
             return Err(ScraperError::invalid_url(format!(
-                "URL must use http or https scheme, got '{}'",
-                scheme
+                "URL must use http or https scheme, got '{scheme}'"
             )))
         },
     }

@@ -175,7 +175,7 @@ impl ErrorLogWidget {
         let title = if error_count > self.max_errors {
             format!("Errors ({}/{}) (j/k scroll)", self.max_errors, error_count)
         } else {
-            format!("Errors ({})", error_count)
+            format!("Errors ({error_count})")
         };
 
         let block = Block::default().borders(Borders::ALL).title(title.as_str());

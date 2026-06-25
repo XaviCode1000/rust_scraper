@@ -190,7 +190,7 @@ pub async fn discover_urls_for_tui(
             .get(base_url)
             .send()
             .await
-            .map_err(|e| anyhow::anyhow!("HTTP error: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("HTTP error: {e}"))?;
 
         let status = response.status();
         let content_type = response
@@ -212,15 +212,15 @@ pub async fn discover_urls_for_tui(
         let html = response
             .text()
             .await
-            .map_err(|e| anyhow::anyhow!("Network error: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Network error: {e}"))?;
 
         debug!("Received HTML: {} bytes", html.len());
 
-        let base = Url::parse(base_url).map_err(|e| anyhow::anyhow!("Invalid URL: {}", e))?;
+        let base = Url::parse(base_url).map_err(|e| anyhow::anyhow!("Invalid URL: {e}"))?;
 
         // Extract links
         let links =
-            extract_links(&html, base_url).map_err(|e| anyhow::anyhow!("Parse error: {}", e))?;
+            extract_links(&html, base_url).map_err(|e| anyhow::anyhow!("Parse error: {e}"))?;
 
         // Filter and normalize URLs
         let mut urls = Vec::new();
@@ -409,7 +409,7 @@ pub async fn scrape_single_url_for_tui(
             Ok(ScrapedContent {
                 title: url
                     .host_str()
-                    .ok_or_else(|| ScraperError::invalid_url(format!("URL missing host: {}", url)))?
+                    .ok_or_else(|| ScraperError::invalid_url(format!("URL missing host: {url}")))?
                     .to_string(),
                 content: fallback_content,
                 url: ValidUrl::new(url.clone()),
@@ -944,7 +944,7 @@ async fn crawl_with_subpath_sitemaps(
     for i in 1..=segments.len().min(3) {
         let sub_path = segments[..i].join("/");
         for sitemap_name in &["sitemap.xml", "sitemap_index.xml"] {
-            let candidate = format!("/{}/{}", sub_path, sitemap_name);
+            let candidate = format!("/{sub_path}/{sitemap_name}");
             if let Ok(sitemap_url) = base.join(&candidate) {
                 let sitemap_str = sitemap_url.as_str();
                 tracing::debug!("Trying sub-path sitemap: {}", sitemap_str);
@@ -1069,7 +1069,7 @@ async fn discover_sitemap_url(base_url: &str) -> Result<String, CrawlError> {
     for i in 1..=segments.len().min(3) {
         let sub_path = segments[..i].join("/");
         for sitemap_name in &["sitemap.xml", "sitemap_index.xml"] {
-            let candidate = format!("/{}/{}", sub_path, sitemap_name);
+            let candidate = format!("/{sub_path}/{sitemap_name}");
             if let Ok(sitemap_url) = base.join(&candidate) {
                 let sitemap_str = sitemap_url.as_str();
                 tracing::debug!("Trying sub-path sitemap: {}", sitemap_str);

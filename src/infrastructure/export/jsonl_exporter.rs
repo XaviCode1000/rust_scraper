@@ -53,9 +53,9 @@ impl JsonlExporter {
             .map_err(|e| ExporterError::WriteError(format!("{}: {}", lock_path.display(), e)))?;
         // allow: fs2::FileExt::lock_exclusive, clippy misidentifies as std::io::FileExt (1.89+)
         #[allow(clippy::incompatible_msrv)]
-        lock_file.lock_exclusive().map_err(|e| {
-            ExporterError::WriteError(format!("failed to acquire file lock: {}", e))
-        })?;
+        lock_file
+            .lock_exclusive()
+            .map_err(|e| ExporterError::WriteError(format!("failed to acquire file lock: {e}")))?;
 
         // Fix: Only truncate if file doesn't exist yet.
         // Prevents data loss when writer() is called multiple times

@@ -205,7 +205,7 @@ impl std::fmt::Display for ConcurrencyConfig {
         if self.is_auto() {
             write!(f, "auto")
         } else if let Some(value) = self.value {
-            write!(f, "{}", value)
+            write!(f, "{value}")
         } else {
             write!(f, "auto")
         }
@@ -278,7 +278,7 @@ impl From<&str> for ConcurrencyConfig {
             Self::default()
         } else {
             s.parse().map(ConcurrencyConfig::new).unwrap_or_else(|_| {
-                eprintln!("Warning: Invalid concurrency '{}', using auto-detect", s);
+                eprintln!("Warning: Invalid concurrency '{s}', using auto-detect");
                 Self::default()
             })
         }
@@ -335,8 +335,7 @@ impl clap::builder::TypedValueParser for ConcurrencyValueParser {
                 clap::Error::raw(
                     clap::error::ErrorKind::InvalidValue,
                     format!(
-                        "'{}' is not a valid concurrency value (expected number or 'auto')",
-                        value
+                        "'{value}' is not a valid concurrency value (expected number or 'auto')"
                     ),
                 )
             })

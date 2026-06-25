@@ -113,7 +113,7 @@ impl MemoryManager {
         // Write URLs to disk in chunks
         let chunk_size = 10_000;
         for (chunk_idx, chunk) in urls.chunks(chunk_size).enumerate() {
-            let file_path = temp_dir.join(format!("urls_chunk_{}.txt", chunk_idx));
+            let file_path = temp_dir.join(format!("urls_chunk_{chunk_idx}.txt"));
             let mut content = String::new();
             for url in chunk {
                 content.push_str(url.as_str());
@@ -121,7 +121,7 @@ impl MemoryManager {
             }
 
             std::fs::write(&file_path, content).map_err(|e| {
-                MemoryError::DiskSwapFailed(format!("failed to write chunk {}: {}", chunk_idx, e))
+                MemoryError::DiskSwapFailed(format!("failed to write chunk {chunk_idx}: {e}"))
             })?;
         }
 

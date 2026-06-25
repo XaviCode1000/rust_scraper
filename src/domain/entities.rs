@@ -429,8 +429,7 @@ impl DocumentChunk<Draft> {
         for (key, value) in &self.metadata {
             if value.trim().is_empty() {
                 return Err(ValidationError::InvalidMetadata(format!(
-                    "metadata key '{}' has empty value",
-                    key
+                    "metadata key '{key}' has empty value"
                 )));
             }
         }

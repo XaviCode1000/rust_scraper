@@ -187,7 +187,7 @@ pub async fn scrape_urls(
                         let _ = tx
                             .send(ScrapeProgress::Failed {
                                 url: url_str.clone(),
-                                error: ScrapeError::Other(format!("{}", e)),
+                                error: ScrapeError::Other(format!("{e}")),
                             })
                             .await;
                     }

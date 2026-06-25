@@ -194,7 +194,7 @@ pub fn extract_domain(url: &str) -> Option<String> {
 #[must_use]
 pub fn is_internal_link(url: &str, seed_domain: &str) -> bool {
     extract_domain(url)
-        .map(|domain| domain == seed_domain || domain.ends_with(&format!(".{}", seed_domain)))
+        .map(|domain| domain == seed_domain || domain.ends_with(&format!(".{seed_domain}")))
         .unwrap_or(false)
 }
 

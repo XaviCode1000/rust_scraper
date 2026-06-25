@@ -37,7 +37,7 @@ impl LinkProcessor {
     /// Pure function for domain checking logic.
     pub fn is_internal_link(url: &str, domain: &str) -> bool {
         Self::extract_domain(url)
-            .map(|url_domain| url_domain == domain || url_domain.ends_with(&format!(".{}", domain)))
+            .map(|url_domain| url_domain == domain || url_domain.ends_with(&format!(".{domain}")))
             .unwrap_or(false)
     }
 

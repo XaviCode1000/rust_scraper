@@ -129,12 +129,9 @@ impl StateStore {
         // Acquire shared lock to prevent reading during concurrent write
         let lock_path = path.with_extension("json.lock");
         let lock_file = fs::File::create(&lock_path).map_err(ScraperError::Io)?;
-        // allow: fs2::FileExt::lock_shared, clippy misidentifies as std::io::FileExt (1.89+)
-        #[allow(clippy::incompatible_msrv)]
-        lock_file.lock_shared().map_err(|e| {
+        fs2::FileExt::lock_shared(&lock_file).map_err(|e| {
             ScraperError::Io(std::io::Error::other(format!(
-                "failed to acquire state read lock: {}",
-                e
+                "failed to acquire state read lock: {e}"
             )))
         })?;
 
@@ -192,8 +189,7 @@ impl StateStore {
         let lock_file = fs::File::create(&lock_path).map_err(ScraperError::Io)?;
         lock_file.lock_exclusive().map_err(|e| {
             ScraperError::Io(std::io::Error::other(format!(
-                "failed to acquire state lock: {}",
-                e
+                "failed to acquire state lock: {e}"
             )))
         })?;
 

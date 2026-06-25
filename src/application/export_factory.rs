@@ -36,8 +36,8 @@ pub fn create_exporter(
             // Auto-detect: checks if export.jsonl or export.json exists
             info!("Auto-detecting format...");
 
-            let jsonl_path = output_dir.join(format!("{}.jsonl", filename));
-            let vector_path = output_dir.join(format!("{}.json", filename));
+            let jsonl_path = output_dir.join(format!("{filename}.jsonl"));
+            let vector_path = output_dir.join(format!("{filename}.json"));
 
             if vector_path.exists() {
                 info!("Detected Vector format - {:?} exists", vector_path);
