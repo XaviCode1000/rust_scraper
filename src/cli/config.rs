@@ -83,7 +83,7 @@ pub fn init_logging_dual(level: &str, quiet: bool, no_color: bool) {
     let filter = if quiet {
         EnvFilter::new("rust_scraper=warn,tokio=warn,reqwest=warn")
     } else {
-        EnvFilter::new(format!("rust_scraper={},tokio=warn,reqwest=warn", level))
+        EnvFilter::new(format!("rust_scraper={level},tokio=warn,reqwest=warn"))
     };
 
     let fmt_layer = fmt::layer()

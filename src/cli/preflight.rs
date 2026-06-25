@@ -227,7 +227,7 @@ pub enum PreflightResult {
 pub async fn preflight_check(url: &url::Url) -> PreflightResult {
     let client = match crate::create_http_client() {
         Ok(c) => c,
-        Err(e) => return PreflightResult::Failed(format!("failed to create HTTP client: {}", e)),
+        Err(e) => return PreflightResult::Failed(format!("failed to create HTTP client: {e}")),
     };
 
     match client
@@ -252,7 +252,7 @@ pub async fn preflight_check(url: &url::Url) -> PreflightResult {
                 warn!("HEAD request failed ({}), trying GET fallback...", e);
                 preflight_get_fallback(&client, url).await
             } else {
-                PreflightResult::Failed(format!("network error: {}", e))
+                PreflightResult::Failed(format!("network error: {e}"))
             }
         },
     }
@@ -269,7 +269,7 @@ async fn preflight_get_fallback(client: &wreq::Client, url: &url::Url) -> Prefli
     {
         Ok(resp) if resp.status().is_success() => PreflightResult::Ok,
         Ok(resp) => PreflightResult::Warning(resp.status().as_u16()),
-        Err(e) => PreflightResult::Failed(format!("HEAD y GET fallaron: {}", e)),
+        Err(e) => PreflightResult::Failed(format!("HEAD y GET fallaron: {e}")),
     }
 }
 

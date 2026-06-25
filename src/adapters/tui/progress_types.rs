@@ -143,12 +143,12 @@ impl ScrapeError {
     /// Get user-friendly message
     pub fn message(&self) -> String {
         match self {
-            ScrapeError::Network(s) => format!("Network error: {}", s),
-            ScrapeError::Http(status, msg) => format!("HTTP {}: {}", status, msg),
-            ScrapeError::WafBlocked(provider) => format!("WAF blocked ({})", provider),
-            ScrapeError::Parse(s) => format!("Parse error: {}", s),
-            ScrapeError::Timeout(s) => format!("Timeout: {}", s),
-            ScrapeError::Connection(s) => format!("Connection error: {}", s),
+            ScrapeError::Network(s) => format!("Network error: {s}"),
+            ScrapeError::Http(status, msg) => format!("HTTP {status}: {msg}"),
+            ScrapeError::WafBlocked(provider) => format!("WAF blocked ({provider})"),
+            ScrapeError::Parse(s) => format!("Parse error: {s}"),
+            ScrapeError::Timeout(s) => format!("Timeout: {s}"),
+            ScrapeError::Connection(s) => format!("Connection error: {s}"),
             ScrapeError::Other(s) => s.clone(),
         }
     }

@@ -96,13 +96,7 @@ pub async fn scrape_urls(
     args: &Args,
     progress_tx: Option<mpsc::Sender<ScrapeProgress>>,
 ) -> (Vec<ScrapedContent>, Vec<(String, String)>) {
-    let http_config = HttpClientConfig {
-        max_retries: args.max_retries,
-        backoff_base_ms: args.backoff_base_ms,
-        backoff_max_ms: args.backoff_max_ms,
-        accept_language: args.accept_language.clone(),
-        ..HttpClientConfig::default()
-    };
+    let http_config = build_http_client_config(args);
     let http_client = match HttpClient::new(http_config) {
         Ok(c) => c,
         Err(e) => {
@@ -187,7 +181,7 @@ pub async fn scrape_urls(
                         let _ = tx
                             .send(ScrapeProgress::Failed {
                                 url: url_str.clone(),
-                                error: ScrapeError::Other(format!("{}", e)),
+                                error: ScrapeError::Other(format!("{e}")),
                             })
                             .await;
                     }
@@ -214,4 +208,49 @@ pub async fn scrape_urls(
     }
 
     (results, failures)
+}
+
+fn build_http_client_config(args: &Args) -> HttpClientConfig {
+    HttpClientConfig {
+        max_retries: args.max_retries,
+        backoff_base_ms: args.backoff_base_ms,
+        backoff_max_ms: args.backoff_max_ms,
+        accept_language: args.accept_language.clone(),
+        timeout_secs: args.timeout_secs,
+        ..HttpClientConfig::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::build_http_client_config;
+    use clap::Parser;
+
+    #[test]
+    fn build_http_client_config_uses_args_timeout_secs() {
+        let args = crate::Args::parse_from([
+            "rust_scraper",
+            "--url",
+            "https://example.com",
+            "--timeout-secs",
+            "7",
+        ]);
+
+        let config = build_http_client_config(&args);
+
+        assert_eq!(config.timeout_secs, 7);
+        assert_eq!(config.max_retries, args.max_retries);
+        assert_eq!(config.backoff_base_ms, args.backoff_base_ms);
+        assert_eq!(config.backoff_max_ms, args.backoff_max_ms);
+        assert_eq!(config.accept_language, args.accept_language);
+    }
+
+    #[test]
+    fn build_http_client_config_preserves_default_timeout_when_unset() {
+        let args = crate::Args::parse_from(["rust_scraper", "--url", "https://example.com"]);
+
+        let config = build_http_client_config(&args);
+
+        assert_eq!(config.timeout_secs, 30);
+    }
 }

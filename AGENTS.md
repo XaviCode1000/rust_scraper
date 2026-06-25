@@ -3,7 +3,17 @@
 Production-ready web scraper. Clean Architecture, TUI selector, AI semantic cleaning.
 
 **Stack:** Rust 1.88 · Tokio · wreq (TLS fingerprint) · ratatui · tract-onnx (feature-gated)
-**Hardware:** Intel i5-4590 (4C), 8GB DDR3, HDD — cloud CI for heavy work
+**Hardware:** Ryzen 7 5700X (8C/16T), 32GB DDR4, NVMe — local dev for most tasks
+
+### Build dependencies (required)
+
+`cmake` is mandatory — `wreq` → `boring2` → `boring-sys2` needs it to compile BoringSSL.
+Without it, nothing compiles. Install before first build:
+
+```bash
+# Fedora
+sudo dnf install cmake
+```
 
 ---
 
@@ -12,18 +22,23 @@ Production-ready web scraper. Clean Architecture, TUI selector, AI semantic clea
 ### 1. Session Start
 
 ```
-gitnexus analyze                    # Refresh index (re-run after branch switch)
-gitnexus analyze --skills           # Regenerate skill files if communities changed
+gitnexus analyze --index-only --skip-agents-md    # Refresh index on a clean tree without touching AGENTS.md
+gitnexus analyze --skills --index-only --skip-agents-md  # Regenerate skill files if communities changed
+codedb_status                       # Verify CodeDB index is fresh
 ```
 
 If you see "Index is stale" from any gitnexus tool → stop and run `gitnexus analyze` first.
+If `codedb_status` shows stale index → run `codedb_index` to rebuild.
+
+Before reindexing, make sure the worktree is clean. If you still need `gitnexus_detect_changes()` later in the session, do not rerun `gitnexus analyze` after editing files.
 
 If `gitnexus analyze` crashes with `Napi::Error` or hangs → clean first:
 ```bash
-gitnexus clean -f && gitnexus analyze
+gitnexus clean -f && gitnexus analyze --index-only --skip-agents-md
 ```
 
-**Never** run `gitnexus analyze --skip-agents-md` or add `--no-stats` — we want AGENTS.md to stay in sync.
+**Use** `--skip-agents-md` whenever you want to refresh the index without modifying `AGENTS.md`. Use `--index-only` for pure index mode when you do not want file injection at all.
+**Do not** rerun `gitnexus analyze` in a dirty worktree if you still need `gitnexus_detect_changes()` to report your current edits.
 
 ### 2. Before Editing Code
 
@@ -35,7 +50,7 @@ gitnexus_impact({target: "symbolName", direction: "upstream"})
 - **HIGH risk** → stop, warn user, get approval
 - **CRITICAL risk** → stop, require user sign-off
 
-Consult `gitnexus-master` skill for full impact analysis protocol (depth groups, confidence scores).
+Consult `gitnexus-impact-analysis` skill for full impact analysis protocol (depth groups, confidence scores).
 
 ### 3. Before Writing Rust
 
@@ -52,15 +67,7 @@ gitnexus_detect_changes()      # Verify only expected symbols changed
 
 If `gitnexus_detect_changes()` shows unexpected affected symbols → review before committing.
 
-### 5. Before Finishing (self-check)
-
-1. `cargo check` passes
-2. No clippy warnings
-3. `gitnexus_impact` was run for modified symbols
-4. No HIGH/CRITICAL risk ignored
-5. `gitnexus_detect_changes()` confirms expected scope
-
-### 6. Cloud Verification (after commit)
+### 5. Cloud Verification (after commit)
 
 ```bash
 gh workflow run ci.yml --ref $(git branch --show-current)
@@ -73,7 +80,7 @@ Only push after CI shows ✅. If CI fails → fix locally, re-commit, re-trigger
 
 ## Commands
 
-### Local (safe, <30s total)
+### Local (safe, <5s total)
 
 ```bash
 cargo check                    # Verify compilation
@@ -83,21 +90,24 @@ cargo fmt --check              # Format check
 cargo fmt                      # Format
 ```
 
-### Forbidden on this machine (HDD + 8GB RAM — WILL freeze system)
+### Local (moderate, <5 min)
 
-| Command | Why | Alternative |
-|---------|-----|-------------|
-| `cargo nextest run` | 680 tests, 5-10 min, 100% CPU | `gh workflow run ci.yml` |
-| `cargo nextest run --all-features` | AI model (90MB) loads | CI |
-| `cargo build --release` | 10+ min optimization | CI |
-| `cargo build` | Slower than `cargo check` | `cargo check` |
-| `just test-ci` | Full gate, 10+ min | `gh workflow run ci.yml` |
-| `cargo llvm-cov` | Instrument + test, 15+ min | CI |
-| `cargo miri test` | Interprets instructions, 30+ min | CI |
-
-**Exception:** single test for debugging is allowed:
 ```bash
-cargo nextest run --test-threads 2 -E 'test(specific_test_name)'
+cargo nextest run              # Full suite, ~1-2 min
+cargo nextest run --all-features  # With AI, ~2-3 min
+just test-ci                   # Full gate (fmt+clippy+tests), ~3-5 min
+cargo build --release          # ~3-5 min (LTO fat)
+```
+
+> **Note:** `cargo build --release` uses LTO fat + codegen-units=1 (see `Cargo.toml:257`).
+> First clean build compiles BoringSSL from C++ source — expect longer times.
+> Incremental builds with sccache are significantly faster.
+
+### Prefer CI (slow, >5 min)
+
+```bash
+cargo llvm-cov                 # Coverage instrumentation (~5-8 min)
+cargo miri test                # Memory safety interpretation (~10-15 min)
 ```
 
 ---
@@ -106,38 +116,40 @@ cargo nextest run --test-threads 2 -E 'test(specific_test_name)'
 
 Sub-agents get a fresh context with no memory. The orchestrator controls context access.
 
-### MANDATORY: Sub-agents MUST use GitNexus
+### MANDATORY: Sub-agents MUST use GitNexus + CodeDB
 
-**Every sub-agent that reads, writes, or reviews code MUST use GitNexus tools for code investigation.** The orchestrator enforces this by:
+**Every sub-agent that reads, writes, or reviews code MUST use GitNexus and CodeDB tools for code investigation.** The orchestrator enforces this by:
 
-1. Always passing `gitnexus-master/SKILL.md` in the skill paths
-2. Including in the sub-agent prompt: `"You MUST use gitnexus_query to find code, gitnexus_impact before editing, and gitnexus_detect_changes before returning. Do NOT grep the project codebase."`
-3. Sub-agents that grep instead of using GitNexus are discipline failures
+1. Always passing the relevant skill names in the sub-agent prompt
+2. Including in the sub-agent prompt: `"You MUST use codedb_search/codedb_symbol to find code, gitnexus_impact before editing, and gitnexus_detect_changes before returning. Do NOT grep the project codebase."`
+3. Sub-agents that grep instead of using GitNexus/CodeDB are discipline failures
 
 **Delegate when:**
-- Reading 4+ files to understand codebase → exploration sub-agent (with gitnexus-master)
-- Writing code across 2+ files → writer sub-agent (with gitnexus-master + rust-skills)
+- Reading 4+ files to understand codebase → exploration sub-agent (with gitnexus-exploring + codedb)
+- Writing code across 2+ files → writer sub-agent (with gitnexus-exploring + codedb + rust-skills)
 - Running tests or CI → sub-agent
-- Multi-step refactoring → sub-agent (with gitnexus-master + rust-skills)
+- Multi-step refactoring → sub-agent (with gitnexus-refactoring + codedb + rust-skills)
 
 **Do inline when:**
 - Reading 1-3 files for decision/verification
 - Single-file mechanical edits
 - Git/gh state checks (status, log, diff)
 
-**When delegating, pass skill paths explicitly:**
+**When delegating, reference skills by name (OpenCode auto-discovers them):**
 ```
 ## Skills to load before work
-- /path/to/gitnexus-master/SKILL.md
-- /path/to/rust-skills/SKILL.md
+- gitnexus-exploring
+- codedb
+- rust-skills
 ```
 
 Every sub-agent prompt that involves code MUST include:
 ```
-MANDATORY: Load gitnexus-master skill. Use MCP tools (gitnexus_query,
-gitnexus_impact, gitnexus_detect_changes) — NEVER shell out to `gitnexus`
-CLI for analysis. MCP tools are instant. CLI is only for analyze/clean/wiki.
-NEVER grep the project codebase when gitnexus_query works.
+MANDATORY: Load gitnexus-exploring and codedb skills. Use MCP tools
+(codedb_search, codedb_symbol, gitnexus_query, gitnexus_impact,
+gitnexus_detect_changes) — NEVER shell out to CLI for analysis.
+MCP tools are instant. CLI is only for analyze/clean/wiki.
+NEVER grep the project codebase when codedb_search works.
 ```
 
 ---
@@ -146,7 +158,6 @@ NEVER grep the project codebase when gitnexus_query works.
 
 - Error messages in **Spanish** (not English)
 - HTTP client is **`wreq`** (not `reqwest`) — TLS fingerprint emulation for WAF evasion
-- Never use `.unwrap()` in production — use `?` or `match`
 
 ---
 
@@ -172,12 +183,6 @@ Responses scanned for WAF signatures (Cloudflare, reCAPTCHA, hCaptcha, DataDome,
 
 ## Boundaries
 
-### Always
-
-- `cargo check` before marking tasks complete
-- `cargo clippy -- -D warnings` before committing
-- Run `cargo fmt` before committing
-
 ### Ask first
 
 - Adding or removing dependencies
@@ -187,10 +192,9 @@ Responses scanned for WAF signatures (Cloudflare, reCAPTCHA, hCaptcha, DataDome,
 ### Never
 
 - Commit secrets, `.env`, or credentials
-- Use `.unwrap()` in production code
+- Use `.unwrap()` in production code — use `?` or `match`
 - Force push to main
 - Modify `target/`, `dist/`, `build/` directories
-- Run any command from the forbidden table above
 
 ---
 
@@ -198,41 +202,40 @@ Responses scanned for WAF signatures (Cloudflare, reCAPTCHA, hCaptcha, DataDome,
 
 | Purpose | Skill | Load when |
 |---------|-------|-----------|
-| Code intelligence | `gitnexus-master` | Any code work — has full MCP tools, CLI commands, impact protocol |
-| Rust quality | `rust-skills` | Writing Rust — ownership, error handling, async, testing |
+| Code exploration | `gitnexus-exploring` | Understanding architecture, tracing flows |
+| Impact analysis | `gitnexus-impact-analysis` | Before editing any symbol |
+| Debugging | `gitnexus-debugging` | Tracing bugs, error investigation |
+| Refactoring | `gitnexus-refactoring` | Rename, extract, split, move |
+| PR review | `gitnexus-pr-review` | Reviewing pull requests |
+| GitNexus reference | `gitnexus-guide` | Tool/resource/schema questions |
+| GitNexus CLI | `gitnexus-cli` | Index, status, clean, wiki commands |
+| **Code search** | **`codedb`** | **Structural search, symbols, callers, outlines, file tree** |
+| Rust quality | `rust-skills` | Writing Rust — ownership, error handling, async |
 | SDD workflow | `sdd-*` skills | Planning/verifying changes |
 
-Skills contain tool details (parameters, flags, schemas). This file contains workflow (when, sequence).
-
----
-
-## Resources
-
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Architecture details
-- [justfile](justfile) — Task recipes
-- [docs/wiki/](docs/wiki/) — GitNexus auto-generated documentation
+Skills are auto-discovered by OpenCode from `~/.config/opencode/skills/`. Reference by name only — no paths needed.
 
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **rust_scraper** (4319 symbols, 7915 relationships, 161 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **rust_scraper** (4465 symbols, 9237 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
+> Index stale? Run `gitnexus analyze --index-only --skip-agents-md` from the project root. Use `gitnexus analyze --skills --index-only --skip-agents-md` only when regenerating skill files.
 
 ## Always Do
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
+- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
+- **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review, compare against the default branch: `detect_changes({scope: "compare", base_ref: "main"})`.
 - **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
+- When exploring unfamiliar code, use `query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
+- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
 
 ## Never Do
 
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
+- NEVER edit a function, class, or method without first running `impact` on it.
 - NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
+- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
+- NEVER commit changes without running `detect_changes()` to check affected scope.
 
 ## Resources
 
@@ -243,15 +246,65 @@ This project is indexed by GitNexus as **rust_scraper** (4319 symbols, 7915 rela
 | `gitnexus://repo/rust_scraper/processes` | All execution flows |
 | `gitnexus://repo/rust_scraper/process/{name}` | Step-by-step execution trace |
 
-## CLI
+## Skills
 
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
+| Task | Skill |
+|------|-------|
+| Understand architecture / "How does X work?" | `gitnexus-exploring` |
+| Blast radius / "What breaks if I change X?" | `gitnexus-impact-analysis` |
+| Trace bugs / "Why is X failing?" | `gitnexus-debugging` |
+| Rename / extract / split / refactor | `gitnexus-refactoring` |
+| Review pull requests | `gitnexus-pr-review` |
+| Tools, resources, schema reference | `gitnexus-guide` |
+| Index, status, clean, wiki CLI commands | `gitnexus-cli` |
 
 <!-- gitnexus:end -->
+
+<!-- codedb:start -->
+# CodeDB — Structural Code Search
+
+CodeDB is a fast structural search engine. Use it for quick code lookups, file trees, outlines, and dependency graphs. GitNexus handles deep graph analysis and execution flows.
+
+> Index stale? Run `codedb_index` from the project root.
+
+## When to Use CodeDB
+
+- **Quick file tree** — `codedb_tree` for project orientation
+- **Find symbol definitions** — `codedb_symbol` (exact, sub-ms)
+- **Full-text search** — `codedb_search` (trigram-accelerated, supports regex)
+- **Find all callers** — `codedb_callers` before refactoring
+- **File outline** — `codedb_outline` for functions/structs/imports in a file
+- **Dependency graph** — `codedb_deps` for import analysis
+- **Task context** — `codedb_context` replaces 3–5 sequential calls
+
+## CodeDB vs GitNexus
+
+| Use CodeDB for | Use GitNexus for |
+|----------------|------------------|
+| Fast structural search (sub-ms) | Deep execution flow analysis |
+| File trees, outlines, symbol lookup | Impact analysis (blast radius) |
+| Full-text search (trigram) | Process tracing, call chains |
+| Dependency graph (import analysis) | Community detection, clusters |
+
+**Use both:** CodeDB for quick lookups, GitNexus for deep analysis.
+
+## Key Tools
+
+| Tool | Use for |
+|------|---------|
+| `codedb_tree` | Project orientation — file tree with symbol counts |
+| `codedb_symbol` | Find where a symbol is defined |
+| `codedb_search` | Full-text search (supports regex) |
+| `codedb_callers` | Every call site of a symbol |
+| `codedb_outline` | Functions/structs/imports in a file |
+| `codedb_deps` | Dependency graph (imported_by / depends_on) |
+| `codedb_context` | Task-shaped context (replaces 3-5 calls) |
+| `codedb_hot` | Recently modified files |
+
+## Never Do
+
+- NEVER use `codedb_edit` when native edit tools work — it's a fallback only
+- NEVER use CodeDB for impact analysis — use GitNexus `impact` instead
+- NEVER use CodeDB for execution flow tracing — use GitNexus `query`/`context` instead
+
+<!-- codedb:end -->

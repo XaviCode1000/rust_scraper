@@ -87,7 +87,7 @@ impl UrlPath {
         let clean = path.split('?').next().unwrap_or(path);
         let clean = clean.split('#').next().unwrap_or(clean);
         let normalized = if clean.is_empty() || !clean.starts_with('/') {
-            format!("/{}", clean)
+            format!("/{clean}")
         } else {
             clean.to_string()
         };
@@ -143,7 +143,7 @@ impl UrlPath {
         };
 
         if self.is_root {
-            return format!("index.{}", extension);
+            return format!("index.{extension}");
         }
         let path_trimmed = self.raw.trim_start_matches('/');
         // Convert /docs/api/v2/users/ → docs-api-v2-users
@@ -157,12 +157,12 @@ impl UrlPath {
         let upper = sanitized.to_uppercase();
         let is_reserved = WINDOWS_RESERVED.iter().any(|&r| r == upper);
         let final_name = if is_reserved {
-            format!("{}_safe", sanitized)
+            format!("{sanitized}_safe")
         } else {
             sanitized
         };
 
-        format!("{}.{}", final_name, extension)
+        format!("{final_name}.{extension}")
     }
 
     /// Get directory part (everything except last component)
@@ -255,7 +255,7 @@ impl OutputPath {
     pub fn to_full_path_with_format(&self, format: Option<OutputFormat>) -> String {
         let folder = self.to_folder_path();
         let filename = self.path.to_safe_filename_with_format(format);
-        format!("{}{}", folder, filename)
+        format!("{folder}{filename}")
     }
 
     pub fn to_pathbuf(&self) -> PathBuf {
@@ -275,7 +275,7 @@ impl OutputPath {
         if dir.is_empty() {
             "images/".to_string()
         } else {
-            format!("{}images/", dir)
+            format!("{dir}images/")
         }
     }
 }

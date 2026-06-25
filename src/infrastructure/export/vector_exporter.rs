@@ -160,11 +160,10 @@ impl VectorExporter {
                 .map(|d| d.to_string())
                 .unwrap_or_else(|| "null".to_string());
             let header = format!(
-                r#"{{"format_version": "1.0", "model_name": null, "dimensions": {}, "total_documents": 0, "created_at": "{}", "documents": ["#,
-                dimensions_json, timestamp
+                r#"{{"format_version": "1.0", "model_name": null, "dimensions": {dimensions_json}, "total_documents": 0, "created_at": "{timestamp}", "documents": ["#
             );
 
-            write!(writer, "{}", header)?;
+            write!(writer, "{header}")?;
         }
 
         Ok(())
@@ -232,12 +231,12 @@ impl Exporter for VectorExporter {
         if !is_first_doc {
             write!(writer, ",")?;
         }
-        writeln!(writer, "{}", serialized)?;
+        writeln!(writer, "{serialized}")?;
 
         self.close_json(&mut writer, 1)?;
 
         // Release lock
-        file.unlock()?;
+        fs2::FileExt::unlock(&file)?;
 
         Ok(())
     }
@@ -260,14 +259,14 @@ impl Exporter for VectorExporter {
             }
 
             let serialized = self.serialize_document(doc)?;
-            writeln!(writer, "{}", serialized)?;
+            writeln!(writer, "{serialized}")?;
             doc_count += 1;
         }
 
         self.close_json(&mut writer, doc_count)?;
 
         // Release lock
-        file.unlock()?;
+        fs2::FileExt::unlock(&file)?;
 
         Ok(())
     }

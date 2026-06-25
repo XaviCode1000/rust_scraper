@@ -60,7 +60,7 @@ impl AsyncLogWriter {
         // Run writer task
         tokio::spawn(async move {
             if let Err(e) = run_writer_task(entries_rx, log_dir, app_name, config_clone).await {
-                eprintln!("Async logging error: {}", e);
+                eprintln!("Async logging error: {e}");
             }
         });
 
@@ -81,7 +81,7 @@ impl AsyncLogWriter {
                 eprintln!("WARN: Log buffer overflow - entry dropped");
                 Ok(()) // Don't block, just drop
             },
-            Err(e) => anyhow::bail!("Log write error: {}", e),
+            Err(e) => anyhow::bail!("Log write error: {e}"),
         }
     }
 

@@ -899,8 +899,7 @@ impl McpHandler {
         let output_dir = params.output_dir.as_deref().unwrap_or("./output");
         let filename = params.filename.as_deref().unwrap_or("export");
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "JSONL exporter ready at: {}/{}.jsonl",
-            output_dir, filename
+            "JSONL exporter ready at: {output_dir}/{filename}.jsonl"
         ))]))
     }
 
@@ -924,8 +923,7 @@ impl McpHandler {
         let output_dir = params.output_dir.as_deref().unwrap_or("./output");
         let filename = params.filename.as_deref().unwrap_or("export");
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Vector exporter ready at: {}/{}.json",
-            output_dir, filename
+            "Vector exporter ready at: {output_dir}/{filename}.json"
         ))]))
     }
 
@@ -949,8 +947,7 @@ impl McpHandler {
         let url = params.url.as_deref().unwrap_or("");
         let format = params.format.as_deref().unwrap_or("jsonl");
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Pipeline queued for: {} → [{}]",
-            url, format
+            "Pipeline queued for: {url} → [{format}]"
         ))]))
     }
 
@@ -1161,8 +1158,7 @@ impl McpHandler {
 
         match crate::infrastructure::http::waf_engine::WafInspector::detect_body(&params.html) {
             Some(provider) => Ok(CallToolResult::success(vec![Content::text(format!(
-                "WAF detected: {}",
-                provider
+                "WAF detected: {provider}"
             ))])),
             None => Ok(CallToolResult::success(vec![Content::text(
                 "no WAF detected",
@@ -1196,8 +1192,7 @@ impl McpHandler {
                 "WAF integrity check passed",
             )])),
             Err(e) => Ok(CallToolResult::success(vec![Content::text(format!(
-                "WAF blocked: {}",
-                e
+                "WAF blocked: {e}"
             ))])),
         }
     }
@@ -1328,8 +1323,7 @@ impl McpHandler {
         );
         match std::process::Command::new("open").arg(&uri).spawn() {
             Ok(_) => Ok(CallToolResult::success(vec![Content::text(format!(
-                "Opened in Obsidian: {}",
-                uri
+                "Opened in Obsidian: {uri}"
             ))])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "failed to open Obsidian: {e}"
@@ -1396,8 +1390,7 @@ impl McpHandler {
 
         // TODO: Wire up actual asset downloading from scraper_service
         Ok(CallToolResult::success(vec![Content::text(format!(
-            "Asset download queued: images={}, documents={}, base={}",
-            download_images, download_documents, base_url
+            "Asset download queued: images={download_images}, documents={download_documents}, base={base_url}"
         ))]))
     }
 }

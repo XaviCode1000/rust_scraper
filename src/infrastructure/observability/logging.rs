@@ -50,7 +50,7 @@ impl std::str::FromStr for LogFormat {
         match s.to_lowercase().as_str() {
             "json" => Ok(Self::Json),
             "text" => Ok(Self::Text),
-            _ => Err(format!("Invalid log format: {}. Valid: text, json", s)),
+            _ => Err(format!("Invalid log format: {s}. Valid: text, json")),
         }
     }
 }
@@ -117,7 +117,7 @@ pub fn init_json_logging_dual(
     let filter = if quiet {
         EnvFilter::new("rust_scraper=warn,tokio=warn,reqwest=warn")
     } else {
-        EnvFilter::new(format!("rust_scraper={},tokio=warn,reqwest=warn", level))
+        EnvFilter::new(format!("rust_scraper={level},tokio=warn,reqwest=warn"))
     };
 
     // Build subscriber layers
@@ -136,7 +136,7 @@ pub fn init_json_logging_dual(
     if let Some(dir) = log_dir {
         // Create file appender with daily rotation
         let file_appender =
-            RollingFileAppender::new(Rotation::DAILY, dir, format!("{}.log", app_name));
+            RollingFileAppender::new(Rotation::DAILY, dir, format!("{app_name}.log"));
 
         // NON-BLOCKING: Worker thread handles file I/O, Tokio threads never block
         let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);

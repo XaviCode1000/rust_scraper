@@ -62,8 +62,7 @@ impl UrlValidator {
                     if let Ok(major) = major_str.parse::<u32>() {
                         if major > 99 {
                             return ValidationResult::Invalid(format!(
-                                "Invalid Node.js version pattern: v{}",
-                                version
+                                "Invalid Node.js version pattern: v{version}"
                             ));
                         }
                     }
@@ -75,7 +74,7 @@ impl UrlValidator {
         match url.scheme() {
             "http" | "https" => {},
             scheme => {
-                return ValidationResult::Invalid(format!("Unsupported scheme: {}", scheme));
+                return ValidationResult::Invalid(format!("Unsupported scheme: {scheme}"));
             },
         }
 
@@ -107,12 +106,10 @@ impl UrlValidator {
                 Ok(ValidationResult::Valid) // Treat redirect as valid if we can't follow
             },
             404 | 410 => Ok(ValidationResult::Invalid(format!(
-                "URL not found (status {})",
-                status
+                "URL not found (status {status})"
             ))),
             _ => Ok(ValidationResult::Invalid(format!(
-                "HTTP error (status {})",
-                status
+                "HTTP error (status {status})"
             ))),
         }
     }

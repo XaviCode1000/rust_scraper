@@ -45,7 +45,7 @@ pub async fn run(args: Args) -> CliExit {
 
     let target_url = match url::Url::parse(target_url_str) {
         Ok(url) => url,
-        Err(e) => return CliExit::UsageError(format!("Invalid URL: {}", e)),
+        Err(e) => return CliExit::UsageError(format!("Invalid URL: {e}")),
     };
 
     // Create crawler config from args
@@ -56,14 +56,18 @@ pub async fn run(args: Args) -> CliExit {
         .exclude_patterns(args.exclude_patterns.clone())
         .build();
 
-    // URL discovery phase
-    let discovered_urls: Vec<url::Url> = discover_urls(&crawler_config, &args).await;
-    if discovered_urls.is_empty() {
-        info!("No URLs discovered");
-        return CliExit::Success;
-    }
+    let urls_to_scrape = if args.single_page {
+        plan_urls(true, target_url.clone(), Vec::new())
+    } else {
+        // URL discovery phase
+        let discovered_urls: Vec<url::Url> = discover_urls(&crawler_config, &args).await;
+        if discovered_urls.is_empty() {
+            info!("No URLs discovered");
+            return CliExit::Success;
+        }
 
-    let urls_to_scrape = discovered_urls;
+        plan_urls(false, target_url.clone(), discovered_urls)
+    };
 
     // Create scraper config
     let mut scraper_config = ScraperConfig::default()
@@ -86,7 +90,7 @@ pub async fn run(args: Args) -> CliExit {
 
     // Report failures
     for (url, error) in &failures {
-        eprintln!("Failed to scrape {}: {}", url, error);
+        eprintln!("Failed to scrape {url}: {error}");
     }
 
     if results.is_empty() {
@@ -147,8 +151,51 @@ pub async fn run(args: Args) -> CliExit {
             CliExit::Success
         },
         Err(e) => {
-            eprintln!("Export failed: {:?}", e);
+            eprintln!("Export failed: {e:?}");
             e
         },
+    }
+}
+
+fn plan_urls(
+    single_page: bool,
+    seed_url: url::Url,
+    discovered_urls: Vec<url::Url>,
+) -> Vec<url::Url> {
+    if single_page {
+        vec![seed_url]
+    } else {
+        discovered_urls
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plan_urls;
+
+    #[test]
+    fn plan_urls_returns_only_seed_url_for_single_page() {
+        let seed_url = url::Url::parse("https://example.com").expect("valid seed url");
+        let discovered_urls = vec![
+            url::Url::parse("https://example.com/about").expect("valid discovered url"),
+            url::Url::parse("https://example.com/blog").expect("valid discovered url"),
+        ];
+
+        let planned = plan_urls(true, seed_url.clone(), discovered_urls);
+
+        assert_eq!(planned, vec![seed_url]);
+    }
+
+    #[test]
+    fn plan_urls_keeps_discovered_urls_in_normal_mode() {
+        let seed_url = url::Url::parse("https://example.com").expect("valid seed url");
+        let discovered_urls = vec![
+            url::Url::parse("https://example.com/about").expect("valid discovered url"),
+            url::Url::parse("https://example.com/blog").expect("valid discovered url"),
+        ];
+
+        let planned = plan_urls(false, seed_url, discovered_urls.clone());
+
+        assert_eq!(planned, discovered_urls);
     }
 }

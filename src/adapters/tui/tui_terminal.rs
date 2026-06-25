@@ -167,13 +167,17 @@ fn setup_panic_hook() {
 
 #[cfg(test)]
 mod tests {
+    use std::io::{stderr, stdin, stdout, IsTerminal};
+
     use super::*;
 
-    /// Returns true if running outside CI.
-    /// CI runners (GitHub Actions, etc.) do not have a TTY, so crossterm
-    /// initialization will fail with "Resource temporarily unavailable".
+    /// Returns true only when terminal setup can run against real TTY streams.
+    /// Some local command runners are not CI, but still do not expose a TTY.
     fn has_terminal() -> bool {
         std::env::var("CI").is_err()
+            && stdin().is_terminal()
+            && stdout().is_terminal()
+            && stderr().is_terminal()
     }
 
     #[test]

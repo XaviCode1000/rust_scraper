@@ -77,7 +77,7 @@ pub async fn fetch_url(url: &str, config: &CrawlerConfig) -> Result<String, Craw
     debug!("Fetching URL: {}", url);
 
     let client = create_rate_limited_client(config.delay_ms)
-        .map_err(|e| CrawlError::Internal(format!("Failed to create HTTP client: {}", e)))?;
+        .map_err(|e| CrawlError::Internal(format!("Failed to create HTTP client: {e}")))?;
 
     let response = client
         .get(url)

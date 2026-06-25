@@ -39,15 +39,15 @@ impl std::fmt::Display for HttpError {
         match self {
             HttpError::Forbidden => write!(f, "403 Forbidden - site blocking"),
             HttpError::RateLimited(retry_after) => {
-                write!(f, "429 Rate Limited - retry after {} seconds", retry_after)
+                write!(f, "429 Rate Limited - retry after {retry_after} seconds")
             },
-            HttpError::ClientError(code) => write!(f, "Client Error {}", code),
-            HttpError::ServerError(code) => write!(f, "Server Error {}", code),
+            HttpError::ClientError(code) => write!(f, "Client Error {code}"),
+            HttpError::ServerError(code) => write!(f, "Server Error {code}"),
             HttpError::Timeout => write!(f, "Request Timeout"),
-            HttpError::Connection(msg) => write!(f, "Connection Error: {}", msg),
-            HttpError::Request(msg) => write!(f, "Request Error: {}", msg),
+            HttpError::Connection(msg) => write!(f, "Connection Error: {msg}"),
+            HttpError::Request(msg) => write!(f, "Request Error: {msg}"),
             HttpError::WafChallenge(provider) => {
-                write!(f, "WAF/CAPTCHA challenge detected ({})", provider)
+                write!(f, "WAF/CAPTCHA challenge detected ({provider})")
             },
         }
     }

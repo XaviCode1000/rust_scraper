@@ -112,7 +112,7 @@ impl HttpClient {
 
         let client = builder
             .build()
-            .map_err(|e| ScraperError::Config(format!("failed to create http client: {}", e)))?;
+            .map_err(|e| ScraperError::Config(format!("failed to create http client: {e}")))?;
 
         let user_agents = UserAgentCache::fallback_agents();
 
@@ -165,7 +165,7 @@ impl HttpClient {
     pub async fn get(&self, url: &str) -> HttpResult<String> {
         // Validate URL first
         let parsed_url =
-            Url::parse(url).map_err(|e| HttpError::Request(format!("Invalid URL: {}", e)))?;
+            Url::parse(url).map_err(|e| HttpError::Request(format!("Invalid URL: {e}")))?;
 
         // Ensure URL has http or https scheme
         if !matches!(parsed_url.scheme(), "http" | "https") {
@@ -409,7 +409,7 @@ pub fn create_http_client() -> Result<Client, ScraperError> {
         .cookie_store(true)
         .redirect(wreq::redirect::Policy::limited(10))
         .build()
-        .map_err(|e| ScraperError::Config(format!("failed to create http client: {}", e)))?;
+        .map_err(|e| ScraperError::Config(format!("failed to create http client: {e}")))?;
 
     Ok(client)
 }

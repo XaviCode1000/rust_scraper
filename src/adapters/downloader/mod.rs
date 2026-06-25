@@ -93,15 +93,13 @@ impl Downloader {
 
         std::fs::create_dir_all(&images_path).map_err(|e| {
             ScraperError::Io(std::io::Error::other(format!(
-                "Failed to create images directory: {}",
-                e
+                "Failed to create images directory: {e}"
             )))
         })?;
 
         std::fs::create_dir_all(&documents_path).map_err(|e| {
             ScraperError::Io(std::io::Error::other(format!(
-                "Failed to create documents directory: {}",
-                e
+                "Failed to create documents directory: {e}"
             )))
         })?;
 
@@ -110,7 +108,7 @@ impl Downloader {
             .timeout(std::time::Duration::from_secs(config.timeout_secs))
             .user_agent(&config.user_agent)
             .build()
-            .map_err(|e| ScraperError::Config(format!("failed to build http client: {}", e)))?;
+            .map_err(|e| ScraperError::Config(format!("failed to build http client: {e}")))?;
 
         Ok(Self { client, config })
     }

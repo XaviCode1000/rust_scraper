@@ -74,7 +74,7 @@ pub async fn run_progress_view(
     ];
 
     let mut app = App::new(AppMode::Progress)
-        .map_err(|e| io::Error::other(format!("Error al crear app: {}", e)))?
+        .map_err(|e| io::Error::other(format!("Error al crear app: {e}")))?
         .with_component(Header::new(AppMode::Progress))
         .with_component(ProgressWidget::new(urls))
         .with_component(ErrorLogWidget::new())

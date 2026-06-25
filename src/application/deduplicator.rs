@@ -113,7 +113,7 @@ pub fn normalize_url(url: &Url) -> String {
     let path = url.path();
 
     // Build normalized string manually to avoid borrow issues
-    let mut result = format!("{}://", scheme);
+    let mut result = format!("{scheme}://");
 
     // Handle www prefix
     let host = host.strip_prefix("www.").unwrap_or(host);
@@ -123,7 +123,7 @@ pub fn normalize_url(url: &Url) -> String {
         (None, _) => "",
         (Some(80), _) => "", // Remove port 80 regardless of scheme
         (Some(443), "https") => "",
-        (Some(p), _) => &format!(":{}", p),
+        (Some(p), _) => &format!(":{p}"),
     };
 
     result.push_str(host);

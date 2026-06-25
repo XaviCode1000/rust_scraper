@@ -64,19 +64,19 @@ impl fmt::Display for Action {
         match self {
             Self::Tick => write!(f, "Tick"),
             Self::Render => write!(f, "Render"),
-            Self::Resize(w, h) => write!(f, "Resize({}, {})", w, h),
+            Self::Resize(w, h) => write!(f, "Resize({w}, {h})"),
             Self::Suspend => write!(f, "Suspend"),
             Self::Resume => write!(f, "Resume"),
             Self::Quit => write!(f, "Quit"),
             Self::ClearScreen => write!(f, "ClearScreen"),
-            Self::Error(e) => write!(f, "Error({})", e),
+            Self::Error(e) => write!(f, "Error({e})"),
             Self::ToggleHelp => write!(f, "ToggleHelp"),
             Self::CloseModal => write!(f, "CloseModal"),
             Self::UrlConfirmed(urls) => write!(f, "UrlConfirmed({} urls)", urls.len()),
             Self::UrlCancelled => write!(f, "UrlCancelled"),
             Self::ConfigDone(_) => write!(f, "ConfigDone"),
             Self::ConfigCancelled => write!(f, "ConfigCancelled"),
-            Self::Progress(p) => write!(f, "Progress({:?})", p),
+            Self::Progress(p) => write!(f, "Progress({p:?})"),
         }
     }
 }

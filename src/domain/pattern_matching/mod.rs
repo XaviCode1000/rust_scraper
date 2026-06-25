@@ -68,13 +68,13 @@ pub fn matches_pattern(url_str: &str, pattern: &str) -> bool {
             let domain = &p[2..p.len() - 1]; // "example.com/"
             let domain = domain.trim_end_matches('/');
             // Must be a subdomain, NOT the root domain itself
-            host.ends_with(&format!(".{}", domain))
+            host.ends_with(&format!(".{domain}"))
         },
         // *.example.com → match subdomain ONLY (not root domain)
         p if p.starts_with("*.") => {
             let domain = &p[2..];
             // Must be a subdomain, NOT the root domain itself
-            host.ends_with(&format!(".{}", domain))
+            host.ends_with(&format!(".{domain}"))
         },
         // Exact host match (no wildcard)
         p => host == p,

@@ -29,7 +29,7 @@ fn encode_obsidian_param(input: &str) -> String {
                 // Non-ASCII: UTF-8 percent-encode each byte
                 let mut buf = [0u8; 4];
                 for &byte in c.encode_utf8(&mut buf).as_bytes() {
-                    out.push_str(&format!("%{:02X}", byte));
+                    out.push_str(&format!("%{byte:02X}"));
                 }
             },
         }
@@ -77,7 +77,7 @@ pub fn open_in_obsidian(uri: &str) -> Result<(), String> {
     std::process::Command::new(cmd)
         .args(&args)
         .spawn()
-        .map_err(|e| format!("failed to open URI: {}", e))?;
+        .map_err(|e| format!("failed to open URI: {e}"))?;
 
     Ok(())
 }

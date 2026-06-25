@@ -366,7 +366,7 @@ impl App {
         tui.draw(|frame| {
             for component in self.components.iter_mut() {
                 if let Err(e) = component.draw(frame, frame.area()) {
-                    let _ = action_tx.send(Action::Error(format!("Error al dibujar: {}", e)));
+                    let _ = action_tx.send(Action::Error(format!("Error al dibujar: {e}")));
                 }
             }
 
@@ -381,7 +381,7 @@ impl App {
 
                     if let Err(e) = modal.draw(frame, modal_rect) {
                         let _ =
-                            action_tx.send(Action::Error(format!("Error al dibujar modal: {}", e)));
+                            action_tx.send(Action::Error(format!("Error al dibujar modal: {e}")));
                     }
                 }
             }

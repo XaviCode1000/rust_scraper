@@ -33,8 +33,7 @@ impl UrlValidator {
                     if let Ok(major) = major_str.parse::<u32>() {
                         if major > 99 {
                             return ValidationResult::Invalid(format!(
-                                "Invalid Node.js version pattern: v{}",
-                                version
+                                "Invalid Node.js version pattern: v{version}"
                             ));
                         }
                     }
@@ -46,7 +45,7 @@ impl UrlValidator {
         match url.scheme() {
             "http" | "https" => {},
             scheme => {
-                return ValidationResult::Invalid(format!("Unsupported scheme: {}", scheme));
+                return ValidationResult::Invalid(format!("Unsupported scheme: {scheme}"));
             },
         }
 

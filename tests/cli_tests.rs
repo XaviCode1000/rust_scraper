@@ -6,6 +6,37 @@
 
 use clap::Parser;
 use rust_scraper::{Args, Commands, ExportFormat, OutputFormat, Shell};
+use std::sync::{Mutex, OnceLock};
+
+fn single_page_env_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    LOCK.get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("env lock poisoned")
+}
+
+fn parse_args_with_single_page_env<I, S>(args: I, value: Option<&str>) -> Args
+where
+    I: IntoIterator<Item = S>,
+    S: Into<std::ffi::OsString> + Clone,
+{
+    let _guard = single_page_env_lock();
+    let previous = std::env::var_os("RUST_SCRAPER_SINGLE_PAGE");
+
+    match value {
+        Some(value) => std::env::set_var("RUST_SCRAPER_SINGLE_PAGE", value),
+        None => std::env::remove_var("RUST_SCRAPER_SINGLE_PAGE"),
+    }
+
+    let parsed = Args::parse_from(args);
+
+    match previous {
+        Some(previous) => std::env::set_var("RUST_SCRAPER_SINGLE_PAGE", previous),
+        None => std::env::remove_var("RUST_SCRAPER_SINGLE_PAGE"),
+    }
+
+    parsed
+}
 
 // ============================================================================
 // Tests: Default values
@@ -26,6 +57,7 @@ fn test_args_defaults() {
     assert!(!args.download_documents);
     assert!(!args.use_sitemap);
     assert!(!args.interactive);
+    assert!(!args.single_page);
     assert!(!args.resume);
     assert!(!args.clean_ai);
     assert!(!args.force_js_render);
@@ -82,6 +114,57 @@ fn test_args_url_with_query_params() {
         args.url,
         Some("https://example.com/search?q=test&page=1".to_string())
     );
+}
+
+#[test]
+fn test_args_single_page_defaults_to_false() {
+    let args =
+        parse_args_with_single_page_env(["rust_scraper", "--url", "https://example.com"], None);
+    assert!(!args.single_page);
+}
+
+#[test]
+fn test_args_single_page_env_true_enables_flag() {
+    let args = parse_args_with_single_page_env(
+        ["rust_scraper", "--url", "https://example.com"],
+        Some("true"),
+    );
+    assert!(args.single_page);
+}
+
+#[test]
+fn test_args_single_page_flag_wins_over_env_false() {
+    let args = parse_args_with_single_page_env(
+        [
+            "rust_scraper",
+            "--url",
+            "https://example.com",
+            "--single-page",
+        ],
+        Some("false"),
+    );
+    assert!(args.single_page);
+}
+
+#[test]
+fn test_args_single_page_with_crawl_limits() {
+    let args = parse_args_with_single_page_env(
+        [
+            "rust_scraper",
+            "--url",
+            "https://example.com",
+            "--single-page",
+            "--max-depth",
+            "5",
+            "--max-pages",
+            "100",
+        ],
+        None,
+    );
+
+    assert!(args.single_page);
+    assert_eq!(args.max_depth, 5);
+    assert_eq!(args.max_pages, 100);
 }
 
 // ============================================================================

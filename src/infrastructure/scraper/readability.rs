@@ -46,7 +46,7 @@ pub struct Article {
 /// ```
 pub fn parse(html: &str, url: Option<&str>) -> Result<Article> {
     let article = legible::parse(html, url, None)
-        .map_err(|e| ScraperError::Extraction(format!("Readability failed: {}", e)))?;
+        .map_err(|e| ScraperError::Extraction(format!("Readability failed: {e}")))?;
 
     Ok(Article {
         title: article.title,

@@ -210,7 +210,7 @@ impl WafInspector {
                 {
                     return Err(ScraperError::WafBlocked {
                         url: String::new(),
-                        provider: format!("{}: header detected", provider),
+                        provider: format!("{provider}: header detected"),
                     });
                 }
             }
@@ -233,7 +233,7 @@ impl WafInspector {
             let provider = WAF_BODY_SIGNATURES[mat.pattern()].1;
             return Err(ScraperError::WafBlocked {
                 url: String::new(),
-                provider: format!("Signature detected: {}", provider),
+                provider: format!("Signature detected: {provider}"),
             });
         }
 

@@ -212,7 +212,7 @@ impl Component for StatusBar {
             if i > 0 {
                 spans.push(Span::styled(" │ ", Theme::text_subtle()));
             }
-            spans.push(Span::styled(format!("{}: ", key), Theme::accent()));
+            spans.push(Span::styled(format!("{key}: "), Theme::accent()));
             spans.push(Span::styled(desc.as_str(), Theme::text_muted()));
         }
 

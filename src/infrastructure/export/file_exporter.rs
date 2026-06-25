@@ -81,7 +81,7 @@ impl FileExporter {
         let metadata = doc
             .metadata
             .iter()
-            .map(|(k, v)| format!("{}: {}", k, v))
+            .map(|(k, v)| format!("{k}: {v}"))
             .collect::<Vec<_>>()
             .join("\n");
 
@@ -154,9 +154,9 @@ impl FileExporter {
             .replace(':', "_");
 
         let filename = if filename.is_empty() || filename.ends_with('-') {
-            format!("index.{}", ext)
+            format!("index.{ext}")
         } else {
-            format!("{}.{}", filename, ext)
+            format!("{filename}.{ext}")
         };
 
         output_dir.join(domain).join(filename)
@@ -188,7 +188,7 @@ impl Exporter for FileExporter {
                     .map_err(|e| ExporterError::WriteError(e.to_string()))?;
 
                 use std::io::Write;
-                writeln!(file, "{}", json).map_err(|e| ExporterError::WriteError(e.to_string()))?;
+                writeln!(file, "{json}").map_err(|e| ExporterError::WriteError(e.to_string()))?;
                 Ok(())
             },
             crate::domain::entities::ExportFormat::Vector => {

@@ -248,7 +248,7 @@ pub async fn scrape_with_config(
             results.push(ScrapedContent {
                 title: url
                     .host_str()
-                    .ok_or_else(|| ScraperError::invalid_url(format!("URL missing host: {}", url)))?
+                    .ok_or_else(|| ScraperError::invalid_url(format!("URL missing host: {url}")))?
                     .to_string(),
                 content: fallback_content,
                 url: ValidUrl::new(url.clone()),
