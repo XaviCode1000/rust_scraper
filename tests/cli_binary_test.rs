@@ -8,6 +8,10 @@
 
 use assert_cmd::Command;
 use predicates::prelude::*;
+use std::time::Duration;
+use tempfile::TempDir;
+use wiremock::matchers::{method, path};
+use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn cmd() -> Command {
     Command::cargo_bin("rust_scraper").expect("binary exists")
@@ -105,4 +109,92 @@ fn test_dry_run_flag_accepted() {
         .assert()
         .failure()
         .stderr(predicate::str::contains("--url is required"));
+}
+
+// ============================================================================
+// Tests: Single-page scraping
+// ============================================================================
+
+#[tokio::test]
+async fn test_single_page_requests_only_seed_and_writes_output() {
+    let mock_server = MockServer::start().await;
+    let output_dir = TempDir::new().expect("create temp output dir");
+    let seed_html = r#"
+        <html>
+            <head><title>Single Page Test</title></head>
+            <body>
+                <main>
+                    <article>
+                        <h1>Single Page Test</h1>
+                        <p>This page has enough meaningful content for the fallback extractor to produce a usable document.</p>
+                        <p>The linked page must not be requested while --single-page is active, because discovery is skipped.</p>
+                        <a href="/linked">Linked page that should not be fetched</a>
+                    </article>
+                </main>
+            </body>
+        </html>
+    "#;
+
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(seed_html))
+        .expect(1)
+        .named("single-page seed request")
+        .mount(&mock_server)
+        .await;
+
+    cmd()
+        .arg("--url")
+        .arg(mock_server.uri())
+        .arg("--single-page")
+        .arg("--output")
+        .arg(output_dir.path())
+        .arg("--quiet")
+        .assert()
+        .success();
+
+    let received_requests = mock_server
+        .received_requests()
+        .await
+        .expect("request recording should be enabled");
+    assert_eq!(received_requests.len(), 1);
+    assert_eq!(received_requests[0].url.path(), "/");
+
+    let output_entries = std::fs::read_dir(output_dir.path())
+        .expect("read output dir")
+        .count();
+    assert!(output_entries > 0, "single-page scrape should write output");
+}
+
+#[tokio::test]
+async fn test_single_page_custom_timeout_is_used_by_scrape_client() {
+    let mock_server = MockServer::start().await;
+    let output_dir = TempDir::new().expect("create temp output dir");
+
+    Mock::given(method("GET"))
+        .and(path("/slow"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("slow response content")
+                .set_delay(Duration::from_secs(2)),
+        )
+        .expect(1)
+        .named("single-page timeout request")
+        .mount(&mock_server)
+        .await;
+
+    cmd()
+        .arg("--url")
+        .arg(format!("{}/slow", mock_server.uri()))
+        .arg("--single-page")
+        .arg("--timeout-secs")
+        .arg("1")
+        .arg("--output")
+        .arg(output_dir.path())
+        .arg("--quiet")
+        .assert()
+        .code(69)
+        .stderr(predicate::str::contains(
+            "No pages were successfully scraped",
+        ));
 }

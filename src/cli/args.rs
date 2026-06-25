@@ -144,6 +144,11 @@ pub struct Args {
     pub sitemap_url: Option<String>,
 
     // ========== Behavior ==========
+    /// Scrape only the seed URL without discovery or crawling
+    #[arg(long, default_value = "false", env = "RUST_SCRAPER_SINGLE_PAGE")]
+    #[clap(next_help_heading = "Behavior")]
+    pub single_page: bool,
+
     /// Resume mode - skip URLs already processed
     #[arg(long, env = "RUST_SCRAPER_RESUME")]
     #[clap(next_help_heading = "Behavior")]
