@@ -24,11 +24,11 @@ sudo dnf install cmake
 ```
 gitnexus analyze --index-only --skip-agents-md    # Refresh index on a clean tree without touching AGENTS.md
 gitnexus analyze --skills --index-only --skip-agents-md  # Regenerate skill files if communities changed
-codedb_status                       # Verify CodeDB index is fresh
+codedb /home/xavi/Projects/rust_scraper status   # Verify CodeDB index is fresh
 ```
 
 If you see "Index is stale" from any gitnexus tool → stop and run `gitnexus analyze` first.
-If `codedb_status` shows stale index → run `codedb_index` to rebuild.
+If `codedb /home/xavi/Projects/rust_scraper status` shows stale index → run `codedb /home/xavi/Projects/rust_scraper index` to rebuild.
 
 Before reindexing, make sure the worktree is clean. If you still need `gitnexus_detect_changes()` later in the session, do not rerun `gitnexus analyze` after editing files.
 
@@ -116,12 +116,12 @@ cargo miri test                # Memory safety interpretation (~10-15 min)
 
 Sub-agents get a fresh context with no memory. The orchestrator controls context access.
 
-### MANDATORY: Sub-agents MUST use GitNexus + CodeDB
+### MANDATORY: Sub-agents MUST use GitNexus + CodeDB (CLI)
 
 **Every sub-agent that reads, writes, or reviews code MUST use GitNexus and CodeDB tools for code investigation.** The orchestrator enforces this by:
 
 1. Always passing the relevant skill names in the sub-agent prompt
-2. Including in the sub-agent prompt: `"You MUST use codedb_search/codedb_symbol to find code, gitnexus_impact before editing, and gitnexus_detect_changes before returning. Do NOT grep the project codebase."`
+2. Including in the sub-agent prompt: `"You MUST use codedb CLI with explicit path (codedb /home/xavi/Projects/rust_scraper search …) to find code, gitnexus_impact before editing, and gitnexus_detect_changes before returning. Do NOT grep the project codebase."`
 3. Sub-agents that grep instead of using GitNexus/CodeDB are discipline failures
 
 **Delegate when:**
@@ -145,11 +145,11 @@ Sub-agents get a fresh context with no memory. The orchestrator controls context
 
 Every sub-agent prompt that involves code MUST include:
 ```
-MANDATORY: Load gitnexus-exploring and codedb skills. Use MCP tools
-(codedb_search, codedb_symbol, gitnexus_query, gitnexus_impact,
-gitnexus_detect_changes) — NEVER shell out to CLI for analysis.
-MCP tools are instant. CLI is only for analyze/clean/wiki.
-NEVER grep the project codebase when codedb_search works.
+MANDATORY: Load gitnexus-exploring and codedb skills. Use CLI tools
+(codedb /home/xavi/Projects/rust_scraper search …, codedb … symbol …,
+gitnexus_query, gitnexus_impact, gitnexus_detect_changes) — NEVER
+grep the project codebase. CodeDB CLI uses explicit project path to
+avoid /var/home bind-mount issues. GitNexus MCP is unaffected.
 ```
 
 ---
@@ -261,21 +261,23 @@ This project is indexed by GitNexus as **rust_scraper** (4465 symbols, 9237 rela
 <!-- gitnexus:end -->
 
 <!-- codedb:start -->
-# CodeDB — Structural Code Search
+# CodeDB — Structural Code Search (CLI)
 
-CodeDB is a fast structural search engine. Use it for quick code lookups, file trees, outlines, and dependency graphs. GitNexus handles deep graph analysis and execution flows.
+CodeDB is a fast structural search engine. Use it via CLI with the explicit project path. GitNexus handles deep graph analysis and execution flows.
 
-> Index stale? Run `codedb_index` from the project root.
+> **NOTE:** CodeDB MCP is unavailable on this system due to Fedora Silverblue's `/var/home` bind-mount. Always use the CLI with explicit path: `codedb /home/xavi/Projects/rust_scraper <command>`.
+>
+> Index stale? Run `codedb /home/xavi/Projects/rust_scraper index` from the project root.
 
 ## When to Use CodeDB
 
-- **Quick file tree** — `codedb_tree` for project orientation
-- **Find symbol definitions** — `codedb_symbol` (exact, sub-ms)
-- **Full-text search** — `codedb_search` (trigram-accelerated, supports regex)
-- **Find all callers** — `codedb_callers` before refactoring
-- **File outline** — `codedb_outline` for functions/structs/imports in a file
-- **Dependency graph** — `codedb_deps` for import analysis
-- **Task context** — `codedb_context` replaces 3–5 sequential calls
+- **Quick file tree** — `codedb /home/xavi/Projects/rust_scraper tree`
+- **Find symbol definitions** — `codedb /home/xavi/Projects/rust_scraper symbol <name>`
+- **Full-text search** — `codedb /home/xavi/Projects/rust_scraper search <query>`
+- **Find all callers** — `codedb /home/xavi/Projects/rust_scraper callers <name>`
+- **File outline** — `codedb /home/xavi/Projects/rust_scraper outline <path>`
+- **Dependency graph** — `codedb /home/xavi/Projects/rust_scraper deps <path>`
+- **Index status** — `codedb /home/xavi/Projects/rust_scraper status`
 
 ## CodeDB vs GitNexus
 
@@ -288,23 +290,28 @@ CodeDB is a fast structural search engine. Use it for quick code lookups, file t
 
 **Use both:** CodeDB for quick lookups, GitNexus for deep analysis.
 
-## Key Tools
+## CLI Command Reference
 
-| Tool | Use for |
-|------|---------|
-| `codedb_tree` | Project orientation — file tree with symbol counts |
-| `codedb_symbol` | Find where a symbol is defined |
-| `codedb_search` | Full-text search (supports regex) |
-| `codedb_callers` | Every call site of a symbol |
-| `codedb_outline` | Functions/structs/imports in a file |
-| `codedb_deps` | Dependency graph (imported_by / depends_on) |
-| `codedb_context` | Task-shaped context (replaces 3-5 calls) |
-| `codedb_hot` | Recently modified files |
+| Command | Example |
+|---------|---------|
+| `codedb <root> tree` | Project orientation — file tree with symbol counts |
+| `codedb <root> symbol <name>` | Find where a symbol is defined |
+| `codedb <root> search <query>` | Full-text search (supports regex with `--regex`) |
+| `codedb <root> callers <name>` | Every call site of a symbol |
+| `codedb <root> outline <path>` | Functions/structs/imports in a file |
+| `codedb <root> deps <path>` | Dependency graph (`--depends-on`, `--transitive`) |
+| `codedb <root> status` | Index freshness and size |
+| `codedb <root> hot` | Recently modified files |
+| `codedb <root> find <name>` | Fuzzy file-name search |
+| `codedb <root> context <task>` | Task-shaped context bundle |
+
+`<root>` = `/home/xavi/Projects/rust_scraper` for this project.
 
 ## Never Do
 
 - NEVER use `codedb_edit` when native edit tools work — it's a fallback only
 - NEVER use CodeDB for impact analysis — use GitNexus `impact` instead
 - NEVER use CodeDB for execution flow tracing — use GitNexus `query`/`context` instead
+- NEVER invoke `codedb mcp` without explicit path or `CODEDB_ALLOW_TEMP` — it will fail on `/var/home`
 
 <!-- codedb:end -->
