@@ -23,7 +23,6 @@ test-dev:
     @echo "🚀 Ejecutando tests solo de cambios (GitNexus impact analysis)..."
     cargo nextest run \
         --no-fail-fast \
-        --test-threads 2 \
         --profile dev
 
 # Tests completos para agentes (gate final)
@@ -31,7 +30,6 @@ test:
     @echo "🧪 Ejecutando suite completa de tests..."
     cargo nextest run \
         --no-fail-fast \
-        --test-threads $(nproc) \
         --profile agent
 
 # Tests con filtro preciso (GitNexus lo usa cuando sabe exactamente qué módulos cambiaron)
@@ -39,12 +37,11 @@ test-filter filter:
     @echo "🎯 Ejecutando tests filtrados: {{filter}}"
     cargo nextest run \
         --no-fail-fast \
-        --test-threads 2 \
         --profile dev \
         -E '{{filter}}'
 
 test-ai:
-    cargo nextest run --profile agent --test-threads 2 --features ai
+    cargo nextest run --profile agent --features ai
 
 # -- Auditoría --
 
@@ -109,7 +106,6 @@ test-dev-with-impact:
     @echo "🎯 Ejecutando tests optimizados (excluyendo AI integration)..."
     cargo nextest run \
         --profile dev \
-        --test-threads 2 \
         --no-fail-fast \
         -E "not test(ai_integration)"
 
@@ -129,7 +125,6 @@ test-ci:
     @echo "4/4 → Ejecutando suite completa de tests..."
     cargo nextest run \
         --profile ci \
-        --test-threads 2 \
         --no-fail-fast
     @echo "✅ CI PASADO - Listo para commit/push/PR"
 
@@ -138,5 +133,5 @@ test-ci-quick:
     @echo "🔥 CI rápido (clippy + tests)..."
     cargo clippy --all-targets --all-features -- -D warnings
     gitnexus analyze || echo "GitNexus ya estaba actualizado"
-    cargo nextest run --profile ci --test-threads 2 --no-fail-fast
+    cargo nextest run --profile ci --no-fail-fast
     @echo "✅ CI rápido pasado"
