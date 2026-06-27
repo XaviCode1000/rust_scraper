@@ -116,6 +116,10 @@ fn test_args_has_required_fields() {
         offline: false,
         // Sitemap settings
         sitemap_depth: 3,
+        // Elastic ingestion settings (PR5)
+        ram_budget: None,
+        cpu_cores: None,
+        db_path: None,
     };
 
     assert_eq!(args.url, Some("https://example.com".to_string()));

@@ -4,6 +4,7 @@ use tokio::sync::oneshot;
 use tracing::warn;
 
 use crate::error::ScraperError;
+use crate::infrastructure::converter::html_cleaner::clean_html;
 use crate::infrastructure::cpu_pool::RayonCpuPool;
 use crate::infrastructure::crawler::resource_downloader::DownloadedResource;
 
@@ -24,7 +25,8 @@ pub struct ProcessedChunk {
 pub struct ProcessedResource {
     /// Source URL of the downloaded resource.
     pub resource_url: String,
-    /// Cleaned content chunks (stub produces one; PR5 chunks via `HtmlChunker`).
+    /// Cleaned content chunks (`lol_html` produces one text chunk; the
+    /// orchestrator may split further / attach ONNX embeddings).
     pub chunks: Vec<ProcessedChunk>,
     /// Processing metadata (size, chunk count, cleaner provenance).
     pub metadata: serde_json::Value,
@@ -97,11 +99,14 @@ impl CpuBridge {
     /// Typed dispatch: clean a [`DownloadedResource`] into a
     /// [`ProcessedResource`] on the Rayon pool.
     ///
-    /// PR3 ships a **stub** cleaner (naive tag strip) that cannot fail, so the
-    /// work returns `ProcessedResource` directly and reuses [`dispatch`]'s
-    /// single `Result` wrap. PR5 replaces the stub with real `lol_html` +
-    /// `SemanticCleanerImpl` ONNX inference (which CAN fail) and will switch
-    /// the closure to return `Result` — that is PR5's scope, not PR3's.
+    /// PR5 wires real `lol_html` boilerplate removal (via [`clean_html_to_text`])
+    /// that strips `script`/`style`/`nav`/`footer`/`aside` chrome and extracts
+    /// visible text. The cleaner is infallible (`clean_html` falls back to the
+    /// raw HTML on a `lol_html` parse error), so the work closure returns
+    /// `ProcessedResource` directly and reuses [`dispatch`]'s single `Result`
+    /// wrap. Embeddings stay `None` here — ONNX inference is async and runs in
+    /// the orchestrator's async layer (Decision 5); the bridge is sync
+    /// CPU-bound text extraction only.
     pub fn dispatch_resource(
         &self,
         payload: DownloadedResource,
@@ -109,7 +114,7 @@ impl CpuBridge {
         let url = payload.url.clone();
         let size = payload.size_bytes;
         self.dispatch(move || {
-            let text = clean_html_stub(&payload.bytes);
+            let text = clean_html_to_text(&payload.bytes);
             let chunk = ProcessedChunk {
                 content: text,
                 embedding: None,
@@ -117,7 +122,7 @@ impl CpuBridge {
             let metadata = serde_json::json!({
                 "size_bytes": size,
                 "chunk_count": 1u64,
-                "cleaner": "stub",
+                "cleaner": "lol_html",
             });
             ProcessedResource {
                 resource_url: url,
@@ -143,17 +148,31 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
     }
 }
 
-/// Stub HTML cleaner: strips `<script>`/`<style>` blocks and all tags, then
-/// collapses whitespace.
+/// Clean downloaded HTML into visible text using Cloudflare's `lol_html`.
 ///
-/// TODO(PR5): replace with `lol_html` boilerplate strip + `SemanticCleanerImpl`
-/// for production-grade cleaning. This naive stripper is UTF-8 safe (operates on
-/// `char` boundaries) but does not handle entities, comments, or CDATA.
-fn clean_html_stub(bytes: &[u8]) -> String {
+/// Two-stage (frozen Task 5.3 — replaces the PR3 naive stub):
+/// 1. [`clean_html`] runs the `lol_html` streaming rewriter with element
+///    handlers that `el.remove()` boilerplate tags (`script`, `style`,
+///    `noscript`, `nav`, `header`, `footer`, `aside`, `form`, `iframe`, …) and
+///    CSS-selector-matched chrome. This is a real HTML parse, so it correctly
+///    handles comments, nested boilerplate, and `</script>`-inside-string cases
+///    the naive stub mishandled.
+/// 2. [`strip_html_tags`] then extracts the visible text from the
+///    boilerplate-stripped HTML (the remaining semantic markup: `main`, `p`,
+///    `h1`, …) and collapses whitespace.
+///
+/// `from_utf8_lossy` is used so malformed payloads never crash the Rayon pool.
+/// If `lol_html` itself errors on a pathological input, `clean_html` falls back
+/// to the original HTML (logged via `tracing::warn!`), so this function is
+/// infallible — the work closure stays non-`Result`, reusing `dispatch`'s
+/// single `Result` wrap. (ONNX embeddings are wired in the orchestrator's async
+/// layer — see Decision 5; the bridge is sync CPU-bound text extraction only.)
+fn clean_html_to_text(bytes: &[u8]) -> String {
     // `from_utf8_lossy` never panics on invalid UTF-8 (replaces with U+FFFD),
     // so malformed payloads do not crash the Rayon pool.
     let html = String::from_utf8_lossy(bytes);
-    strip_html_tags(&html)
+    let cleaned_html = clean_html(&html);
+    strip_html_tags(&cleaned_html)
 }
 
 /// Naive, UTF-8-safe tag stripper used by the stub cleaner.
@@ -343,10 +362,10 @@ mod tests {
         assert_eq!(results, expected, "concurrent dispatch must be race-free");
     }
 
-    // ---- Task 3.3: typed dispatch_resource (lol_html stub) ----
+    // ---- Task 3.3: typed dispatch_resource (lol_html cleaning) ----
 
     #[tokio::test]
-    async fn test_dispatch_resource_returns_processed_resource_with_stub_cleaning() {
+    async fn test_dispatch_resource_returns_processed_resource_with_lol_html_cleaning() {
         let bridge = make_bridge(2);
         let html = "<article><h1>Title</h1><p>Hello <b>world</b>.</p></article>";
         let rx = bridge.dispatch_resource(html_payload(html));
@@ -375,15 +394,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_dispatch_resource_stub_strips_html_tags() {
-        // The stub cleaner must extract visible text, not raw markup.
+    async fn test_dispatch_resource_lol_html_strips_html_tags() {
+        // The lol_html cleaner must extract visible text, not raw markup.
         let bridge = make_bridge(2);
         let html = "<p>Hello <script>bad()</script> there</p>";
         let rx = bridge.dispatch_resource(html_payload(html));
         let resource = rx
             .await
             .expect("oneshot must not be closed")
-            .expect("stub cleaning must succeed");
+            .expect("lol_html cleaning must succeed");
         let text = resource
             .chunks
             .first()
@@ -394,10 +413,11 @@ mod tests {
         assert!(!text.contains("bad()"), "script body must be gone: {text}");
         assert!(text.contains("Hello"), "visible text preserved: {text}");
         assert!(text.contains("there"), "visible text preserved: {text}");
-        // Embedding is None until PR5 ONNX wiring.
+        // Embedding is None: ONNX is wired in the orchestrator (async), not the
+        // sync Rayon bridge closure (see Decision 5 / PR5 apply-progress).
         assert!(
             resource.chunks[0].embedding.is_none(),
-            "stub must leave embedding None (PR5 wires ONNX)"
+            "bridge must leave embedding None (ONNX wired in the orchestrator)"
         );
     }
 
@@ -419,6 +439,60 @@ mod tests {
             outcome.is_ok(),
             "stub must tolerate invalid UTF-8 via lossy, got: {:?}",
             outcome.err()
+        );
+    }
+
+    // ---- Task 5.3: real lol_html boilerplate removal (replaces the stub) ----
+    //
+    // The naive stub ran a tag-stripper over RAW HTML, so it extracted the
+    // visible text of <nav>/<footer>/<aside> boilerplate too. Real lol_html
+    // (via `clean_html`) removes those elements entirely before text is
+    // extracted, so their text is gone. This test FAILS on the stub (RED) and
+    // PASSES once lol_html is wired (GREEN).
+
+    #[tokio::test]
+    async fn test_dispatch_resource_lol_html_removes_boilerplate_text() {
+        let bridge = make_bridge(2);
+        let html = "<nav>menu links home</nav>\
+                    <main><p>real content here</p></main>\
+                    <footer>copyright notice</footer>";
+        let rx = bridge.dispatch_resource(html_payload(html));
+        let resource = rx
+            .await
+            .expect("oneshot must not be closed")
+            .expect("lol_html cleaning must succeed");
+        let text = resource
+            .chunks
+            .first()
+            .expect("at least one chunk")
+            .content
+            .as_str();
+        assert!(
+            text.contains("real content here"),
+            "main content must be preserved: {text}"
+        );
+        assert!(
+            !text.contains("menu"),
+            "nav boilerplate text must be removed by lol_html: {text}"
+        );
+        assert!(
+            !text.contains("copyright"),
+            "footer boilerplate text must be removed by lol_html: {text}"
+        );
+        // Embedding stays None in the bridge (ONNX wiring is the orchestrator's
+        // async concern — see Decision 5 / PR5 apply-progress).
+        assert!(
+            resource.chunks[0].embedding.is_none(),
+            "bridge must leave embedding None (ONNX wired in the orchestrator)"
+        );
+        let metadata = resource
+            .metadata
+            .as_object()
+            .expect("metadata is an object");
+        assert_eq!(
+            metadata.get("cleaner").and_then(|v| v.as_str()),
+            Some("lol_html"),
+            "metadata must record the real cleaner provenance"
         );
     }
 
