@@ -1,111 +1,101 @@
-//! Deduplicator module — URL deduplication logic
+//! URL deduplication module.
 //!
-//! Extracts the deduplication logic from crawler_service.rs to allow
-//! for independent testing and potential future swapping (e.g., Redis-backed).
+//! Lock-free, memory-efficient URL deduplication built on
+//! `DashSet<u64, ahash::RandomState>`. Stores an 8-byte hash per URL instead of
+//! the full normalized `String`, collapsing per-URL residency from ~150 B to
+//! ~8 B (FR-2: <100 MB for 10 M URLs).
 //!
 //! # Design Decisions
 //!
-//! - Uses `tokio::sync::Mutex` for async-safe interior mutability
-//! - Implements trait-based design for testability
-//! - Stores URLs as strings (normalized) for memory efficiency
-//! - Provides both sync and async interfaces
+//! - `DashSet<u64, ahash::RandomState>` — lock-free concurrent check-and-insert
+//! - Per-process randomized seed via `ahash::RandomState::new()` (FR-3 HashDoS
+//!   resistance); deliberately NOT `RandomState::default()` (frozen keys)
+//! - `try_insert` is synchronous and atomic — no `Mutex`, no `.await` in the
+//!   hot loop (FR-8: no data races, no lost updates)
+//! - Deterministic within a single process (FR-5): the seed is fixed for the
+//!   process lifetime, so identical URLs hash to identical `u64` keys
 
-use std::collections::HashSet;
-use std::sync::Arc;
-
-use tokio::sync::Mutex;
+use dashmap::DashSet;
 use url::Url;
 
-/// Trait for URL deduplication - allows different implementations
-pub trait UrlDeduplicator: Send + Sync {
-    /// Check if URL was already visited
-    fn is_visited(&self, url: &str) -> impl std::future::Future<Output = bool> + Send;
-
-    /// Mark URL as visited
-    fn mark_visited(&self, url: String) -> impl std::future::Future<Output = ()> + Send;
-
-    /// Get current count of visited URLs
-    fn visited_count(&self) -> impl std::future::Future<Output = usize> + Send;
-
-    /// Check and mark in one operation (atomic)
-    fn check_and_mark(&self, url: String) -> impl std::future::Future<Output = bool> + Send;
-}
-
-/// In-memory URL deduplicator using HashSet
+/// Lock-free URL deduplicator.
+///
+/// Stores a `u64` hash (8 bytes) per seen URL rather than the full string.
+/// Dedup is atomic: `try_insert` performs a single `DashSet::insert`
+/// (check-and-insert in one step), so concurrent callers cannot race past each
+/// other.
+///
+/// The hash seed is randomized per process startup (`RandomState::new()`,
+/// satisfying FR-3) yet stable for the deduplicator's lifetime, so the same URL
+/// always maps to the same `u64` within one process (FR-5).
 ///
 /// # Example
 ///
 /// ```rust
-/// use rust_scraper::application::deduplicator::{UrlDeduplicator, InMemoryDeduplicator};
+/// use rust_scraper::application::deduplicator::UrlDeduplicator;
 ///
-/// #[tokio::main]
-/// async fn main() {
-///     let dedup = InMemoryDeduplicator::new();
-///
-///     // First time - returns false (not visited)
-///     let is_new = dedup.check_and_mark("https://example.com".into()).await;
-///     assert!(!is_new);
-///
-///     // Second time - returns true (already visited)
-///     let is_new = dedup.check_and_mark("https://example.com".into()).await;
-///     assert!(is_new);
-/// }
+/// let dedup = UrlDeduplicator::new();
+/// assert!(dedup.try_insert("https://example.com"));   // newly inserted
+/// assert!(!dedup.try_insert("https://example.com"));  // already seen
+/// assert_eq!(dedup.len(), 1);
 /// ```
-#[derive(Clone)]
-pub struct InMemoryDeduplicator {
-    visited: Arc<Mutex<HashSet<String>>>,
+pub struct UrlDeduplicator {
+    seen: DashSet<u64, ahash::RandomState>,
+    rs: ahash::RandomState,
 }
 
-impl InMemoryDeduplicator {
-    /// Create a new in-memory deduplicator
+impl UrlDeduplicator {
+    /// Create a new deduplicator with a fresh per-process randomized seed.
+    ///
+    /// Pre-allocates capacity for ~100 URLs (mem-with-capacity).
+    #[must_use]
     pub fn new() -> Self {
+        let rs = ahash::RandomState::new();
         Self {
-            visited: Arc::new(Mutex::new(HashSet::new())),
+            seen: DashSet::with_capacity_and_hasher(100, rs.clone()),
+            rs,
         }
     }
 
-    /// Create with pre-allocated capacity
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            visited: Arc::new(Mutex::new(HashSet::with_capacity(capacity))),
-        }
+    /// Atomically check-and-insert a URL.
+    ///
+    /// Returns `true` if the URL was newly inserted, `false` if it was already
+    /// present. This is a single lock-free `DashSet::insert` — no `Mutex`, no
+    /// `.await` — so it is safe to call from many Tokio tasks concurrently
+    /// (FR-8) without data races or lost updates.
+    #[must_use]
+    pub fn try_insert(&self, url: &str) -> bool {
+        self.seen.insert(self.rs.hash_one(url))
+    }
+
+    /// Number of unique URLs currently tracked.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.seen.len()
+    }
+
+    /// Whether no URLs have been tracked yet.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.seen.is_empty()
     }
 }
 
-impl Default for InMemoryDeduplicator {
+impl Default for UrlDeduplicator {
     fn default() -> Self {
+        // Delegate to `new()` so the seed is randomized (RandomState::new()).
+        // Do NOT replace with `#[derive(Default)]`: the derived impl would use
+        // `RandomState::default()` (frozen compile-time keys), violating FR-3.
         Self::new()
     }
 }
 
-impl UrlDeduplicator for InMemoryDeduplicator {
-    async fn is_visited(&self, url: &str) -> bool {
-        let visited = self.visited.lock().await;
-        visited.contains(url)
-    }
-
-    async fn mark_visited(&self, url: String) {
-        let mut visited = self.visited.lock().await;
-        visited.insert(url);
-    }
-
-    async fn visited_count(&self) -> usize {
-        let visited = self.visited.lock().await;
-        visited.len()
-    }
-
-    async fn check_and_mark(&self, url: String) -> bool {
-        let mut visited = self.visited.lock().await;
-        !visited.insert(url) // Return true if already existed, false if newly inserted
-    }
-}
-
-/// Normalize URL for consistent deduplication
+/// Normalize a URL for consistent deduplication and filtering.
 ///
 /// - Removes trailing slashes
-/// - Removes www prefix
-/// - Converts to lowercase (for domain)
-/// - Removes default ports (80, 443)
+/// - Removes `www.` prefix
+/// - Drops default ports (80, 443)
+/// - Lowercases the host (via `Url` parsing)
 pub fn normalize_url(url: &Url) -> String {
     let scheme = url.scheme();
     let host = url.host_str().unwrap_or("");
@@ -150,106 +140,109 @@ pub fn normalize_url(url: &Url) -> String {
     result
 }
 
-/// Results collector - collects crawl results without Mutex per item
-///
-/// Instead of `Arc<Mutex<Vec<T>>>`, uses channels for better performance
-/// in high-concurrency scenarios.
-#[derive(Clone)]
-pub struct ResultsCollector<T: Clone + Send> {
-    results: Arc<Mutex<Vec<T>>>,
-}
-
-impl<T: Clone + Send> ResultsCollector<T> {
-    /// Create a new results collector
-    pub fn new() -> Self {
-        Self {
-            results: Arc::new(Mutex::new(Vec::new())),
-        }
-    }
-
-    /// Create with pre-allocated capacity
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            results: Arc::new(Mutex::new(Vec::with_capacity(capacity))),
-        }
-    }
-
-    /// Add a result
-    pub async fn add(&self, result: T) {
-        let mut results = self.results.lock().await;
-        results.push(result);
-    }
-
-    /// Get all results
-    pub async fn get_all(&self) -> Vec<T> {
-        let results = self.results.lock().await;
-        results.clone()
-    }
-
-    /// Get count
-    pub async fn len(&self) -> usize {
-        let results = self.results.lock().await;
-        results.len()
-    }
-
-    /// Check if empty
-    pub async fn is_empty(&self) -> bool {
-        let results = self.results.lock().await;
-        results.is_empty()
-    }
-
-    /// Clear all results
-    pub async fn clear(&self) {
-        let mut results = self.results.lock().await;
-        results.clear();
-    }
-}
-
-impl<T: Clone + Send> Default for ResultsCollector<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
 
-    #[tokio::test]
-    async fn test_deduplicator_check_and_mark() {
-        let dedup = InMemoryDeduplicator::new();
-
-        // First time should return false (was inserted)
-        let result = dedup
-            .check_and_mark("https://example.com".to_string())
-            .await;
-        assert!(!result, "First insert should return false (URL was added)");
-
-        // Second time should return true (already exists)
-        let result = dedup
-            .check_and_mark("https://example.com".to_string())
-            .await;
-        assert!(
-            result,
-            "Second check should return true (URL already visited)"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_deduplicator_count() {
-        let dedup = InMemoryDeduplicator::new();
-
-        assert_eq!(dedup.visited_count().await, 0);
-
-        dedup.mark_visited("https://a.com".to_string()).await;
-        assert_eq!(dedup.visited_count().await, 1);
-
-        dedup.mark_visited("https://b.com".to_string()).await;
-        assert_eq!(dedup.visited_count().await, 2);
+    #[test]
+    fn test_new_deduplicator_is_empty() {
+        // empty: fresh deduplicator holds nothing, first insert succeeds
+        let dedup = UrlDeduplicator::new();
+        assert!(dedup.is_empty());
+        assert_eq!(dedup.len(), 0);
+        assert!(dedup.try_insert("https://example.com"));
+        assert!(!dedup.is_empty());
+        assert_eq!(dedup.len(), 1);
     }
 
     #[test]
-    fn test_normalize_url() {
+    fn test_whitespace_url_does_not_panic() {
+        // whitespace: a whitespace-only string is hashed as-is (no trimming
+        // here); it must not panic and must dedup like any other key.
+        let dedup = UrlDeduplicator::new();
+        assert!(dedup.try_insert("   "));
+        assert!(!dedup.try_insert("   "));
+        assert_eq!(dedup.len(), 1);
+    }
+
+    #[test]
+    fn test_valid_url_insert_and_dedup() {
+        // valid + Scenario: Basic dedup — same URL rejected twice
+        let dedup = UrlDeduplicator::new();
+        assert!(dedup.try_insert("https://example.com/page")); // newly inserted
+        assert!(!dedup.try_insert("https://example.com/page")); // already seen
+        assert_eq!(dedup.len(), 1);
+        // A different URL is accepted (Scenario: Different URLs accepted)
+        assert!(dedup.try_insert("https://example.com/other"));
+        assert_eq!(dedup.len(), 2);
+    }
+
+    #[test]
+    fn test_no_host_url_handled() {
+        // no-host: a URL without a host is hashed as a plain string — no panic,
+        // normal dedup semantics.
+        let dedup = UrlDeduplicator::new();
+        assert!(dedup.try_insert("/relative/path"));
+        assert!(!dedup.try_insert("/relative/path"));
+        assert!(dedup.try_insert("javascript:void(0)"));
+        assert_eq!(dedup.len(), 2);
+    }
+
+    #[test]
+    fn test_deterministic_within_process() {
+        // deterministic + FR-5: same URL -> same u64 within one process ->
+        // consistent dedup. 100 inserts of the same URL; only the first wins.
+        let dedup = UrlDeduplicator::new();
+        let url = "https://example.com/deterministic";
+        let mut newly_inserted = 0;
+        for _ in 0..100 {
+            if dedup.try_insert(url) {
+                newly_inserted += 1;
+            }
+        }
+        assert_eq!(newly_inserted, 1);
+        assert_eq!(dedup.len(), 1);
+    }
+
+    #[test]
+    fn test_padded_urls_are_distinct() {
+        // padded: try_insert does NOT trim/normalize; surrounding whitespace
+        // yields a distinct hash from the bare URL. Normalization is
+        // normalize_url's job, applied by callers before inserting.
+        let dedup = UrlDeduplicator::new();
+        assert!(dedup.try_insert("https://example.com"));
+        assert!(dedup.try_insert(" https://example.com "));
+        assert!(dedup.try_insert("https://example.com\n"));
+        assert_eq!(dedup.len(), 3);
+        // Re-inserting the bare URL is still a duplicate of itself
+        assert!(!dedup.try_insert("https://example.com"));
+    }
+
+    #[tokio::test]
+    async fn test_concurrent_inserts_unique() {
+        // concurrent + Scenario: Concurrent access correctness (FR-8)
+        // 1000 Tokio tasks each insert a unique URL; the set must end up with
+        // exactly 1000 entries — no panics, no lost updates.
+        let dedup = Arc::new(UrlDeduplicator::new());
+        let mut handles = Vec::with_capacity(1000);
+        for i in 0..1000u32 {
+            let dedup = Arc::clone(&dedup);
+            handles.push(tokio::spawn(async move {
+                let url = format!("https://example.com/page/{i}");
+                assert!(dedup.try_insert(&url), "unique URL must be newly inserted");
+            }));
+        }
+        for handle in handles {
+            handle.await.unwrap();
+        }
+        assert_eq!(dedup.len(), 1000);
+    }
+
+    #[test]
+    fn test_normalize_url_preserved() {
+        // normalize_url is kept (DC-3 only deletes the legacy ResultsCollector,
+        // not this helper). Verify it still behaves as documented.
         let url = Url::parse("https://www.example.com/").unwrap();
         assert_eq!(normalize_url(&url), "https://example.com");
 
@@ -258,19 +251,5 @@ mod tests {
 
         let url = Url::parse("https://example.com:80/page").unwrap();
         assert_eq!(normalize_url(&url), "https://example.com/page");
-    }
-
-    #[tokio::test]
-    async fn test_results_collector() {
-        let collector: ResultsCollector<String> = ResultsCollector::new();
-
-        collector.add("result1".to_string()).await;
-        collector.add("result2".to_string()).await;
-
-        assert_eq!(collector.len().await, 2);
-        assert!(!collector.is_empty().await);
-
-        let all = collector.get_all().await;
-        assert_eq!(all, vec!["result1", "result2"]);
     }
 }
