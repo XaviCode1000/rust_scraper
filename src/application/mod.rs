@@ -20,7 +20,7 @@ pub use crawler_service::{
     crawl_site, crawl_with_sitemap, discover_urls_for_tui, scrape_single_url_for_tui,
     scrape_urls_for_tui,
 };
-pub use deduplicator::{normalize_url, ResultsCollector as InMemoryDeduplicator, UrlDeduplicator};
+pub use deduplicator::{normalize_url, UrlDeduplicator};
 pub use http_client::create_http_client;
 pub use rate_limiter::{RateLimiterConfig, SharedRateLimiter};
 pub use results_channel::{CrawlMessage, ResultsAdapter, ResultsCollector};

@@ -135,6 +135,11 @@ redis = { version = "0.27", features = ["tokio-comp", "connection-manager", "rus
 # governor pulls in dashmap 5.x. Both are needed. Do NOT remove either.
 dashmap = "6"
 
+# Hasher for u64-keyed URL deduplication (DashSet<u64, ahash::RandomState>).
+# Per-process randomized seed (FR-3 HashDoS resistance). Direct dep — previously
+# only transitive under the `ai` feature. Default `std` feature for hash_one().
+ahash = { version = "0.8", features = ["std"] }
+
 # TUI (preparar para Fase 2) - FASE 1 Web Crawler
 ratatui = "0.29"
 catppuccin = "2"

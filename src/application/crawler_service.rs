@@ -21,13 +21,13 @@
 //! use rust_scraper::application::crawler::engine;
 //! ```
 
-use std::collections::HashSet;
 use std::sync::Arc;
 
 use anyhow::Result;
-use tokio::sync::Mutex;
 use tracing::{debug, error, info, instrument, span, warn, Level};
 use url::Url;
+
+use super::deduplicator::UrlDeduplicator;
 
 pub use crate::domain::{
     CorrelationId, CrawlError, CrawlResult, CrawlerConfig, DiscoveredUrl, ScrapedContent, ValidUrl,
@@ -538,10 +538,11 @@ pub async fn crawl_site(config: CrawlerConfig) -> Result<CrawlResult, CrawlError
         0,
         config_clone.seed_url.clone(),
     );
-    queue.push(seed_discovered);
+    queue.push(seed_discovered).await;
 
-    // Track visited URLs
-    let visited = Arc::new(Mutex::new(HashSet::<String>::new()));
+    // Track visited URLs — lock-free DashSet<u64, ahash::RandomState> (8 B/key).
+    // try_insert is synchronous/atomic; no Mutex/.await in the hot loop (D5).
+    let visited = Arc::new(UrlDeduplicator::new());
 
     // Results collector - usa mpsc channel para lock-free collection
     // Capacidad basada en max_pages para evitar reallocs
@@ -576,7 +577,7 @@ pub async fn crawl_site(config: CrawlerConfig) -> Result<CrawlResult, CrawlError
         // Fix Bug 5: discovered links were pushed to queue (Arc<UrlQueue>)
         // but never transferred to url_queue (VecDeque), so sub-paths
         // were never crawled.
-        url_queue.append(&mut queue.drain_all());
+        url_queue.append(&mut queue.drain_all().await);
 
         // Spawn new tasks up to concurrency limit
         while let Some(discovered_url) = url_queue.pop_front() {
@@ -587,13 +588,10 @@ pub async fn crawl_site(config: CrawlerConfig) -> Result<CrawlResult, CrawlError
                 break;
             }
 
-            // Check if already visited
-            {
-                let visited_guard = visited.lock().await;
-                if visited_guard.contains(discovered_url.url.as_str()) {
-                    drop(visited_guard);
-                    continue;
-                }
+            // Check if already visited — atomic, lock-free (no .await on the
+            // dedup call; try_insert is synchronous per design D5).
+            if !visited.try_insert(discovered_url.url.as_str()) {
+                continue;
             }
 
             // Clone data for task (async-clone-before-await)
@@ -643,19 +641,16 @@ pub async fn crawl_site(config: CrawlerConfig) -> Result<CrawlResult, CrawlError
                                                 if is_internal_link(&normalized, seed_domain) {
                                                     // Check if allowed by filters
                                                     if is_allowed(&normalized, &config_task) {
-                                                        // Check if not visited
-                                                        let visited_guard =
-                                                            visited_task.lock().await;
-                                                        if !visited_guard.contains(&normalized) {
-                                                            drop(visited_guard);
-
+                                                        // Check if not visited — atomic,
+                                                        // lock-free (no .await on try_insert).
+                                                        if visited_task.try_insert(&normalized) {
                                                             let new_discovered =
                                                                 DiscoveredUrl::html(
                                                                     parsed_url,
                                                                     url_depth + 1,
                                                                     parent_url.clone(),
                                                                 );
-                                                            queue_task.push(new_discovered);
+                                                            queue_task.push(new_discovered).await;
                                                         }
                                                     }
                                                 }
