@@ -178,7 +178,7 @@ fn f32_slice_to_bytes(v: &[f32]) -> Vec<u8> {
 /// decision #4: no separate `StorageError` enum — maps to the existing
 /// Display-based `Persistence(String)` variant).
 fn bytes_to_f32_vec(b: &[u8]) -> Result<Vec<f32>, ScraperError> {
-    if b.len() % 4 != 0 {
+    if !b.len().is_multiple_of(4) {
         return Err(ScraperError::persistence(format!(
             "vector BLOB corrupto: longitud {} no es múltiplo de 4",
             b.len()
