@@ -310,6 +310,22 @@ pub struct Args {
     #[arg(long, default_value = "3", env = "RUST_SCRAPER_SITEMAP_DEPTH")]
     #[clap(next_help_heading = "Sitemap Settings")]
     pub sitemap_depth: u8,
+
+    // ========== Elastic Ingestion (Issue #51, PR5) ==========
+    /// CPU core override for the elastic ingestion Rayon pool (else auto-detect)
+    #[arg(long, env = "RUST_SCRAPER_CPU_CORES")]
+    #[clap(next_help_heading = "Elastic Ingestion")]
+    pub cpu_cores: Option<usize>,
+
+    /// RAM budget override for the byte-weighted semaphore (`8GB`, `2048MB`, or bytes)
+    #[arg(long, env = "RUST_SCRAPER_RAM_BUDGET")]
+    #[clap(next_help_heading = "Elastic Ingestion")]
+    pub ram_budget: Option<String>,
+
+    /// SQLite database path override for persisted resources/chunks
+    #[arg(long, env = "RUST_SCRAPER_DB_PATH")]
+    #[clap(next_help_heading = "Elastic Ingestion")]
+    pub db_path: Option<std::path::PathBuf>,
 }
 
 /// Subcommands.
@@ -342,5 +358,77 @@ impl From<Shell> for clap_complete::Shell {
             Shell::PowerShell => clap_complete::Shell::PowerShell,
             Shell::Zsh => clap_complete::Shell::Zsh,
         }
+    }
+}
+
+impl Args {
+    /// Build [`ElasticOverrides`] (PR5) from the elastic-ingestion CLI flags.
+    ///
+    /// `--ram-budget` is parsed via [`parse_ram_bytes`] so it accepts suffixed
+    /// values (`8GB`, `2048MB`, plain bytes). The result feeds
+    /// [`ElasticConfig::resolve`] → Rayon pool size, byte-weighted semaphore,
+    /// and SQLite path.
+    ///
+    /// [`ElasticConfig::resolve`]: crate::infrastructure::autotuning::ElasticConfig::resolve
+    /// [`parse_ram_bytes`]: crate::infrastructure::autotuning::parse_ram_bytes
+    /// [`ElasticOverrides`]: crate::infrastructure::autotuning::ElasticOverrides
+    #[must_use]
+    pub fn elastic_overrides(&self) -> crate::infrastructure::autotuning::ElasticOverrides {
+        use crate::infrastructure::autotuning::{parse_ram_bytes, ElasticOverrides};
+        ElasticOverrides {
+            cpu_cores: self.cpu_cores,
+            ram_budget_bytes: self.ram_budget.as_deref().and_then(parse_ram_bytes),
+            max_resource_bytes: None,
+            db_path: self.db_path.clone(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infrastructure::autotuning::ElasticOverrides;
+    use std::path::{Path, PathBuf};
+
+    #[test]
+    fn test_elastic_flags_parsed_from_cli() {
+        let args = Args::try_parse_from([
+            "rust_scraper",
+            "--cpu-cores",
+            "4",
+            "--ram-budget",
+            "8GB",
+            "--db-path",
+            "/tmp/elastic.db",
+        ])
+        .expect("flags must parse");
+        assert_eq!(args.cpu_cores, Some(4));
+        assert_eq!(args.ram_budget.as_deref(), Some("8GB"));
+        assert_eq!(args.db_path.as_deref(), Some(Path::new("/tmp/elastic.db")));
+
+        let overrides = args.elastic_overrides();
+        assert_eq!(overrides.cpu_cores, Some(4));
+        assert_eq!(overrides.ram_budget_bytes, Some(8 * 1024 * 1024 * 1024));
+        assert_eq!(overrides.db_path, Some(PathBuf::from("/tmp/elastic.db")));
+    }
+
+    #[test]
+    fn test_elastic_flags_default_to_none() {
+        let args = Args::try_parse_from(["rust_scraper"]).expect("minimal parse must succeed");
+        assert_eq!(args.cpu_cores, None);
+        assert_eq!(args.ram_budget, None);
+        assert_eq!(args.db_path, None);
+        // No overrides → equals the all-None default.
+        assert_eq!(args.elastic_overrides(), ElasticOverrides::default());
+    }
+
+    #[test]
+    fn test_ram_budget_accepts_plain_bytes_and_suffixes() {
+        let args = Args::try_parse_from(["rust_scraper", "--ram-budget", "2048MB"])
+            .expect("suffixed ram-budget must parse");
+        assert_eq!(
+            args.elastic_overrides().ram_budget_bytes,
+            Some(2048 * 1024 * 1024)
+        );
     }
 }
