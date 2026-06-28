@@ -10,9 +10,9 @@ use std::sync::Arc;
 use tracing::{debug, error, info, instrument, span, warn, Level};
 use url::Url;
 
+use super::collector::{CrawlMessage, ResultsCollector};
 use crate::application::deduplicator::UrlDeduplicator;
 use crate::application::rate_limiter::{RateLimiterConfig, SharedRateLimiter};
-use crate::application::results_channel::{CrawlMessage, ResultsCollector};
 use crate::application::url_filter::is_allowed;
 use crate::domain::{CrawlError, CrawlResult, CrawlerConfig, DiscoveredUrl};
 use crate::infrastructure::crawler::{
