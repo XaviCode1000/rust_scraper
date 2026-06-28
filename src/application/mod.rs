@@ -6,6 +6,7 @@
 pub mod container;
 pub mod crawl_options;
 pub mod crawl_result_repository;
+pub mod crawler;
 pub mod crawler_service;
 pub mod deduplicator;
 pub mod elastic_ingestion;
