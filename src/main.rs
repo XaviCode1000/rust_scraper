@@ -29,6 +29,7 @@ use clap::Parser;
 use inquire::Text;
 use rust_scraper::adapters::tui::modal::HelpModal;
 use rust_scraper::adapters::tui::{App, AppMode, AppResult, ConfigFormState, Header, StatusBar};
+use rust_scraper::application::crawl_options::CrawlOptions;
 use rust_scraper::cli::config::ConfigDefaults;
 use rust_scraper::cli::error::CliExit;
 use rust_scraper::cli::preflight;
@@ -155,7 +156,8 @@ async fn __main() -> CliExit {
         match config_result {
             Ok(Some(config_values)) => {
                 // Apply TUI config values to args (overrides CLI values)
-                args = preflight::apply_tui_config(args, &config_values);
+                // TUI operates on Args because it needs config_tui/url fields
+                args = preflight::apply_tui_config_args(args, &config_values);
                 println!("Config applied from TUI form.");
             },
             Ok(None) => {
@@ -210,25 +212,35 @@ async fn __main() -> CliExit {
     let config_defaults = ConfigDefaults::load(&config_path);
 
     // =========================================================================
-    // 6. Apply config file defaults where CLI args are at default values
+    // 5b. Validate URL before conversion (CrawlOptions::from panics on invalid URL)
     // =========================================================================
-    let args = preflight::apply_config_defaults(args, &config_defaults);
+    if let Some(ref url_str) = args.url {
+        if url::Url::parse(url_str).is_err() {
+            return CliExit::UsageError(format!("Invalid URL: {url_str}"));
+        }
+    }
+
+    // =========================================================================
+    // 6. Convert Args → CrawlOptions and apply config file defaults
+    // =========================================================================
+    let opts = CrawlOptions::from(args);
+    let opts = preflight::apply_config_defaults(opts, &config_defaults);
 
     // =========================================================================
     // 7. Initialize logging (stderr-only, respects quiet + NO_COLOR)
     // =========================================================================
     let no_color = is_no_color();
-    let log_level = match args.verbose {
+    let log_level = match opts.verbosity {
         0 => "info",
         1 => "debug",
         _ => "trace",
     };
     // Keep guard alive for program duration (required for tracing subscriber)
     #[allow(clippy::let_unit_value)]
-    let _guard = init_logging_dual(log_level, args.quiet, no_color);
+    let _guard = init_logging_dual(log_level, opts.export.quiet, no_color);
 
     // =========================================================================
     // 8. Delegate to orchestrator
     // =========================================================================
-    orchestrator::run(args).await
+    orchestrator::run(opts).await
 }

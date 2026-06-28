@@ -2,8 +2,6 @@
 //!
 //! Orchestrates URL discovery, scraping, and export phases.
 
-use std::sync::Arc;
-
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
@@ -12,6 +10,7 @@ use crate::cli::error::CliExit;
 use crate::cli::export_flow::{run_export, save_files, ExportConfig};
 use crate::cli::scrape_flow::scrape_urls;
 use crate::cli::url_discovery::discover_urls;
+use crate::application::crawl_options::CrawlOptions;
 use crate::Args;
 use crate::CrawlerConfig;
 use crate::ScraperConfig;
@@ -40,70 +39,76 @@ pub fn handle_completions(shell: Shell) -> CliExit {
 /// 1. URL discovery
 /// 2. Scraping with progress
 /// 3. Export results
-pub async fn run(args: Args) -> CliExit {
-    let target_url_str = match args.url.as_ref() {
-        Some(url) => url,
-        None => return CliExit::UsageError("--url is required".into()),
-    };
+pub async fn run(opts: CrawlOptions) -> CliExit {
 
-    let target_url = match url::Url::parse(target_url_str) {
-        Ok(url) => url,
-        Err(e) => return CliExit::UsageError(format!("Invalid URL: {e}")),
-    };
-
-    // Create crawler config from args
-    let crawler_config = CrawlerConfig::builder(target_url.clone())
-        .max_pages(args.max_pages)
-        .max_depth(args.max_depth)
-        .include_patterns(args.include_patterns.clone())
-        .exclude_patterns(args.exclude_patterns.clone())
-        .build();
-
-    let urls_to_scrape = if args.single_page {
-        plan_urls(true, target_url.clone(), Vec::new())
+    let urls_to_scrape = if opts.crawl.single_page {
+        plan_urls(true, opts.url.clone(), Vec::new())
     } else {
+        // Create crawler config from CrawlOptions
+        let crawler_config = CrawlerConfig::builder(opts.url.clone())
+            .max_pages(opts.crawl.max_pages)
+            .max_depth(opts.crawl.max_depth)
+            .include_patterns(opts.crawl.include_patterns.clone())
+            .exclude_patterns(opts.crawl.exclude_patterns.clone())
+            .build();
+
         // URL discovery phase
-        let discovered_urls: Vec<url::Url> = discover_urls(&crawler_config, &args).await;
+        let discovered_urls: Vec<url::Url> = discover_urls(&crawler_config, &opts).await;
         if discovered_urls.is_empty() {
             info!("No URLs discovered");
             return CliExit::Success;
         }
 
-        plan_urls(false, target_url.clone(), discovered_urls)
+        plan_urls(false, opts.url.clone(), discovered_urls)
     };
 
     // Create scraper config
     let mut scraper_config = ScraperConfig::default()
-        .with_output_dir(args.output.clone())
-        .with_scraper_concurrency(args.concurrency.resolve())
-        .with_max_pages(args.max_pages);
+        .with_output_dir(opts.export.output_dir.clone())
+        .with_scraper_concurrency(opts.network.concurrency.resolve())
+        .with_max_pages(opts.crawl.max_pages);
 
     // Apply download flags (builder pattern requires conditional application)
-    if args.download_images {
+    if opts.network.download_images {
         scraper_config = scraper_config.with_images();
     }
-    if args.download_documents {
+    if opts.network.download_documents {
         scraper_config = scraper_config.with_documents();
     }
 
     // Initialize elastic ingestion if requested
-    let elastic: Option<
-        Arc<
+    let elastic_ingestion: Option<
+        std::sync::Arc<
             crate::application::elastic_ingestion::ElasticIngestion<
                 crate::infrastructure::persistence::sqlite::SqliteVectorRepository,
             >,
         >,
-    > = if args.elastic {
-        match build_elastic_pipeline(&args).await {
-            Ok(ingestion) => {
-                info!(
-                    "pipeline elástico activado: db={}",
-                    args.db_path
-                        .as_deref()
-                        .unwrap_or(std::path::Path::new("elastic.db"))
-                        .display()
-                );
-                Some(ingestion)
+    > = if opts.elastic.enabled {
+        let overrides = crate::infrastructure::autotuning::ElasticOverrides {
+            cpu_cores: opts.elastic.cpu_cores,
+            ram_budget_bytes: opts.elastic.ram_budget_bytes,
+            max_resource_bytes: opts.elastic.max_resource_bytes,
+            db_path: opts.elastic.db_path.clone(),
+        };
+
+        let db_display = opts.elastic.db_path
+            .as_deref()
+            .unwrap_or(std::path::Path::new("elastic.db"))
+            .display();
+
+        match async {
+            let container = crate::application::container::Container::new(
+                CrawlerConfig::new(opts.url.clone()),
+                ScraperConfig::default(),
+            )
+            .await?;
+            container.with_elastic(&overrides).await
+        }
+        .await
+        {
+            Ok(container) => {
+                info!("pipeline elástico activado: db={db_display}");
+                container.elastic_ingestion
             },
             Err(e) => {
                 warn!("no se pudo inicializar el pipeline elástico: {e}");
@@ -115,12 +120,11 @@ pub async fn run(args: Args) -> CliExit {
     };
 
     // Scraping phase
-
     let (results, failures): (Vec<domain::ScrapedContent>, Vec<(String, String)>) =
-        scrape_urls(&urls_to_scrape, &scraper_config, &args, None).await;
+        scrape_urls(&urls_to_scrape, &scraper_config, &opts, None).await;
 
     // Post-scrape: elastic ingestion (best-effort, no abort on failure)
-    if let Some(ref ingestion) = elastic {
+    if let Some(ref ingestion) = elastic_ingestion {
         run_elastic_ingestion(ingestion, &results).await;
     }
 
@@ -138,48 +142,48 @@ pub async fn run(args: Args) -> CliExit {
 
     // Obsidian options
     let obsidian_options = ObsidianOptions {
-        wiki_links: args.obsidian_wiki_links,
-        relative_assets: args.obsidian_relative_assets,
-        tags: args.obsidian_tags.clone().unwrap_or_default(),
-        rich_metadata: args.obsidian_rich_metadata,
-        quick_save: args.quick_save,
-        vault_path: args.vault.clone(),
+        wiki_links: opts.export.obsidian_wiki_links,
+        relative_assets: opts.export.obsidian_relative_assets,
+        tags: opts.export.obsidian_tags.clone(),
+        rich_metadata: opts.export.obsidian_rich_metadata,
+        quick_save: opts.export.quick_save,
+        vault_path: opts.export.obsidian_vault.clone(),
     };
 
     // Determine output directory for individual files
-    let output_dir = if args.quick_save {
-        if let Some(v) = &args.vault {
+    let output_dir = if opts.export.quick_save {
+        if let Some(v) = &opts.export.obsidian_vault {
             let inbox = v.join("_inbox");
             if !inbox.exists() {
                 let _ = std::fs::create_dir_all(&inbox);
             }
             inbox
         } else {
-            args.output.clone()
+            opts.export.output_dir.clone()
         }
     } else {
-        args.output.clone()
+        opts.export.output_dir.clone()
     };
 
     // Export phase
     let export_config = ExportConfig {
         results: &results,
-        output_dir: args.output.clone(), // RAG export still goes to output_dir
-        format: args.format,
-        export_format: args.export_format,
-        clean_ai: args.clean_ai,
-        quick_save: args.quick_save,
-        vault_path: args.vault.as_ref(),
+        output_dir: opts.export.output_dir.clone(),
+        format: opts.export.output_format,
+        export_format: opts.export.export_format,
+        clean_ai: false, // TODO: wire from CrawlOptions when AI settings are added
+        quick_save: opts.export.quick_save,
+        vault_path: opts.export.obsidian_vault.as_ref(),
         obsidian_options: obsidian_options.clone(),
         state_store: None, // TODO: Add state store
-        resume: args.resume,
-        ai_threshold: 0.3, // TODO: Add AI settings from args
+        resume: opts.crawl.resume,
+        ai_threshold: 0.3, // TODO: Add AI settings from CrawlOptions
         ai_max_tokens: 512,
         ai_offline: false,
     };
 
     // Save individual files (Markdown, etc.)
-    save_files(&results, &output_dir, &args.format, &obsidian_options);
+    save_files(&results, &output_dir, &opts.export.output_format, &obsidian_options);
 
     match run_export(export_config).await {
         Ok(processed_urls) => {
@@ -193,58 +197,6 @@ pub async fn run(args: Args) -> CliExit {
     }
 }
 
-/// Build the elastic ingestion pipeline from CLI args.
-///
-/// Wires `RayonCpuPool` → `CpuBridge` → `SqliteVectorRepository` →
-/// `ResourceDownloader` → `ElasticIngestion<SqliteVectorRepository>`
-/// using `ElasticConfig::resolve` with the CLI-provided overrides.
-async fn build_elastic_pipeline(
-    args: &Args,
-) -> Result<
-    Arc<
-        crate::application::elastic_ingestion::ElasticIngestion<
-            crate::infrastructure::persistence::sqlite::SqliteVectorRepository,
-        >,
-    >,
-    Box<dyn std::error::Error + Send + Sync>,
-> {
-    use crate::application::elastic_ingestion::ElasticIngestion;
-    use crate::infrastructure::autotuning::ElasticConfig;
-    use crate::infrastructure::bridge::CpuBridge;
-    use crate::infrastructure::config::AutotuningConfig;
-    use crate::infrastructure::cpu_pool::RayonCpuPool;
-    use crate::infrastructure::crawler::resource_downloader::ResourceDownloader;
-    use crate::infrastructure::persistence::sqlite::{
-        self as sqlite_persistence, SqliteVectorRepository,
-    };
-
-    let config = ElasticConfig::resolve(&args.elastic_overrides());
-
-    let cpu_pool = RayonCpuPool::new(config.cpu_cores)?;
-    let bridge = CpuBridge::new(cpu_pool);
-
-    let pool = sqlite_persistence::create_pool(&config.db_path, config.db_pool_size)?;
-    sqlite_persistence::setup_schema(&pool).await?;
-    let repository = SqliteVectorRepository::new(pool);
-
-    let client = crate::application::http_client::create_http_client()?;
-    let max_concurrent = (config.ram_budget_bytes / config.max_resource_bytes).max(1) as usize;
-    let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
-    let downloader = ResourceDownloader::with_config(
-        semaphore,
-        client,
-        crate::infrastructure::crawler::resource_downloader::DownloadConfig {
-            max_size_bytes: config.max_resource_bytes,
-            ..Default::default()
-        },
-    );
-
-    let autotune = AutotuningConfig::from_elastic(&config);
-    let ingestion = ElasticIngestion::new(downloader, bridge, repository, autotune);
-
-    Ok(Arc::new(ingestion))
-}
-
 /// Run the elastic ingestion pipeline on all scraped results.
 ///
 /// Each URL is processed concurrently via a bounded `JoinSet` with
@@ -252,7 +204,7 @@ async fn build_elastic_pipeline(
 /// Ingestion failures are logged but do NOT abort the export phase
 /// (best-effort semantics).
 async fn run_elastic_ingestion(
-    ingestion: &Arc<
+    ingestion: &std::sync::Arc<
         crate::application::elastic_ingestion::ElasticIngestion<
             crate::infrastructure::persistence::sqlite::SqliteVectorRepository,
         >,
@@ -267,7 +219,7 @@ async fn run_elastic_ingestion(
     let concurrency = num_cpus::get().max(4); // bounded concurrency
 
     for result in results {
-        let ing = Arc::clone(ingestion);
+        let ing = std::sync::Arc::clone(ingestion);
         let url = result.url.clone();
 
         while join_set.len() >= concurrency {

@@ -7,8 +7,8 @@ use std::path::PathBuf;
 
 use tracing::info;
 
+use crate::application::crawl_options::CrawlOptions;
 use crate::cli::error::CliExit;
-use crate::cli::Args;
 use crate::infrastructure::obsidian::detect_vault;
 
 /// Common preflight checks for all commands
@@ -19,9 +19,9 @@ pub struct PreflightContext {
 }
 
 /// Run preflight checks and build context
-pub async fn preflight(args: &Args) -> Result<PreflightContext, CliExit> {
+pub async fn preflight(opts: &CrawlOptions) -> Result<PreflightContext, CliExit> {
     // Target URL is guaranteed to exist (checked by caller)
-    let target_url = args.url.clone().expect("url required");
+    let target_url = opts.url.to_string();
 
     // Emoji helpers (resolved once after NO_COLOR check)
     let _ok = crate::cli::preflight::icon("✅", "OK");
@@ -40,7 +40,7 @@ pub async fn preflight(args: &Args) -> Result<PreflightContext, CliExit> {
     let config_defaults = crate::cli::config::ConfigDefaults::load(&config_path);
 
     let vault_path = detect_vault(
-        args.vault.as_deref(),
+        opts.export.obsidian_vault.as_deref(),
         None,
         config_defaults.vault_path.as_deref(),
     );
@@ -53,7 +53,7 @@ pub async fn preflight(args: &Args) -> Result<PreflightContext, CliExit> {
 
     // GAP 3 (Bug #30): Warn when vault is provided but headless mode (no --quick-save)
     if let Some(ref _vault) = vault_path {
-        if !args.quick_save {
+        if !opts.export.quick_save {
             tracing::warn!("Vault path provided but --quick-save not enabled.");
             tracing::warn!("   Files will be saved to ./output/, not to the vault.");
             tracing::warn!("   Use --quick-save to save directly to vault _inbox.");

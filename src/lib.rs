@@ -79,8 +79,8 @@ pub use error::SemanticError;
 
 // Application layer
 pub use application::{
-    crawl_site, crawl_with_sitemap, create_http_client, detect_spa_content, discover_urls_for_tui,
-    extract_domain,
+    crawl_options::CrawlOptions, crawl_site, crawl_with_sitemap, create_http_client,
+    detect_spa_content, discover_urls_for_tui, extract_domain,
     http_client::{HttpClient, HttpClientConfig, HttpError},
     is_allowed, is_excluded, is_internal_link, matches_pattern, scrape_multiple_with_limit,
     scrape_single_url_for_tui, scrape_urls_for_tui, scrape_with_config, scrape_with_readability,

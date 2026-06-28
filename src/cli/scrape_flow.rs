@@ -6,22 +6,23 @@ use tracing::{info, warn};
 use url::Url;
 
 use crate::adapters::tui::{ScrapeError, ScrapeProgress, ScrapeStatus};
+use crate::application::crawl_options::CrawlOptions;
 use crate::application::export_factory;
 use crate::application::scrape_single_url_for_tui;
 use crate::domain::ScrapedContent;
 use crate::infrastructure::export::state_store::StateStore;
-use crate::{Args, ScraperConfig};
+use crate::ScraperConfig;
 use crate::{HttpClient, HttpClientConfig};
 
 /// Apply resume mode filtering.
 pub async fn apply_resume_mode(
     urls_to_scrape: Vec<Url>,
-    args: &Args,
+    opts: &CrawlOptions,
     target_url: &str,
 ) -> (Vec<Url>, Option<StateStore>) {
-    let state_store: Option<StateStore> = if args.resume {
+    let state_store: Option<StateStore> = if opts.crawl.resume {
         info!("Resume mode enabled - tracking processed URLs");
-        let state_dir = args.state_dir.clone().unwrap_or_else(|| {
+        let state_dir = opts.crawl.state_dir.clone().unwrap_or_else(|| {
             let cache_base = std::env::var("XDG_CACHE_HOME")
                 .map(PathBuf::from)
                 .unwrap_or_else(|_| {
@@ -45,7 +46,7 @@ pub async fn apply_resume_mode(
         None
     };
 
-    let filtered = if args.resume {
+    let filtered = if opts.crawl.resume {
         if let Some(store) = state_store.as_ref() {
             match store.load_or_default() {
                 Ok(state) => {
@@ -93,10 +94,10 @@ pub async fn apply_resume_mode(
 pub async fn scrape_urls(
     urls: &[Url],
     scraper_config: &ScraperConfig,
-    args: &Args,
+    opts: &CrawlOptions,
     progress_tx: Option<mpsc::Sender<ScrapeProgress>>,
 ) -> (Vec<ScrapedContent>, Vec<(String, String)>) {
-    let http_config = build_http_client_config(args);
+    let http_config = build_http_client_config(opts);
     let http_client = match HttpClient::new(http_config) {
         Ok(c) => c,
         Err(e) => {
@@ -132,7 +133,7 @@ pub async fn scrape_urls(
         let _url_host = url.host_str().unwrap_or("unknown").to_string();
 
         // Emit progress event: Started
-        if !args.quiet {
+        if !opts.export.quiet {
             if let Some(ref tx) = progress_tx {
                 let _ = tx
                     .send(ScrapeProgress::Started {
@@ -143,7 +144,7 @@ pub async fn scrape_urls(
         }
 
         // Emit progress event: StatusChanged to Fetching
-        if !args.quiet {
+        if !opts.export.quiet {
             if let Some(ref tx) = progress_tx {
                 let _ = tx
                     .send(ScrapeProgress::StatusChanged {
@@ -159,7 +160,7 @@ pub async fn scrape_urls(
                 let chars = content.content.chars().count();
                 results.push(content);
                 // Emit progress event: Completed (only if not quiet)
-                if !args.quiet {
+                if !opts.export.quiet {
                     if let Some(ref tx) = progress_tx {
                         let _ = tx
                             .send(ScrapeProgress::Completed {
@@ -176,7 +177,7 @@ pub async fn scrape_urls(
                 warn!("Failed to scrape {}: {}", url_str, err_msg);
                 failures.push((url_str.clone(), err_msg));
                 // Emit progress event: Failed
-                if !args.quiet {
+                if !opts.export.quiet {
                     if let Some(ref tx) = progress_tx {
                         let _ = tx
                             .send(ScrapeProgress::Failed {
@@ -195,7 +196,7 @@ pub async fn scrape_urls(
     let total_failed = failures.len();
 
     // Emit Finished event when all done (only if not quiet)
-    if !args.quiet {
+    if !opts.export.quiet {
         if let Some(ref tx) = progress_tx {
             let _ = tx
                 .send(ScrapeProgress::Finished {
@@ -210,13 +211,13 @@ pub async fn scrape_urls(
     (results, failures)
 }
 
-fn build_http_client_config(args: &Args) -> HttpClientConfig {
+fn build_http_client_config(opts: &CrawlOptions) -> HttpClientConfig {
     HttpClientConfig {
-        max_retries: args.max_retries,
-        backoff_base_ms: args.backoff_base_ms,
-        backoff_max_ms: args.backoff_max_ms,
-        accept_language: args.accept_language.clone(),
-        timeout_secs: args.timeout_secs,
+        max_retries: opts.network.max_retries,
+        backoff_base_ms: opts.network.backoff_base_ms,
+        backoff_max_ms: opts.network.backoff_max_ms,
+        accept_language: opts.network.accept_language.clone(),
+        timeout_secs: opts.network.timeout_secs,
         ..HttpClientConfig::default()
     }
 }
@@ -224,32 +225,27 @@ fn build_http_client_config(args: &Args) -> HttpClientConfig {
 #[cfg(test)]
 mod tests {
     use super::build_http_client_config;
-    use clap::Parser;
+    use crate::application::crawl_options::CrawlOptions;
 
     #[test]
-    fn build_http_client_config_uses_args_timeout_secs() {
-        let args = crate::Args::parse_from([
-            "rust_scraper",
-            "--url",
-            "https://example.com",
-            "--timeout-secs",
-            "7",
-        ]);
+    fn build_http_client_config_uses_opts_timeout_secs() {
+        let mut opts = CrawlOptions::default();
+        opts.network.timeout_secs = 7;
 
-        let config = build_http_client_config(&args);
+        let config = build_http_client_config(&opts);
 
         assert_eq!(config.timeout_secs, 7);
-        assert_eq!(config.max_retries, args.max_retries);
-        assert_eq!(config.backoff_base_ms, args.backoff_base_ms);
-        assert_eq!(config.backoff_max_ms, args.backoff_max_ms);
-        assert_eq!(config.accept_language, args.accept_language);
+        assert_eq!(config.max_retries, opts.network.max_retries);
+        assert_eq!(config.backoff_base_ms, opts.network.backoff_base_ms);
+        assert_eq!(config.backoff_max_ms, opts.network.backoff_max_ms);
+        assert_eq!(config.accept_language, opts.network.accept_language);
     }
 
     #[test]
     fn build_http_client_config_preserves_default_timeout_when_unset() {
-        let args = crate::Args::parse_from(["rust_scraper", "--url", "https://example.com"]);
+        let opts = CrawlOptions::default();
 
-        let config = build_http_client_config(&args);
+        let config = build_http_client_config(&opts);
 
         assert_eq!(config.timeout_secs, 30);
     }
