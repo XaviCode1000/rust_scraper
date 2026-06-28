@@ -14,25 +14,25 @@ use tracing::{debug, info, warn};
 use url::Url;
 
 // --- Domain / infrastructure re-exports (unchanged) ---
+pub use super::url_filter::is_allowed;
+pub use crate::application::rate_limiter::{RateLimiterConfig, SharedRateLimiter};
 pub use crate::domain::{
     CorrelationId, CrawlError, CrawlResult, CrawlerConfig, DiscoveredUrl, ScrapedContent, ValidUrl,
 };
-pub use super::url_filter::is_allowed;
+pub use crate::error::{Result as ScraperResult, ScraperError};
 pub use crate::infrastructure::crawler::{
     extract_links, fetch_url, is_internal_link, normalize_url, UrlQueue,
 };
 pub use crate::infrastructure::crawler::{SitemapConfig, SitemapParser};
-pub use crate::error::{Result as ScraperResult, ScraperError};
 pub use crate::infrastructure::scraper::{fallback, readability};
 pub use crate::ScraperConfig;
-pub use crate::application::rate_limiter::{RateLimiterConfig, SharedRateLimiter};
 
 // --- Crawler sub-module re-exports (canonical paths) ---
-pub use super::crawler::engine::crawl_site;
+pub use super::crawler::collector::{CrawlMessage, ResultsAdapter, ResultsCollector};
 pub use super::crawler::discovery::{
     crawl_with_sitemap, discover_urls_for_tui, scrape_single_url_for_tui, scrape_urls_for_tui,
 };
-pub use super::crawler::collector::{CrawlMessage, ResultsAdapter, ResultsCollector};
+pub use super::crawler::engine::crawl_site;
 
 /// Fetch and parse a sitemap.xml file (legacy — kept for backwards compatibility)
 ///
@@ -57,16 +57,14 @@ pub async fn fetch_sitemap(base_url: &str) -> Result<Vec<String>, CrawlError> {
         let config_clone = Arc::clone(&config);
 
         match fetch_url(sitemap_url, &config_clone).await {
-            Ok(response) => {
-                match super::crawler::parse_sitemap(&response, &seed) {
-                    Ok(urls) => {
-                        info!("Found {} URLs in {}", urls.len(), sitemap_url);
-                        all_urls.extend(urls);
-                    },
-                    Err(e) => {
-                        warn!("Failed to parse sitemap {}: {}", sitemap_url, e);
-                    },
-                }
+            Ok(response) => match super::crawler::parse_sitemap(&response, &seed) {
+                Ok(urls) => {
+                    info!("Found {} URLs in {}", urls.len(), sitemap_url);
+                    all_urls.extend(urls);
+                },
+                Err(e) => {
+                    warn!("Failed to parse sitemap {}: {}", sitemap_url, e);
+                },
             },
             Err(e) => {
                 debug!("Sitemap not found at {}: {}", sitemap_url, e);
