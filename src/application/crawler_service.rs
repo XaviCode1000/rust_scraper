@@ -45,64 +45,6 @@ pub use crate::ScraperConfig;
 
 pub use crate::application::rate_limiter::{RateLimiterConfig, SharedRateLimiter};
 
-/// Discover URLs from a single page
-///
-/// Following **own-borrow-over-clone**: Accepts `&str` not `&String`.
-///
-/// # Arguments
-///
-/// * `url` - URL to discover links from
-/// * `depth` - Current depth in crawl tree
-/// * `config` - Crawler configuration
-///
-/// # Returns
-///
-/// * `Ok(Vec<DiscoveredUrl>)` - Discovered URLs
-/// * `Err(CrawlError)` - Error during discovery
-#[deprecated(since = "0.4.0", note = "Use discover_urls_for_tui instead")]
-pub async fn discover_urls(
-    url: &str,
-    depth: usize,
-    config: &CrawlerConfig,
-) -> Result<Vec<DiscoveredUrl>, CrawlError> {
-    debug!("Discovering URLs from {} at depth {}", url, depth);
-
-    // Clone config for async safety
-    let config = Arc::new(config.clone());
-    let config_clone = Arc::clone(&config);
-
-    // Fetch URL
-    let response = fetch_url(url, &config_clone).await?;
-
-    // Extract links
-    let links = extract_links(&response, url)?;
-
-    // Parse and filter URLs
-    let base_url = Url::parse(url).map_err(|e| CrawlError::InvalidUrl(e.to_string()))?;
-    let mut discovered = Vec::with_capacity(links.len());
-
-    for link in links {
-        let normalized = normalize_url(&link);
-        if let Ok(parsed_url) = Url::parse(&normalized) {
-            // Check if internal link
-            if let Some(seed_domain) = config.seed_url.host_str() {
-                if is_internal_link(&normalized, seed_domain) {
-                    // Check if allowed
-                    if is_allowed(&normalized, &config) {
-                        discovered.push(DiscoveredUrl::html(
-                            parsed_url,
-                            depth as u8,
-                            base_url.clone(),
-                        ));
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(discovered)
-}
-
 /// Fetch and parse a sitemap.xml file (legacy - kept for backwards compatibility)
 ///
 /// Following **own-borrow-over-clone**: Accepts `&str`.
