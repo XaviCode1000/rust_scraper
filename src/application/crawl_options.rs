@@ -200,8 +200,7 @@ impl Default for CrawlOptions {
     fn default() -> Self {
         // Use a safe default URL for the default impl.
         // In practice, CrawlOptions is always built from Args where url is validated.
-        let url = Url::parse("https://example.com")
-            .expect("hardcoded default URL must parse");
+        let url = Url::parse("https://example.com").expect("hardcoded default URL must parse");
         Self {
             url,
             verbosity: 0,

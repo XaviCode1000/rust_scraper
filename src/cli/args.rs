@@ -405,12 +405,8 @@ impl From<Args> for crate::application::crawl_options::CrawlOptions {
             CrawlLimits, ExportOptions, IngestionTuning, NetworkOptions,
         };
 
-        let url = url::Url::parse(
-            args.url
-                .as_deref()
-                .unwrap_or("https://example.com"),
-        )
-        .expect("URL must be valid — CLI validation ensures this");
+        let url = url::Url::parse(args.url.as_deref().unwrap_or("https://example.com"))
+            .expect("URL must be valid — CLI validation ensures this");
 
         let overrides = args.elastic_overrides();
 

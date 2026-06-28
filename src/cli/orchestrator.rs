@@ -5,12 +5,12 @@
 use tokio::task::JoinSet;
 use tracing::{info, warn};
 
+use crate::application::crawl_options::CrawlOptions;
 use crate::cli::completions::generate_completions;
 use crate::cli::error::CliExit;
 use crate::cli::export_flow::{run_export, save_files, ExportConfig};
 use crate::cli::scrape_flow::scrape_urls;
 use crate::cli::url_discovery::discover_urls;
-use crate::application::crawl_options::CrawlOptions;
 use crate::Args;
 use crate::CrawlerConfig;
 use crate::ScraperConfig;
@@ -40,7 +40,6 @@ pub fn handle_completions(shell: Shell) -> CliExit {
 /// 2. Scraping with progress
 /// 3. Export results
 pub async fn run(opts: CrawlOptions) -> CliExit {
-
     let urls_to_scrape = if opts.crawl.single_page {
         plan_urls(true, opts.url.clone(), Vec::new())
     } else {
@@ -91,7 +90,9 @@ pub async fn run(opts: CrawlOptions) -> CliExit {
             db_path: opts.elastic.db_path.clone(),
         };
 
-        let db_display = opts.elastic.db_path
+        let db_display = opts
+            .elastic
+            .db_path
             .as_deref()
             .unwrap_or(std::path::Path::new("elastic.db"))
             .display();
@@ -183,7 +184,12 @@ pub async fn run(opts: CrawlOptions) -> CliExit {
     };
 
     // Save individual files (Markdown, etc.)
-    save_files(&results, &output_dir, &opts.export.output_format, &obsidian_options);
+    save_files(
+        &results,
+        &output_dir,
+        &opts.export.output_format,
+        &obsidian_options,
+    );
 
     match run_export(export_config).await {
         Ok(processed_urls) => {

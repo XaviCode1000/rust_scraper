@@ -6,8 +6,8 @@
 use std::path::PathBuf;
 use tracing::warn;
 
-use crate::cli::config::ConfigDefaults;
 use crate::application::crawl_options::CrawlOptions;
+use crate::cli::config::ConfigDefaults;
 use crate::{Args, ConcurrencyConfig, ExportFormat, OutputFormat};
 
 // ============================================================================
