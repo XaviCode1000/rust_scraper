@@ -389,6 +389,81 @@ impl Args {
     }
 }
 
+// ============================================================================
+// From<Args> for CrawlOptions
+// ============================================================================
+
+impl From<Args> for crate::application::crawl_options::CrawlOptions {
+    /// Convert CLI arguments into structured [`CrawlOptions`].
+    ///
+    /// This is an owned, lossless conversion — every field in `Args` maps
+    /// to exactly one field in `CrawlOptions`. The `url` field is parsed
+    /// from `Option<String>` into `Url` (panics if invalid; CLI validation
+    /// guarantees validity before this point).
+    fn from(args: Args) -> Self {
+        use crate::application::crawl_options::{
+            CrawlLimits, ExportOptions, IngestionTuning, NetworkOptions,
+        };
+
+        let url = url::Url::parse(args.url.as_deref().unwrap_or("https://example.com"))
+            .expect("URL must be valid — CLI validation ensures this");
+
+        let overrides = args.elastic_overrides();
+
+        Self {
+            url,
+            verbosity: args.verbose,
+            quiet: args.quiet,
+            crawl: CrawlLimits {
+                selector: args.selector,
+                max_depth: args.max_depth,
+                max_pages: args.max_pages,
+                single_page: args.single_page,
+                include_patterns: args.include_patterns,
+                exclude_patterns: args.exclude_patterns,
+                interactive: args.interactive,
+                resume: args.resume,
+                state_dir: args.state_dir,
+                use_sitemap: args.use_sitemap,
+                sitemap_url: args.sitemap_url,
+            },
+            network: NetworkOptions {
+                user_agent: None,
+                accept_language: args.accept_language,
+                concurrency: args.concurrency,
+                delay_ms: args.delay_ms,
+                timeout_secs: args.timeout_secs,
+                max_retries: args.max_retries,
+                backoff_base_ms: args.backoff_base_ms,
+                backoff_max_ms: args.backoff_max_ms,
+                download_images: args.download_images,
+                download_documents: args.download_documents,
+                force_js_render: args.force_js_render,
+            },
+            export: ExportOptions {
+                output_format: args.format,
+                export_format: args.export_format,
+                output_dir: args.output,
+                dry_run: args.dry_run,
+                quiet: args.quiet,
+                obsidian_vault: args.vault,
+                obsidian_rich_metadata: args.obsidian_rich_metadata,
+                obsidian_tags: args.obsidian_tags.unwrap_or_default(),
+                obsidian_wiki_links: args.obsidian_wiki_links,
+                obsidian_relative_assets: args.obsidian_relative_assets,
+                quick_save: args.quick_save,
+            },
+            elastic: IngestionTuning {
+                enabled: args.elastic,
+                cpu_cores: overrides.cpu_cores,
+                ram_budget_bytes: overrides.ram_budget_bytes,
+                db_path: overrides.db_path,
+                max_resource_bytes: overrides.max_resource_bytes,
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

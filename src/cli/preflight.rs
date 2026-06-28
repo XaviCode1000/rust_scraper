@@ -6,6 +6,7 @@
 use std::path::PathBuf;
 use tracing::warn;
 
+use crate::application::crawl_options::CrawlOptions;
 use crate::cli::config::ConfigDefaults;
 use crate::{Args, ConcurrencyConfig, ExportFormat, OutputFormat};
 
@@ -13,10 +14,10 @@ use crate::{Args, ConcurrencyConfig, ExportFormat, OutputFormat};
 // Config Defaults Merge
 // ============================================================================
 
-/// Apply config file defaults where CLI args are still at their hardcoded defaults.
+/// Apply config file defaults where CrawlOptions fields are still at their hardcoded defaults.
 ///
 /// Precedence: CLI > env (handled by clap) > config file > struct defaults.
-pub fn apply_config_defaults(mut args: Args, config: &ConfigDefaults) -> Args {
+pub fn apply_config_defaults(mut opts: CrawlOptions, config: &ConfigDefaults) -> CrawlOptions {
     if let Some(ref fmt) = config.format {
         let target = match fmt.to_lowercase().as_str() {
             "markdown" => OutputFormat::Markdown,
@@ -24,8 +25,8 @@ pub fn apply_config_defaults(mut args: Args, config: &ConfigDefaults) -> Args {
             "text" => OutputFormat::Text,
             _ => OutputFormat::Markdown,
         };
-        if args.format == OutputFormat::Markdown && target != OutputFormat::Markdown {
-            args.format = target;
+        if opts.export.output_format == OutputFormat::Markdown && target != OutputFormat::Markdown {
+            opts.export.output_format = target;
         }
     }
 
@@ -36,88 +37,184 @@ pub fn apply_config_defaults(mut args: Args, config: &ConfigDefaults) -> Args {
             "auto" => ExportFormat::Auto,
             _ => ExportFormat::Jsonl,
         };
-        if args.export_format == ExportFormat::Jsonl && target != ExportFormat::Jsonl {
-            args.export_format = target;
+        if opts.export.export_format == ExportFormat::Jsonl && target != ExportFormat::Jsonl {
+            opts.export.export_format = target;
         }
     }
 
     if let Some(ref c) = config.concurrency {
         // ConcurrencyConfig doesn't implement PartialEq, so check via is_auto()
-        if args.concurrency.is_auto() {
-            args.concurrency = ConcurrencyConfig::from(c.as_str());
+        if opts.network.concurrency.is_auto() {
+            opts.network.concurrency = ConcurrencyConfig::from(c.as_str());
         }
     }
 
     if let Some(ref s) = config.selector {
-        if args.selector == "body" {
-            args.selector = s.clone();
+        if opts.crawl.selector == "body" {
+            opts.crawl.selector = s.clone();
         }
     }
 
     if let Some(n) = config.max_pages {
-        if args.max_pages == 10 {
-            args.max_pages = n;
+        if opts.crawl.max_pages == 10 {
+            opts.crawl.max_pages = n;
         }
     }
 
     if let Some(n) = config.delay_ms {
-        if args.delay_ms == 1000 {
-            args.delay_ms = n;
+        if opts.network.delay_ms == 1000 {
+            opts.network.delay_ms = n;
         }
     }
 
     if let Some(v) = config.use_sitemap {
-        if !args.use_sitemap && v {
-            args.use_sitemap = v;
+        if !opts.crawl.use_sitemap && v {
+            opts.crawl.use_sitemap = v;
         }
     }
 
-    // Obsidian config — trim whitespace from CLI tags (clap value_delimiter doesn't trim)
-    if let Some(ref mut tags) = args.obsidian_tags {
-        for tag in tags.iter_mut() {
-            *tag = tag.trim().to_string();
-        }
-        tags.retain(|t| !t.is_empty());
+    // Obsidian config — trim whitespace from tags
+    for tag in opts.export.obsidian_tags.iter_mut() {
+        *tag = tag.trim().to_string();
     }
+    opts.export.obsidian_tags.retain(|t| !t.is_empty());
+
     if let Some(ref tags_str) = config.obsidian_tags {
-        if args.obsidian_tags.is_none() {
-            args.obsidian_tags = Some(
-                tags_str
-                    .split(',')
-                    .map(|t| t.trim().to_string())
-                    .filter(|t| !t.is_empty())
-                    .collect(),
-            );
+        if opts.export.obsidian_tags.is_empty() {
+            opts.export.obsidian_tags = tags_str
+                .split(',')
+                .map(|t| t.trim().to_string())
+                .filter(|t| !t.is_empty())
+                .collect();
         }
     }
     if let Some(v) = config.obsidian_wiki_links {
-        if !args.obsidian_wiki_links && v {
-            args.obsidian_wiki_links = v;
+        if !opts.export.obsidian_wiki_links && v {
+            opts.export.obsidian_wiki_links = v;
         }
     }
     if let Some(v) = config.obsidian_relative_assets {
-        if !args.obsidian_relative_assets && v {
-            args.obsidian_relative_assets = v;
+        if !opts.export.obsidian_relative_assets && v {
+            opts.export.obsidian_relative_assets = v;
         }
     }
     if let Some(ref vault) = config.vault_path {
-        if args.vault.is_none() {
-            args.vault = Some(PathBuf::from(vault));
+        if opts.export.obsidian_vault.is_none() {
+            opts.export.obsidian_vault = Some(PathBuf::from(vault));
         }
     }
 
-    args
+    opts
 }
 
 // ============================================================================
 // TUI Config Merge
 // ============================================================================
 
-/// Apply config values from TUI form to Args.
+/// Apply config values from TUI form to CrawlOptions.
 ///
 /// This runs after config_tui returns user-submitted values.
 /// Precedence: TUI values > CLI args (they override what was passed).
-pub fn apply_tui_config(mut args: Args, config_values: &serde_json::Value) -> Args {
+pub fn apply_tui_config(mut opts: CrawlOptions, config_values: &serde_json::Value) -> CrawlOptions {
+    use crate::ExportFormat as E;
+    use crate::OutputFormat as O;
+
+    // Output directory
+    if let Some(output) = config_values.get("output").and_then(|v| v.as_str()) {
+        opts.export.output_dir = PathBuf::from(output);
+    }
+
+    // Output format (markdown, json, text)
+    if let Some(fmt) = config_values.get("format").and_then(|v| v.as_str()) {
+        opts.export.output_format = match fmt {
+            "json" => O::Json,
+            "text" => O::Text,
+            _ => O::Markdown,
+        };
+    }
+
+    // Export format (jsonl, vector, auto)
+    if let Some(fmt) = config_values.get("export_format").and_then(|v| v.as_str()) {
+        opts.export.export_format = match fmt {
+            "vector" => E::Vector,
+            "auto" => E::Auto,
+            _ => E::Jsonl,
+        };
+    }
+
+    // Discovery: use_sitemap
+    if let Some(v) = config_values.get("use_sitemap").and_then(|v| v.as_bool()) {
+        opts.crawl.use_sitemap = v;
+    }
+
+    // Discovery: max_pages
+    if let Some(v) = config_values.get("max_pages").and_then(|v| v.as_str()) {
+        if let Ok(n) = v.parse() {
+            opts.crawl.max_pages = n;
+        }
+    }
+
+    // Crawler: max_depth
+    if let Some(v) = config_values.get("max_depth").and_then(|v| v.as_str()) {
+        if let Ok(n) = v.parse() {
+            opts.crawl.max_depth = n;
+        }
+    }
+
+    // Behavior: download_images
+    if let Some(v) = config_values
+        .get("download_images")
+        .and_then(|v| v.as_bool())
+    {
+        opts.network.download_images = v;
+    }
+
+    // Behavior: download_documents
+    if let Some(v) = config_values
+        .get("download_documents")
+        .and_then(|v| v.as_bool())
+    {
+        opts.network.download_documents = v;
+    }
+
+    // Obsidian: obsidian_wiki_links
+    if let Some(v) = config_values
+        .get("obsidian_wiki_links")
+        .and_then(|v| v.as_bool())
+    {
+        opts.export.obsidian_wiki_links = v;
+    }
+
+    // Obsidian: vault path
+    if let Some(vault) = config_values.get("vault").and_then(|v| v.as_str()) {
+        if !vault.is_empty() {
+            opts.export.obsidian_vault = Some(PathBuf::from(vault));
+        }
+    }
+
+    // Obsidian: quick_save
+    if let Some(v) = config_values.get("quick_save").and_then(|v| v.as_bool()) {
+        opts.export.quick_save = v;
+    }
+
+    // AI: clean_ai (only applies when feature is enabled)
+    #[cfg(feature = "ai")]
+    if let Some(_v) = config_values.get("clean_ai").and_then(|v| v.as_bool()) {
+        // TODO: wire clean_ai into CrawlOptions when AI settings are added
+    }
+
+    opts
+}
+
+// ============================================================================
+// TUI Config Merge — Args variant (for pre-conversion use in main.rs)
+// ============================================================================
+
+/// Apply config values from TUI form to Args.
+///
+/// This runs on Args before conversion to CrawlOptions, because the TUI
+/// needs access to Args-specific fields (config_tui, url).
+pub fn apply_tui_config_args(mut args: Args, config_values: &serde_json::Value) -> Args {
     use crate::ExportFormat as E;
     use crate::OutputFormat as O;
 

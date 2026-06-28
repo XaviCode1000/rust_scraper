@@ -5,18 +5,16 @@ use tracing::{info, warn};
 use url::Url;
 
 use crate::adapters;
+use crate::application::crawl_options::CrawlOptions;
 use crate::application::discover_urls_for_tui;
 use crate::cli::preflight;
 use crate::cli::SelectedUrls;
-use crate::Args;
 use crate::CliExit;
 use crate::CrawlerConfig;
 
 /// Discover URLs with progress bar.
-pub async fn discover_urls(crawler_config: &CrawlerConfig, args: &Args) -> Vec<Url> {
-    let target_url = args.url.as_ref().expect("url required");
-
-    let discovery_pb = if !args.quiet {
+pub async fn discover_urls(crawler_config: &CrawlerConfig, opts: &CrawlOptions) -> Vec<Url> {
+    let discovery_pb = if !opts.export.quiet {
         let pb = ProgressBar::new_spinner();
         pb.set_draw_target(ProgressDrawTarget::stderr());
         pb.enable_steady_tick(std::time::Duration::from_millis(100));
@@ -31,7 +29,7 @@ pub async fn discover_urls(crawler_config: &CrawlerConfig, args: &Args) -> Vec<U
         None
     };
 
-    let discovered_urls = match discover_urls_for_tui(target_url, crawler_config).await {
+    let discovered_urls = match discover_urls_for_tui(opts.url.as_str(), crawler_config).await {
         Ok(urls) => urls,
         Err(e) => {
             if let Some(pb) = discovery_pb.as_ref() {
@@ -52,15 +50,15 @@ pub async fn discover_urls(crawler_config: &CrawlerConfig, args: &Args) -> Vec<U
 /// Select URLs via TUI, quick-save, or headless mode.
 pub async fn select_urls(
     discovered_urls: &[Url],
-    args: &Args,
+    opts: &CrawlOptions,
     vault_path: &Option<std::path::PathBuf>,
 ) -> SelectedUrls {
     let ok = preflight::icon("✅", "OK");
 
-    if args.quick_save && vault_path.is_some() {
+    if opts.export.quick_save && vault_path.is_some() {
         info!("Quick-save mode: bypassing TUI, will save to vault _inbox");
         SelectedUrls::Urls(discovered_urls.to_vec())
-    } else if args.interactive {
+    } else if opts.crawl.interactive {
         info!("Starting interactive TUI selector...");
         match adapters::tui::run_selector(discovered_urls).await {
             Ok(selected) => {
