@@ -161,21 +161,19 @@ impl Engine {
                                                 if let Some(seed_domain) =
                                                     config_task.seed_url.host_str()
                                                 {
-                                                    if is_internal_link(&normalized, seed_domain) {
-                                                        if is_allowed(&normalized, &config_task) {
-                                                            if visited_task.try_insert(&normalized)
-                                                            {
-                                                                let new_discovered =
-                                                                    DiscoveredUrl::html(
-                                                                        parsed_url,
-                                                                        url_depth + 1,
-                                                                        parent_url.clone(),
-                                                                    );
-                                                                queue_task
-                                                                    .push(new_discovered)
-                                                                    .await;
-                                                            }
-                                                        }
+                                                    if is_internal_link(&normalized, seed_domain)
+                                                        && is_allowed(&normalized, &config_task)
+                                                        && visited_task.try_insert(&normalized)
+                                                    {
+                                                        let new_discovered =
+                                                            DiscoveredUrl::html(
+                                                                parsed_url,
+                                                                url_depth + 1,
+                                                                parent_url.clone(),
+                                                            );
+                                                        queue_task
+                                                            .push(new_discovered)
+                                                            .await;
                                                     }
                                                 }
                                             }
