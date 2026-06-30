@@ -45,11 +45,13 @@ use deadpool_sqlite::Pool;
 ///     assert!(response.is_ok());
 /// }
 /// ```
+#[allow(dead_code)]
 pub struct TestHttpServer {
     server: wiremock::MockServer,
     base_url: String,
 }
 
+#[allow(dead_code)]
 impl TestHttpServer {
     /// Create a new mock server on a random available port.
     ///
@@ -159,6 +161,7 @@ pub fn mock_scraped_content(url: &str, title: &str, content: &str) -> rust_scrap
 }
 
 /// Create a ScrapedContent with raw HTML included.
+#[allow(dead_code)]
 pub fn mock_scraped_content_with_html(
     url: &str,
     title: &str,
@@ -198,11 +201,13 @@ pub fn mock_scraped_content_with_html(
 ///     // vault.vault_json() gives you the obsidian.json path
 /// }
 /// ```
+#[allow(dead_code)]
 pub struct MockVault {
     _temp_dir: TempDir,
     vault_path: PathBuf,
 }
 
+#[allow(dead_code)]
 impl MockVault {
     /// Create a new mock Obsidian vault in a temporary directory.
     ///
@@ -277,10 +282,12 @@ impl MockVault {
 ///     // ... use pool for testing
 /// }
 /// ```
+#[allow(dead_code)]
 pub struct MemoryDb {
     pool: Pool,
 }
 
+#[allow(dead_code)]
 impl MemoryDb {
     /// Create a new in-memory SQLite database with a single-connection pool.
     pub fn new() -> Self {

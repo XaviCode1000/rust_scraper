@@ -23,7 +23,7 @@ use clap::Parser;
 ///
 /// assert_eq!(args.url, "https://example.com");
 /// ```
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Default)]
 #[command(name = "rust_scraper", version)]
 #[command(about = "Production-ready web scraper with Clean Architecture", long_about = None)]
 #[command(args_conflicts_with_subcommands = true)]
@@ -593,6 +593,7 @@ mod tests {
             ram_budget: Some("4GB".into()),
             db_path: Some(std::path::PathBuf::from("/tmp/test.db")),
             elastic: true,
+            ..Default::default()
         }
     }
 
@@ -816,6 +817,7 @@ mod tests {
                 ram_budget: None,
                 db_path: None,
                 elastic,
+                ..Default::default()
             };
 
             let opts = crate::application::crawl_options::CrawlOptions::from(args);
@@ -898,6 +900,7 @@ mod tests {
                 ram_budget: None,
                 db_path: None,
                 elastic: false,
+                ..Default::default()
             };
 
             let opts = crate::application::crawl_options::CrawlOptions::from(args);
@@ -972,6 +975,7 @@ mod tests {
                 ram_budget: None,
                 db_path: None,
                 elastic: false,
+                ..Default::default()
             };
 
             let expected_selector = args.selector.clone();
@@ -1040,6 +1044,7 @@ mod tests {
                 ram_budget: None,
                 db_path: db_path.as_deref().map(std::path::PathBuf::from),
                 elastic: false,
+                ..Default::default()
             };
 
             let opts = crate::application::crawl_options::CrawlOptions::from(args);
@@ -1108,6 +1113,7 @@ mod tests {
                 ram_budget: None,
                 db_path: None,
                 elastic: false,
+                ..Default::default()
             };
 
             let opts = crate::application::crawl_options::CrawlOptions::from(args);
@@ -1172,6 +1178,7 @@ mod tests {
                 ram_budget: None,
                 db_path: None,
                 elastic: false,
+                ..Default::default()
             };
 
             let opts = crate::application::crawl_options::CrawlOptions::from(args);
@@ -1231,6 +1238,7 @@ mod tests {
                 ram_budget: ram_budget.clone(),
                 db_path: None,
                 elastic: true,
+                ..Default::default()
             };
 
             let opts = crate::application::crawl_options::CrawlOptions::from(args);
