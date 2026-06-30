@@ -699,6 +699,7 @@ mod tests {
         assert!(msg.contains('5'), "missing length in message: {msg}");
     }
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_concurrent_writes_via_pool() {
         // Spec §Connection Pooling "concurrent writes via pool": 4 concurrent

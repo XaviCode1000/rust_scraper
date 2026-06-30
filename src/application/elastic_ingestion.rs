@@ -428,6 +428,7 @@ mod tests {
 
     // ---- Task 5.1: dedup short-circuit (frozen Decision 3) ----
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_run_dedup_short_circuits_when_hash_exists() {
         let repo = InMemoryRepo::default();
@@ -457,6 +458,7 @@ mod tests {
 
     // ---- Task 5.1: fail-fast on network error (frozen Decision 3) ----
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_run_network_error_propagates_without_retry() {
         let repo = InMemoryRepo::default();
