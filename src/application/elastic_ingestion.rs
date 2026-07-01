@@ -365,8 +365,7 @@ mod tests {
     mod wreq {
         use super::*;
 
-        fn make_orchestrator
-        (repo: InMemoryRepo) -> ElasticIngestion<InMemoryRepo> {
+        fn make_orchestrator(repo: InMemoryRepo) -> ElasticIngestion<InMemoryRepo> {
             let client = ::wreq::Client::builder()
                 .build()
                 .expect("fallo construyendo cliente wreq de prueba");
@@ -411,7 +410,11 @@ mod tests {
             orc.run(&url).await.expect("pipeline debe completarse");
 
             let state = repo.state.lock().expect("repo mutex poisoned");
-            assert_eq!(state.resources.len(), 1, "exactamente un recurso persistido");
+            assert_eq!(
+                state.resources.len(),
+                1,
+                "exactamente un recurso persistido"
+            );
             let (_hash, (saved_url, _title, size)) =
                 state.resources.iter().next().expect("un recurso");
             assert_eq!(saved_url, &url);
