@@ -179,10 +179,13 @@ pub struct ScrapedContent {
 /// |--------|-----------|----------|
 /// | Jsonl | .jsonl | One JSON object per line, optimal for RAG |
 /// | Auto | .auto | Auto-detect from existing files |
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, clap::ValueEnum)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, clap::ValueEnum, Default,
+)]
 pub enum ExportFormat {
     /// JSONL format (JSON Lines - one JSON object per line)
     /// Optimal for RAG pipelines and vector database ingestion
+    #[default]
     Jsonl,
     /// Vector format (JSON with metadata header)
     /// Supports embeddings and cosine similarity

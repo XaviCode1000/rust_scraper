@@ -66,6 +66,7 @@ fn base_args() -> Args {
         ram_budget: None,
         db_path: None,
         elastic: false,
+        ..Default::default()
     }
 }
 

@@ -387,6 +387,7 @@ mod tests {
         assert_eq!(err.to_string(), "Error de ingestión: pipeline abortó");
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_persistence_error_from_rusqlite() {
         // Triangulation: the Display-based helper must carry the real rusqlite

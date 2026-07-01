@@ -172,6 +172,7 @@ mod tests {
         assert!(fm.contains("example.com"));
     }
 
+    #[cfg_attr(miri, ignore)]
     #[test]
     fn test_highlight_code_blocks_logic() {
         let md = "```rust\nfn main() {}\n```";

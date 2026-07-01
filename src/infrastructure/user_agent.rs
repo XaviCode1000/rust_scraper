@@ -233,6 +233,7 @@ pub fn get_random_user_agent() -> String {
 mod tests {
     use super::*;
 
+    #[cfg_attr(miri, ignore)]
     #[tokio::test]
     async fn test_user_agent_cache_load() {
         let agents = UserAgentCache::load().await;

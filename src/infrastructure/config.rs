@@ -19,9 +19,10 @@ use clap::ValueEnum;
 /// let format = OutputFormat::Markdown;
 /// assert_eq!(format, OutputFormat::Markdown);
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Default)]
 pub enum OutputFormat {
     /// Markdown format with YAML frontmatter (recommended for RAG)
+    #[default]
     Markdown,
     /// Structured JSON with metadata
     Json,
