@@ -283,6 +283,7 @@ mod tests {
             date: None,
             html: None,
             assets: vec![],
+            correlation_id: None,
         }
     }
 
