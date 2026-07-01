@@ -50,7 +50,7 @@ gitnexus_impact({target: "symbolName", direction: "upstream"})
 - **HIGH risk** → stop, warn user, get approval
 - **CRITICAL risk** → stop, require user sign-off
 
-Consult `gitnexus-impact-analysis` skill for full impact analysis protocol (depth groups, confidence scores).
+Consult `gitnexus` skill for full impact analysis protocol (depth groups, confidence scores).
 
 ### 3. Before Writing Rust
 
@@ -133,10 +133,10 @@ Sub-agents get a fresh context with no memory. The orchestrator controls context
 3. Sub-agents that grep instead of using GitNexus/CodeDB are discipline failures
 
 **Delegate when:**
-- Reading 4+ files to understand codebase → exploration sub-agent (with gitnexus-exploring + codedb)
-- Writing code across 2+ files → writer sub-agent (with gitnexus-exploring + codedb + rust-skills)
+- Reading 4+ files to understand codebase → exploration sub-agent (with gitnexus + codedb)
+- Writing code across 2+ files → writer sub-agent (with gitnexus + codedb + rust-skills)
 - Running tests or CI → sub-agent
-- Multi-step refactoring → sub-agent (with gitnexus-refactoring + codedb + rust-skills)
+- Multi-step refactoring → sub-agent (with gitnexus + codedb + rust-skills)
 
 **Do inline when:**
 - Reading 1-3 files for decision/verification
@@ -146,14 +146,14 @@ Sub-agents get a fresh context with no memory. The orchestrator controls context
 **When delegating, reference skills by name (OpenCode auto-discovers them):**
 ```
 ## Skills to load before work
-- gitnexus-exploring
+- gitnexus
 - codedb
 - rust-skills
 ```
 
 Every sub-agent prompt that involves code MUST include:
 ```
-MANDATORY: Load gitnexus-exploring and codedb skills. Use CodeDB MCP tools
+MANDATORY: Load gitnexus and codedb skills. Use CodeDB MCP tools
 for structural code search (symbol/search/callers/outline/deps) and GitNexus
 tools for execution-flow analysis (gitnexus_query, gitnexus_impact,
 gitnexus_detect_changes). NEVER grep the project codebase. If CodeDB MCP is
@@ -211,13 +211,13 @@ Responses scanned for WAF signatures (Cloudflare, reCAPTCHA, hCaptcha, DataDome,
 
 | Purpose | Skill | Load when |
 |---------|-------|-----------|
-| Code exploration | `gitnexus-exploring` | Understanding architecture, tracing flows |
-| Impact analysis | `gitnexus-impact-analysis` | Before editing any symbol |
-| Debugging | `gitnexus-debugging` | Tracing bugs, error investigation |
-| Refactoring | `gitnexus-refactoring` | Rename, extract, split, move |
-| PR review | `gitnexus-pr-review` | Reviewing pull requests |
-| GitNexus reference | `gitnexus-guide` | Tool/resource/schema questions |
-| GitNexus CLI | `gitnexus-cli` | Index, status, clean, wiki commands |
+| Code exploration | `gitnexus` | Understanding architecture, tracing flows |
+| Impact analysis | `gitnexus` | Before editing any symbol |
+| Debugging | `gitnexus` | Tracing bugs, error investigation |
+| Refactoring | `gitnexus` | Rename, extract, split, move |
+| PR review | `gitnexus` | Reviewing pull requests |
+| GitNexus reference | `gitnexus` | Tool/resource/schema questions |
+| GitNexus CLI | `gitnexus` | Index, status, clean, wiki commands |
 | **Code search** | **`codedb`** | **Structural search, symbols, callers, outlines, file tree** |
 | Rust quality | `rust-skills` | Writing Rust — ownership, error handling, async |
 | SDD workflow | `sdd-*` skills | Planning/verifying changes |
@@ -259,13 +259,13 @@ This project is indexed by GitNexus as **rust_scraper** (4465 symbols, 9237 rela
 
 | Task | Skill |
 |------|-------|
-| Understand architecture / "How does X work?" | `gitnexus-exploring` |
-| Blast radius / "What breaks if I change X?" | `gitnexus-impact-analysis` |
-| Trace bugs / "Why is X failing?" | `gitnexus-debugging` |
-| Rename / extract / split / refactor | `gitnexus-refactoring` |
-| Review pull requests | `gitnexus-pr-review` |
-| Tools, resources, schema reference | `gitnexus-guide` |
-| Index, status, clean, wiki CLI commands | `gitnexus-cli` |
+| Understand architecture / "How does X work?" | `gitnexus` |
+| Blast radius / "What breaks if I change X?" | `gitnexus` |
+| Trace bugs / "Why is X failing?" | `gitnexus` |
+| Rename / extract / split / refactor | `gitnexus` |
+| Review pull requests | `gitnexus` |
+| Tools, resources, schema reference | `gitnexus` |
+| Index, status, clean, wiki CLI commands | `gitnexus` |
 
 <!-- gitnexus:end -->
 
