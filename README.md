@@ -183,16 +183,8 @@ just audit
 
 | Recurso | Qué cubre |
 |---------|-----------|
-| [Wiki (38 páginas)](docs/wiki/) | Arquitectura, módulos, flujos de ejecución |
-| [Viewer interactivo](docs/wiki/index.html) | Navegación con búsqueda |
 | [AGENTS.md](AGENTS.md) | Instrucciones para agentes AI |
 | `rust_scraper --help` | Referencia CLI completa |
-
-La wiki se genera automáticamente desde el grafo de conocimiento del proyecto:
-
-```bash
-gitnexus wiki --model openrouter/auto --concurrency 1 --force
-```
 
 ---
 
