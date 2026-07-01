@@ -157,6 +157,7 @@ pub fn mock_scraped_content(url: &str, title: &str, content: &str) -> rust_scrap
         date: None,
         html: None,
         assets: Vec::new(),
+        correlation_id: None,
     }
 }
 
@@ -177,6 +178,7 @@ pub fn mock_scraped_content_with_html(
         date: None,
         html: Some(html.to_string()),
         assets: Vec::new(),
+        correlation_id: None,
     }
 }
 

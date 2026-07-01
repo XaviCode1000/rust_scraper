@@ -281,6 +281,7 @@ pub async fn scrape_single_url_for_tui(
                 // Store CLEAN HTML from Readability (not raw HTML with nav/ads/footer)
                 html: Some(article.content),
                 assets,
+                correlation_id: None,
             })
         },
         Err(e) => {
@@ -319,6 +320,7 @@ pub async fn scrape_single_url_for_tui(
                 date: None,
                 html: Some(html),
                 assets,
+                correlation_id: None,
             })
         },
     }
