@@ -10,6 +10,9 @@ ignore = [
     # git2 0.20.4 (build-only via built) — unsound, not in runtime binary
     "RUSTSEC-2026-0183",
     "RUSTSEC-2026-0184",
+    # quick-xml 0.37/0.38 (transitive via syntect) — quadratic time + memory exhaustion
+    "RUSTSEC-2026-0194",
+    "RUSTSEC-2026-0195",
     # lru 0.12.5 (transitive via ratatui 0.29) — unsound, cannot pin transitively
     "RUSTSEC-2026-0002",
 ]
