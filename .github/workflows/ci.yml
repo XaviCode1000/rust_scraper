@@ -31,6 +31,9 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # Forces v4 actions (checkout, cache, upload-artifact, codecov) to run on Node 24
+  # instead of deprecated Node 20. Remove when all actions migrate to v5+.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # ============================================================================

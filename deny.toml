@@ -1,11 +1,10 @@
 [advisories]
 # IMPORTANT: Keep this list synchronized with CI cargo audit --ignore flags.
-# Each entry must document: crate, version, severity, why safe to ignore, tracking link.
+# Each entry must document: crate, version, severity, why safe to ignore, tracking, review date.
 ignore = [
     # RUSTSEC-2026-0097 (tonic 0.12.3, severity: medium)
     # Transitivo via console-subscriber (tokio-console, optional feature).
     # Not in production binary unless tokio-console feature enabled.
-    # Tracking: https://github.com/hyperium/tonic/issues/XXX (no upstream fix)
     "RUSTSEC-2026-0097",
 
     # RUSTSEC-2025-0141 (bincode 1.3.3, severity: medium)
@@ -26,12 +25,10 @@ ignore = [
 
     # RUSTSEC-2026-0183 (git2 0.20.4, severity: medium)
     # Unsound. Build-only via built crate. Not in production binary.
-    # Tracking: https://github.com/rust-lang/git2-rs/issues/XXX
     "RUSTSEC-2026-0183",
 
     # RUSTSEC-2026-0184 (git2 0.20.4, severity: medium)
     # Unsound. Build-only via built crate. Not in production binary.
-    # Tracking: https://github.com/rust-lang/git2-rs/issues/XXX
     "RUSTSEC-2026-0184",
 
     # RUSTSEC-2026-0186 (memmap2 0.9.11, severity: medium)
@@ -46,14 +43,17 @@ ignore = [
     # RUSTSEC-2026-0194 (quick-xml 0.39.4, severity: 7.5 HIGH)
     # Quadratic attribute check. Transitivo via plist→syntect (plist 1.9.0 is latest).
     # Our direct dep upgraded to 0.41.0. Transitive can't be fixed until plist updates.
-    # Impact: DoS via crafted XML — not exploitable in sitemap parser (bounded input).
+    # Ruta de codigo: syntect se usa SOLO para syntax highlighting de code blocks en
+    # output Markdown (infrastructure/converter/syntax_highlight.rs). NO procesa
+    # sitemap.xml descargado de sitios remotos — ruta completamente separada.
     # Tracking: https://github.com/tafia/quick-xml/issues/969
+    # Revisar antes de: 2026-08-15
     "RUSTSEC-2026-0194",
 
     # RUSTSEC-2026-0195 (quick-xml 0.39.4, severity: 7.5 HIGH)
-    # Unbounded namespace allocation. Same transitivo path as RUSTSEC-2026-0194.
-    # Impact: OOM via crafted XML — not exploitable in sitemap parser (bounded input).
+    # Unbounded namespace allocation. Mismo analysis que RUSTSEC-2026-0194.
     # Tracking: https://github.com/tafia/quick-xml/issues/970
+    # Revisar antes de: 2026-08-15
     "RUSTSEC-2026-0195",
 ]
 
