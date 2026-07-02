@@ -1,0 +1,177 @@
+# Release Pipeline — Automated binary builds on version tags
+#
+# Triggers when a tag like v1.2.0 is pushed.
+# Builds for Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows (x86_64).
+# Creates a GitHub Release with all binaries attached.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag (e.g. v1.2.0)"
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_PROFILE_RELEASE_LTO: "fat"
+  CARGO_PROFILE_RELEASE_CODEGEN_UNITS: "1"
+
+jobs:
+  # ============================================================================
+  # BUILD: Cross-compile for all platforms
+  # ============================================================================
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+            cross: true
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            archive: tar.gz
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            archive: zip
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+
+      # Cross-compilation setup for Linux aarch64
+      - name: Install cross-compilation tools
+        if: matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+
+      - name: Build release binary
+        run: cargo build --release --locked --features ai --target ${{ matrix.target }}
+
+      - name: Strip binary (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          strip target/${{ matrix.target }}/release/rust_scraper
+
+      - name: Compress (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar czf ../../../rust_scraper-${{ matrix.target }}.tar.gz rust_scraper
+
+      - name: Compress (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cd target/${{ matrix.target }}/release
+          7z a ../../../rust_scraper-${{ matrix.target }}.zip rust_scraper.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust_scraper-${{ matrix.target }}
+          path: rust_scraper-${{ matrix.target }}.*
+
+  # ============================================================================
+  # CHECKSUMS: Generate SHA256 for all binaries
+  # ============================================================================
+  checksums:
+    name: Generate checksums
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: rust_scraper-*
+          merge-multiple: true
+
+      - name: Generate SHA256 checksums
+        run: |
+          cd artifacts
+          sha256sum rust_scraper-* > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums
+          path: artifacts/SHA256SUMS.txt
+
+  # ============================================================================
+  # RELEASE: Create GitHub Release with all binaries
+  # ============================================================================
+  release:
+    name: Create GitHub Release
+    needs: [build, checksums]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: "Rust Scraper ${{ github.event.inputs.tag || github.ref_name }}"
+          body: |
+            ## What's Changed
+
+            See [CHANGELOG](https://github.com/XaviCode1000/rust-scraper/blob/main/CHANGELOG.md) for details.
+
+            ## Installation
+
+            ### Binary download
+            Download the binary for your platform from the assets below.
+
+            ### Cargo
+            ```bash
+            cargo install rust_scraper --version ${{ github.event.inputs.tag || github.ref_name }}
+            ```
+
+            ### From source
+            ```bash
+            git clone https://github.com/XaviCode1000/rust-scraper
+            cd rust-scraper
+            cargo build --release --features ai
+            ```
+
+            ## Verification
+            Verify the checksum of your downloaded binary:
+            ```bash
+            sha256sum -c SHA256SUMS.txt --ignore-missing
+            ```
+          files: |
+            artifacts/rust_scraper-*
+            artifacts/SHA256SUMS.txt
+          draft: false
+          prerelease: false

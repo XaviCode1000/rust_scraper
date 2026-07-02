@@ -161,10 +161,10 @@ pub fn init_json_logging_dual(
             .with_target(true)
             .json();
 
-        subscriber.with(json_layer).init();
+        subscriber.with(json_layer).try_init().ok();
         Ok(log_guard)
     } else {
-        subscriber.init();
+        subscriber.try_init().ok();
         Ok(LogGuard::no_op())
     }
 }
@@ -218,10 +218,10 @@ pub fn init_json_logging_dual(
             .with_target(true)
             .json();
 
-        subscriber.with(json_layer).init();
+        subscriber.with(json_layer).try_init().ok();
         Ok(log_guard)
     } else {
-        subscriber.init();
+        subscriber.try_init().ok();
         Ok(LogGuard::no_op())
     }
 }

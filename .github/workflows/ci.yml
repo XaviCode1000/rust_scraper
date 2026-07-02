@@ -1,17 +1,15 @@
-# CI/CD Pipeline for rust_scraper — Stark-Grade 2026
+# CI/CD Pipeline for rust_scraper — Tiered Feedback
 #
-# Strategy: ONE compilation per run, cached across all steps.
-# Jobs are only split when they truly need separate environments
-# (e.g., macOS testing, nightly Miri, security-only tools).
+# Strategy: 3-tier pipeline with needs gates.
+# Each tier only runs if the previous tier PASSED.
+# Developer gets feedback in <60s (fmt), <3min (clippy), <8min (full).
 #
 # Pipeline flow:
-#   build-and-test (single job): fmt → clippy → check → nextest → MCP smoke
-#   security (after build): cargo-audit + cargo-deny (no Rust compile)
-#   release (main only): cargo build --release with LTO
-#   miri (scheduled): UB detection on nightly
-#
-# Key optimization: single runner = single compilation, single cache.
-# Swatinem/rust-cache restores ~300MB of compiled deps on warm runs.
+#   fmt (30s) → clippy (2min) → test-core (3min) → test-full (5min)
+#   security runs in parallel with tests (no Rust compile)
+#   mcp smoke runs after test-full
+#   release runs after all gates pass (main only)
+#   miri runs on schedule/dispatch only
 
 name: CI
 
@@ -23,7 +21,6 @@ on:
     - cron: "0 0 * * 1"  # Weekly Miri on Monday 00:00 UTC
   workflow_dispatch:
 
-# Cancel redundant runs per PR/branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
@@ -31,50 +28,107 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # CI optimizations: disable debuginfo + incremental for faster builds
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_DEV_INCREMENTAL: "false"
 
 jobs:
   # ============================================================================
-  # MAIN PIPELINE: compile ONCE, run all checks in sequence
-  # This is the biggest performance win — single cache, single build.
+  # TIER 1: FORMAT GATE (30-60 seconds)
+  # No compilation needed — instant feedback on style.
+  # If this fails, NOTHING else runs.
   # ============================================================================
-  build-and-test:
-    name: Build & Test
+  fmt:
+    name: Check formatting
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          components: rustfmt, clippy
+          components: rustfmt
+      - run: cargo fmt --all -- --check
 
-      # Cache: ~300MB compiled deps restored in seconds on warm runs
-      # First run (cold): ~8 min. Warm run: ~2-3 min.
+  # ============================================================================
+  # TIER 2: CLIPPY GATE (2-3 minutes)
+  # Compiles once + lints. If this fails, tests don't run.
+  # Uses sccache for artifact caching across runs.
+  # ============================================================================
+  clippy:
+    name: Clippy (strict)
+    needs: [fmt]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --all-targets --all-features -- -D warnings
 
-      # FAST CHECKS: fmt first (no compile, instant feedback)
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      # Clippy: compiles + lints in one pass
-      - name: Clippy (strict)
-        run: cargo clippy --all-targets --all-features -- -D warnings
-
-      # Install nextest for faster test execution
+  # ============================================================================
+  # TIER 3: TEST CORE (2-3 minutes)
+  # Fast tests without heavy features (ai, otel).
+  # Gate: must pass before full suite.
+  # ============================================================================
+  test-core:
+    name: Tests (core)
+    needs: [clippy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
+      - run: cargo nextest run --test-threads 4 --retries 2
 
-      # GATED: Run all tests with nextest
-      - name: Run tests
-        run: cargo nextest run --all-features --test-threads 2 --retries 2
+  # ============================================================================
+  # TIER 3: TEST FULL (4-6 minutes)
+  # All features enabled. Gate: must pass before MCP + release.
+  # ============================================================================
+  test-full:
+    name: Tests (all features)
+    needs: [test-core]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
+      - run: cargo nextest run --all-features --test-threads 4 --retries 2
 
-      # MCP smoke test: build + validate handshake
+  # ============================================================================
+  # SECURITY: No Rust compile — runs in PARALLEL with tests
+  # Only needs fmt gate (doesn't depend on compilation).
+  # ============================================================================
+  security:
+    name: Security Audit
+    needs: [fmt]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@cargo-deny
+      - run: cargo deny check
+
+  # ============================================================================
+  # MCP SMOKE: After full tests pass
+  # Separate job so MCP failure doesn't block test results.
+  # ============================================================================
+  mcp:
+    name: MCP handshake
+    needs: [test-full]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
       - name: Build MCP server
         run: cargo build --example mcp_server --all-features
-
       - name: Validate MCP handshake
+        timeout-minutes: 2
         run: |
           ./target/debug/examples/mcp_server &
           MCP_PID=$!
-          for i in $(seq 1 10); do
+          for i in $(seq 1 15); do
             if curl -sf http://127.0.0.1:8080/mcp -X POST \
               -H "Content-Type: application/json" \
               -H "Accept: application/json, text/event-stream" \
@@ -87,30 +141,17 @@ jobs:
             sleep 1
           done
           kill $MCP_PID 2>/dev/null || true
-          echo "MCP server failed to respond"
+          echo "MCP server failed to respond after 15 attempts"
           exit 1
 
   # ============================================================================
-  # SECURITY: no Rust compile needed — fast standalone job
-  # ============================================================================
-  security:
-    name: Security Audit
-    runs-on: ubuntu-latest
-    needs: [build-and-test]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: taiki-e/install-action@cargo-deny
-      - name: Advisories + licenses + bans + sources
-        run: cargo deny check
-
-  # ============================================================================
-  # RELEASE: build optimized binary (main only)
+  # RELEASE: After ALL gates pass (main only)
   # ============================================================================
   release:
     name: Build Release
-    runs-on: ubuntu-latest
-    needs: [build-and-test, security]
+    needs: [test-full, security, mcp]
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -131,25 +172,15 @@ jobs:
           retention-days: 7
 
   # ============================================================================
-  # SCHEDULED: Miri (UB detection on nightly)
-  #
-  # Design (three-layer defence):
-  #   1. Code level: tests that depend on boring-sys2 FFI (boring2/wreq) or
-  #      onig-sys (syntect) use #[cfg_attr(miri, ignore)] or live in
-  #      #[cfg(not(miri))] modules. Miri cannot execute C FFI nor inline
-  #      assembly (raw-cpuid via quanta/governor).
-  #   2. CI safety net: --skip downloader catches any missed FFI tests.
-  #   3. Matrix: tests split into parallel groups so ALL failures surface
-  #      in ONE run instead of blocking on the first UB.
-  #   4. Sysroot cache: cargo miri setup drops from ~15min to ~2s warm.
-  #   5. Flags: MIRIFLAGS with disable-isolation, ignore-leaks, seed=42.
+  # MIRI: UB detection (schedule/dispatch only)
+  # Separate workflow — doesn't block PR pipeline.
   # ============================================================================
   miri:
     name: Miri (${{ matrix.group }})
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     strategy:
-      fail-fast: false  # show ALL failures, not just the first UB
+      fail-fast: false
       matrix:
         group: [core, domain, infra]
         include:
@@ -164,18 +195,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
         with:
           components: miri
-
-      # Cache Miri sysroot: ~1GB compiled stdlib, reuses across runs.
-      # No rust-toolchain.toml exists — key by OS + manual nightly stamp.
-      # On nightly update the cache misses (cold setup once), then repopulates.
       - name: Cache Miri sysroot
         uses: actions/cache@v4
         with:
           path: ~/.cache/miri
-          key: miri-sysroot-${{ runner.os }}-2026-05-23
+          key: miri-sysroot-${{ runner.os }}-2026-07-01
           restore-keys: |
             miri-sysroot-${{ runner.os }}-
-
       - name: Setup & Run Miri (${{ matrix.group }})
         env:
           MIRIFLAGS: -Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-seed=42 -Zmiri-permissive-provenance -Zmiri-disable-stacked-borrows
@@ -184,13 +210,13 @@ jobs:
           cargo miri test --lib -- --skip downloader ${{ matrix.filter }}
 
   # ============================================================================
-  # SCHEDULED: Coverage (manual trigger only)
+  # COVERAGE: Manual trigger only
   # ============================================================================
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
-    needs: [build-and-test]
+    needs: [test-full]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
