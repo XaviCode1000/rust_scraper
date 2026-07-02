@@ -393,6 +393,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(miri, ignore)] // lol_html/servo_arc aliasing incompatible with Tree Borrows
     #[tokio::test]
     async fn test_dispatch_resource_lol_html_strips_html_tags() {
         // The lol_html cleaner must extract visible text, not raw markup.
@@ -450,6 +451,7 @@ mod tests {
     // extracted, so their text is gone. This test FAILS on the stub (RED) and
     // PASSES once lol_html is wired (GREEN).
 
+    #[cfg_attr(miri, ignore)] // lol_html/servo_arc aliasing incompatible with Tree Borrows
     #[tokio::test]
     async fn test_dispatch_resource_lol_html_removes_boilerplate_text() {
         let bridge = make_bridge(2);
