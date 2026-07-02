@@ -35,6 +35,20 @@ ai = [
 # Tokio console for runtime observability (task-starvation debugging)
 # Requires: RUSTFLAGS="--cfg tokio_unstable" at compile time
 console = ["dep:console-subscriber"]
+# OpenTelemetry distributed tracing (OTLP HTTP/protobuf export)
+otel = [
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:opentelemetry-otlp",
+    "dep:tracing-opentelemetry",
+]
+# OpenTelemetry metrics (extends otel with metrics API + OTLP metric export)
+otel-metrics = [
+    "otel",
+    "opentelemetry/metrics",
+    "opentelemetry_sdk/metrics",
+    "opentelemetry-otlp/metrics",
+]
 
 [dependencies]
 # CLI - Argument parsing obligatorio
@@ -84,6 +98,12 @@ anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 tracing-appender = "0.2"
+
+# OpenTelemetry (feature-gated: --features otel)
+opentelemetry = { version = "0.32", optional = true }
+opentelemetry_sdk = { version = "0.32", optional = true, features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.32", optional = true, features = ["http-proto", "reqwest-client"] }
+tracing-opentelemetry = { version = "0.33", optional = true }
 
 # Utilities
 url = { version = "2", features = ["serde"] }

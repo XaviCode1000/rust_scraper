@@ -30,6 +30,7 @@ fn make_chunk(url: &str, title: &str, content: &str) -> DocumentChunkValidated {
         date: Some("2024-01-01".to_string()),
         html: None,
         assets: vec![],
+        correlation_id: None,
     };
 
     // Convert to Draft state, then validate
@@ -126,6 +127,7 @@ fn test_file_exporter_empty_content() {
         date: None,
         html: None,
         assets: vec![],
+        correlation_id: None,
     };
 
     // Convert to Draft state - this should succeed
@@ -155,6 +157,7 @@ fn test_document_chunk_validation_comprehensive() {
         date: None,
         html: None,
         assets: vec![],
+        correlation_id: None,
     };
     let chunk = DocumentChunkUnvalidated::from(scraped_empty_title);
     assert!(matches!(chunk.validate(), Err(ValidationError::EmptyTitle)));
@@ -169,6 +172,7 @@ fn test_document_chunk_validation_comprehensive() {
         date: None,
         html: None,
         assets: vec![],
+        correlation_id: None,
     };
     let chunk = DocumentChunkUnvalidated::from(scraped_empty_content);
     assert!(matches!(
@@ -186,6 +190,7 @@ fn test_document_chunk_validation_comprehensive() {
         date: Some("2024-01-01".to_string()),
         html: None,
         assets: vec![],
+        correlation_id: None,
     };
     let chunk = DocumentChunkUnvalidated::from(scraped_valid);
     assert!(
@@ -228,6 +233,7 @@ fn test_scraped_content_conversion() {
         date: Some("2024-01-15".to_string()),
         html: Some("<p>HTML content</p>".to_string()),
         assets: vec![],
+        correlation_id: None,
     };
 
     // Conversion from ScrapedContent creates Draft state, then validate

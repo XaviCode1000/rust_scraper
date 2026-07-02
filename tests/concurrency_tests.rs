@@ -33,6 +33,7 @@ fn make_chunk(title: &str) -> rust_scraper::domain::DocumentChunkValidated {
         date: None,
         html: None,
         assets: vec![],
+        correlation_id: None,
     };
 
     let unvalidated: rust_scraper::domain::DocumentChunkUnvalidated = scraped.into();
