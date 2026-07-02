@@ -42,6 +42,13 @@ otel = [
     "dep:opentelemetry-otlp",
     "dep:tracing-opentelemetry",
 ]
+# OpenTelemetry metrics (extends otel with metrics API + OTLP metric export)
+otel-metrics = [
+    "otel",
+    "opentelemetry/metrics",
+    "opentelemetry_sdk/metrics",
+    "opentelemetry-otlp/metrics",
+]
 
 [dependencies]
 # CLI - Argument parsing obligatorio
