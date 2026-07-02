@@ -281,6 +281,7 @@ pub async fn scrape_single_url_for_tui(
                 // Store CLEAN HTML from Readability (not raw HTML with nav/ads/footer)
                 html: Some(article.content),
                 assets,
+                correlation_id: None,
             })
         },
         Err(e) => {
@@ -319,6 +320,7 @@ pub async fn scrape_single_url_for_tui(
                 date: None,
                 html: Some(html),
                 assets,
+                correlation_id: None,
             })
         },
     }
@@ -664,7 +666,7 @@ pub fn parse_sitemap(xml_content: &str, base_url: &Url) -> Result<Vec<String>, C
                 in_loc = false;
             },
             Ok(Event::Text(ref e)) if in_loc => {
-                let text = e.unescape().map_err(|e| CrawlError::Parse(e.to_string()))?;
+                let text = e.decode().map_err(|e| CrawlError::Parse(e.to_string()))?;
                 let url_str = text.trim();
                 if !url_str.is_empty() {
                     // Resolve relative URLs against base_url

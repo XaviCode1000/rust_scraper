@@ -266,6 +266,7 @@ mod tests {
             date: None,
             html: None,
             assets: Vec::new(),
+            correlation_id: None,
         }];
 
         let result = save_as_markdown(&results, output_dir, &ObsidianOptions::default());
@@ -295,6 +296,7 @@ mod tests {
             date: None,
             html: None,
             assets: Vec::new(),
+            correlation_id: None,
         }];
 
         let result = save_as_json(&results, output_dir);
