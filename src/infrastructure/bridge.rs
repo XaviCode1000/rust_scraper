@@ -364,6 +364,7 @@ mod tests {
 
     // ---- Task 3.3: typed dispatch_resource (lol_html cleaning) ----
 
+    #[cfg_attr(miri, ignore)] // lol_html/servo_arc aliasing incompatible with Tree Borrows
     #[tokio::test]
     async fn test_dispatch_resource_returns_processed_resource_with_lol_html_cleaning() {
         let bridge = make_bridge(2);
@@ -422,6 +423,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(miri, ignore)] // lol_html/servo_arc aliasing incompatible with Tree Borrows
     #[tokio::test]
     async fn test_dispatch_resource_tolerates_invalid_utf8_via_lossy() {
         // Invalid UTF-8 must NOT crash the Rayon pool (from_utf8_lossy replaces).
