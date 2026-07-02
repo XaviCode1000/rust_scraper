@@ -235,7 +235,6 @@ async fn __main() -> CliExit {
         1 => "debug",
         _ => "trace",
     };
-    };
 
     // OpenTelemetry tracing + metrics (feature-gated)
     #[cfg(feature = "otel-metrics")]

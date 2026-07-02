@@ -153,7 +153,6 @@ pub fn init_logging_dual(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
