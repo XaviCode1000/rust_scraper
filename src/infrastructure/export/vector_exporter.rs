@@ -307,6 +307,7 @@ mod tests {
             date: None,
             html: None,
             assets: vec![],
+            correlation_id: None,
         };
         let chunk = crate::domain::DocumentChunk::<Draft>::from(scraped);
         chunk.validate().unwrap()

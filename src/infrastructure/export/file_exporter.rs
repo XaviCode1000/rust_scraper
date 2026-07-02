@@ -275,6 +275,7 @@ mod tests {
             date: Some("2024-01-01".to_string()),
             html: None,
             assets: vec![],
+            correlation_id: None,
         };
 
         let chunk: crate::domain::DocumentChunkUnvalidated = scraped.into();
