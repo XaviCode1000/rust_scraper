@@ -235,7 +235,39 @@ async fn __main() -> CliExit {
         1 => "debug",
         _ => "trace",
     };
-    // Keep guard alive for program duration (required for tracing subscriber)
+
+    // OpenTelemetry tracing + metrics (feature-gated)
+    #[cfg(feature = "otel-metrics")]
+    let _otel_guard = {
+        let config = rust_scraper::infrastructure::observability::otel::OtelConfig::from_env();
+        match rust_scraper::infrastructure::observability::otel::init_otel_metrics(config) {
+            Ok((_meter, guard, layer)) => {
+                init_logging_dual(log_level, opts.export.quiet, no_color, Some(layer));
+                Some(guard)
+            },
+            Err(e) => {
+                eprintln!("Warning: OTel metrics init failed: {e}");
+                init_logging_dual(log_level, opts.export.quiet, no_color, None);
+                None
+            },
+        }
+    };
+    #[cfg(all(feature = "otel", not(feature = "otel-metrics")))]
+    let _otel_guard = {
+        let config = rust_scraper::infrastructure::observability::otel::OtelConfig::from_env();
+        match rust_scraper::infrastructure::observability::otel::init_otel_tracing(config) {
+            Ok((guard, layer)) => {
+                init_logging_dual(log_level, opts.export.quiet, no_color, Some(layer));
+                Some(guard)
+            },
+            Err(e) => {
+                eprintln!("Warning: OTel tracing init failed: {e}");
+                init_logging_dual(log_level, opts.export.quiet, no_color, None);
+                None
+            },
+        }
+    };
+    #[cfg(not(feature = "otel"))]
     #[allow(clippy::let_unit_value)]
     let _guard = init_logging_dual(log_level, opts.export.quiet, no_color);
 

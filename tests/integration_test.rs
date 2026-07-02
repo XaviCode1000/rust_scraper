@@ -195,6 +195,7 @@ fn test_save_results_to_nested_directory() {
         date: None,
         html: None,
         assets: Vec::new(),
+        correlation_id: None,
     }];
 
     // Act
@@ -239,6 +240,7 @@ fn test_save_results_json_with_special_characters() {
             asset_type: "image".to_string(),
             size: 100,
         }],
+        correlation_id: None,
     }];
 
     // Act
@@ -276,6 +278,7 @@ fn test_save_results_markdown_with_markdown_syntax() {
         date: None,
         html: None,
         assets: Vec::new(),
+        correlation_id: None,
     }];
 
     // Act

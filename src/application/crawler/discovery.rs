@@ -16,6 +16,11 @@ use crate::infrastructure::crawler::{
 use crate::infrastructure::scraper::{fallback, readability};
 use crate::ScraperConfig;
 
+#[cfg(feature = "otel-metrics")]
+use crate::infrastructure::observability::metrics_instruments::{
+    CRAWLER_BANDWIDTH, CRAWLER_PAGES, CRAWLER_URLS,
+};
+
 // ============================================================================
 // TUI Support — Discover/Scrape Use Cases
 // ============================================================================
@@ -77,7 +82,12 @@ pub async fn discover_urls_for_tui(
     if config.use_sitemap {
         let discovered =
             crawl_with_sitemap(base_url, config.sitemap_url.as_deref(), config).await?;
-        Ok(discovered.into_iter().map(|d| d.url).collect())
+        let urls: Vec<Url> = discovered.into_iter().map(|d| d.url).collect();
+
+        #[cfg(feature = "otel-metrics")]
+        CRAWLER_URLS.add(urls.len() as u64, &[]);
+
+        Ok(urls)
     } else {
         // DOM scraping - extract links from single page
         let client = super::super::create_http_client()?;
@@ -137,6 +147,10 @@ pub async fn discover_urls_for_tui(
         }
 
         info!("Discovered {} URLs from {}", urls.len(), base_url);
+
+        #[cfg(feature = "otel-metrics")]
+        CRAWLER_URLS.add(urls.len() as u64, &[]);
+
         Ok(urls)
     }
 }
@@ -259,6 +273,14 @@ pub async fn scrape_single_url_for_tui(
         .await
         .map_err(|e| ScraperError::Network(e.to_string()))?;
 
+    #[cfg(feature = "otel-metrics")]
+    {
+        CRAWLER_BANDWIDTH.add(
+            html.len() as u64,
+            &[opentelemetry::KeyValue::new("url", url.to_string())],
+        );
+    }
+
     // Clean HTML boilerplate (scripts, styles, nav, sidebar, footer) BEFORE
     // Readability. This helps legible find the main content without being
     // confused by navigation elements, JavaScript bundles, and CSS.
@@ -267,6 +289,9 @@ pub async fn scrape_single_url_for_tui(
     // Try Readability first, fallback to plain text extraction
     match readability::parse(&cleaned_html, Some(url.as_str())) {
         Ok(article) => {
+            #[cfg(feature = "otel-metrics")]
+            CRAWLER_PAGES.add(1, &[opentelemetry::KeyValue::new("method", "readability")]);
+
             let assets =
                 crate::application::scraper_service::download_assets_if_enabled(&html, url, config)
                     .await?;
@@ -281,6 +306,7 @@ pub async fn scrape_single_url_for_tui(
                 // Store CLEAN HTML from Readability (not raw HTML with nav/ads/footer)
                 html: Some(article.content),
                 assets,
+                correlation_id: None,
             })
         },
         Err(e) => {
@@ -307,6 +333,9 @@ pub async fn scrape_single_url_for_tui(
                 crate::application::scraper_service::download_assets_if_enabled(&html, url, config)
                     .await?;
 
+            #[cfg(feature = "otel-metrics")]
+            CRAWLER_PAGES.add(1, &[opentelemetry::KeyValue::new("method", "fallback")]);
+
             Ok(ScrapedContent {
                 title: url
                     .host_str()
@@ -319,6 +348,7 @@ pub async fn scrape_single_url_for_tui(
                 date: None,
                 html: Some(html),
                 assets,
+                correlation_id: None,
             })
         },
     }
@@ -465,6 +495,9 @@ async fn crawl_with_sitemap_internal(
         .filter(|url| is_allowed(url.as_str(), config))
         .map(|url| DiscoveredUrl::html(url, 0, base.clone()))
         .collect();
+
+    #[cfg(feature = "otel-metrics")]
+    CRAWLER_URLS.add(discovered.len() as u64, &[]);
 
     Ok(discovered)
 }
@@ -664,7 +697,7 @@ pub fn parse_sitemap(xml_content: &str, base_url: &Url) -> Result<Vec<String>, C
                 in_loc = false;
             },
             Ok(Event::Text(ref e)) if in_loc => {
-                let text = e.unescape().map_err(|e| CrawlError::Parse(e.to_string()))?;
+                let text = e.decode().map_err(|e| CrawlError::Parse(e.to_string()))?;
                 let url_str = text.trim();
                 if !url_str.is_empty() {
                     // Resolve relative URLs against base_url
