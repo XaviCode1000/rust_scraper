@@ -16,6 +16,11 @@ use crate::infrastructure::crawler::{
 use crate::infrastructure::scraper::{fallback, readability};
 use crate::ScraperConfig;
 
+#[cfg(feature = "otel-metrics")]
+use crate::infrastructure::observability::metrics_instruments::{
+    CRAWLER_BANDWIDTH, CRAWLER_PAGES, CRAWLER_URLS,
+};
+
 // ============================================================================
 // TUI Support — Discover/Scrape Use Cases
 // ============================================================================
@@ -77,7 +82,12 @@ pub async fn discover_urls_for_tui(
     if config.use_sitemap {
         let discovered =
             crawl_with_sitemap(base_url, config.sitemap_url.as_deref(), config).await?;
-        Ok(discovered.into_iter().map(|d| d.url).collect())
+        let urls: Vec<Url> = discovered.into_iter().map(|d| d.url).collect();
+
+        #[cfg(feature = "otel-metrics")]
+        CRAWLER_URLS.add(urls.len() as u64, &[]);
+
+        Ok(urls)
     } else {
         // DOM scraping - extract links from single page
         let client = super::super::create_http_client()?;
@@ -137,6 +147,10 @@ pub async fn discover_urls_for_tui(
         }
 
         info!("Discovered {} URLs from {}", urls.len(), base_url);
+
+        #[cfg(feature = "otel-metrics")]
+        CRAWLER_URLS.add(urls.len() as u64, &[]);
+
         Ok(urls)
     }
 }
@@ -259,6 +273,14 @@ pub async fn scrape_single_url_for_tui(
         .await
         .map_err(|e| ScraperError::Network(e.to_string()))?;
 
+    #[cfg(feature = "otel-metrics")]
+    {
+        CRAWLER_BANDWIDTH.add(
+            html.len() as u64,
+            &[opentelemetry::KeyValue::new("url", url.to_string())],
+        );
+    }
+
     // Clean HTML boilerplate (scripts, styles, nav, sidebar, footer) BEFORE
     // Readability. This helps legible find the main content without being
     // confused by navigation elements, JavaScript bundles, and CSS.
@@ -267,6 +289,9 @@ pub async fn scrape_single_url_for_tui(
     // Try Readability first, fallback to plain text extraction
     match readability::parse(&cleaned_html, Some(url.as_str())) {
         Ok(article) => {
+            #[cfg(feature = "otel-metrics")]
+            CRAWLER_PAGES.add(1, &[opentelemetry::KeyValue::new("method", "readability")]);
+
             let assets =
                 crate::application::scraper_service::download_assets_if_enabled(&html, url, config)
                     .await?;
@@ -307,6 +332,9 @@ pub async fn scrape_single_url_for_tui(
             let assets =
                 crate::application::scraper_service::download_assets_if_enabled(&html, url, config)
                     .await?;
+
+            #[cfg(feature = "otel-metrics")]
+            CRAWLER_PAGES.add(1, &[opentelemetry::KeyValue::new("method", "fallback")]);
 
             Ok(ScrapedContent {
                 title: url
@@ -467,6 +495,9 @@ async fn crawl_with_sitemap_internal(
         .filter(|url| is_allowed(url.as_str(), config))
         .map(|url| DiscoveredUrl::html(url, 0, base.clone()))
         .collect();
+
+    #[cfg(feature = "otel-metrics")]
+    CRAWLER_URLS.add(discovered.len() as u64, &[]);
 
     Ok(discovered)
 }
