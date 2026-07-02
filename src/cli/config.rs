@@ -103,9 +103,9 @@ pub fn init_logging_dual(level: &str, quiet: bool, no_color: bool) {
     tracing_subscriber::registry()
         .with(fmt_layer)
         .with(filter)
-        .init();
+        .try_init()
+        .ok();
 }
-
 /// Dual-mode logging with optional OTel layer.
 #[cfg(feature = "otel")]
 pub fn init_logging_dual(
@@ -134,11 +134,26 @@ pub fn init_logging_dual(
         .pretty();
 
     // OTel layer must be added directly on Registry, before EnvFilter
-    tracing_subscriber::registry()
-        .with(otel_layer)
-        .with(filter)
-        .with(fmt_layer)
-        .init();
+    #[cfg(feature = "otel-metrics")]
+    {
+        use crate::infrastructure::observability::trace_correlation::trace_correlation_layer;
+        tracing_subscriber::registry()
+            .with(otel_layer)
+            .with(trace_correlation_layer())
+            .with(filter)
+            .with(fmt_layer)
+            .try_init()
+            .ok();
+    }
+    #[cfg(not(feature = "otel-metrics"))]
+    {
+        tracing_subscriber::registry()
+            .with(otel_layer)
+            .with(filter)
+            .with(fmt_layer)
+            .try_init()
+            .ok();
+    }
 }
 
 #[cfg(test)]
