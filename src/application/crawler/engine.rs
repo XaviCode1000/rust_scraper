@@ -16,6 +16,7 @@ use url::Url;
 use super::collector::{CrawlMessage, ResultsCollector};
 use super::discovery::{is_allowed_by_robots, new_robots_cache, RobotsCache};
 use crate::application::deduplicator::UrlDeduplicator;
+use crate::application::pipeline::{OutputStage, PipelineExecutor, ScrapedItem, StageOutcome};
 use crate::application::rate_limiter::{RateLimiterConfig, SharedRateLimiter};
 use crate::application::url_filter::is_allowed;
 use crate::domain::{CrawlError, CrawlResult, CrawlerConfig, DiscoveredUrl, JsStrategy};
@@ -107,6 +108,10 @@ pub struct Engine {
     cookie_bridge: Arc<RwLock<CookieBridge>>,
     /// Domains currently banned due to WAF or rate limiting.
     banned_domains: Arc<RwLock<Vec<BannedDomain>>>,
+    /// Optional item pipeline for processing scraped content.
+    pipeline: Option<Arc<PipelineExecutor>>,
+    /// Output stages that receive items after pipeline processing.
+    output_stages: Vec<Arc<Box<dyn OutputStage>>>,
 }
 
 impl Engine {
@@ -156,6 +161,8 @@ impl Engine {
             fetch_router: None,
             cookie_bridge: Arc::new(RwLock::new(CookieBridge::new())),
             banned_domains: Arc::new(RwLock::new(Vec::new())),
+            pipeline: None,
+            output_stages: Vec::new(),
         })
     }
 
@@ -226,6 +233,17 @@ impl Engine {
             *banned = domains;
         }
         self
+    }
+
+    /// Set the item pipeline executor for processing scraped content.
+    pub fn with_pipeline(mut self, executor: PipelineExecutor) -> Self {
+        self.pipeline = Some(Arc::new(executor));
+        self
+    }
+
+    /// Add an output stage that receives items after pipeline processing.
+    pub fn add_output_stage(&mut self, stage: Box<dyn OutputStage>) {
+        self.output_stages.push(Arc::from(stage));
     }
 
     /// Save the current checkpoint to disk (non-blocking wrapper).
@@ -408,6 +426,9 @@ impl Engine {
                 let cookie_bridge_task = Arc::clone(&self.cookie_bridge);
                 let banned_domains_task = Arc::clone(&self.banned_domains);
                 let fetch_router_task = self.fetch_router.clone();
+                let pipeline_task = self.pipeline.clone();
+                let output_stages_task: Vec<Arc<Box<dyn OutputStage>>> =
+                    self.output_stages.to_vec();
 
                 // Clone parent URL before moving discovered_url_task
                 let parent_url = discovered_url_task.url.clone();
@@ -520,6 +541,37 @@ impl Engine {
 
                     // Track pages crawled
                     pages_crawled_task.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                    // Pipeline processing: convert to ScrapedItem and run through pipeline
+                    if let Some(ref pipeline) = pipeline_task {
+                        let item = ScrapedItem {
+                            url: url_str.clone(),
+                            raw_html: response.clone(),
+                            text_content: None,
+                            metadata: std::collections::HashMap::new(),
+                            status_code: 200,
+                            embeddings: None,
+                        };
+
+                        match pipeline.execute(item).await {
+                            StageOutcome::Continue(processed_item) => {
+                                // Pass to output stages
+                                for stage in &output_stages_task {
+                                    if let Err(e) = stage.write(&processed_item).await {
+                                        warn!("Output stage '{}' failed: {}", stage.name(), e);
+                                    }
+                                }
+                            },
+                            StageOutcome::Skip => {
+                                debug!("Pipeline skipped item: {}", url_str);
+                                return Ok(());
+                            },
+                            StageOutcome::Reject(reason) => {
+                                warn!("Pipeline rejected {}: {}", url_str, reason);
+                                return Ok(());
+                            },
+                        }
+                    }
 
                     // Add to results via channel (sin lock)
                     if let Err(e) = results_sender

@@ -383,6 +383,32 @@ pub struct Args {
     #[arg(long, default_value = "obscura", env = "RUST_SCRAPER_OBSCURA_BINARY")]
     #[clap(next_help_heading = "JS Rendering")]
     pub obscura_binary: String,
+
+    // ========== Item Pipeline ==========
+    /// Enable item pipeline processing (validate → clean → output)
+    #[arg(long, default_value = "false", env = "RUST_SCRAPER_PIPELINE")]
+    #[clap(next_help_heading = "Item Pipeline")]
+    pub pipeline: bool,
+
+    /// Pipeline output format: jsonl (default), none
+    #[arg(
+        long,
+        default_value = "jsonl",
+        value_enum,
+        env = "RUST_SCRAPER_PIPELINE_OUTPUT"
+    )]
+    #[clap(next_help_heading = "Item Pipeline")]
+    pub pipeline_output: PipelineOutputFormat,
+}
+
+/// Pipeline output format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, Default)]
+pub enum PipelineOutputFormat {
+    /// Write items as JSON Lines to a file (default).
+    #[default]
+    Jsonl,
+    /// No pipeline output — items are processed but not written.
+    None,
 }
 
 /// Subcommands.
@@ -519,6 +545,8 @@ impl From<Args> for crate::application::crawl_options::CrawlOptions {
                 db_path: overrides.db_path,
                 max_resource_bytes: overrides.max_resource_bytes,
             },
+            pipeline_enabled: args.pipeline,
+            pipeline_output_format: args.pipeline_output,
         }
     }
 }
@@ -659,6 +687,10 @@ mod tests {
             js_strategy: crate::domain::JsStrategy::Hybrid,
             obscura_binary: "/usr/local/bin/obscura".into(),
 
+            // Item Pipeline
+            pipeline: true,
+            pipeline_output: PipelineOutputFormat::None,
+
             ..Default::default()
         }
     }
@@ -746,6 +778,13 @@ mod tests {
             opts.elastic.db_path,
             Some(std::path::PathBuf::from("/tmp/test.db"))
         );
+
+        // ── Item Pipeline ─────────────────────────────────────────────────
+        assert!(opts.pipeline_enabled);
+        assert_eq!(
+            opts.pipeline_output_format,
+            crate::cli::args::PipelineOutputFormat::None
+        );
     }
 
     #[test]
@@ -798,6 +837,12 @@ mod tests {
         assert!(opts.elastic.cpu_cores.is_none());
         assert!(opts.elastic.ram_budget_bytes.is_none());
         assert!(opts.elastic.db_path.is_none());
+
+        assert!(!opts.pipeline_enabled);
+        assert_eq!(
+            opts.pipeline_output_format,
+            crate::cli::args::PipelineOutputFormat::Jsonl
+        );
     }
 
     #[test]
@@ -844,6 +889,7 @@ mod tests {
             use_sitemap in proptest::bool::ANY,
             elastic in proptest::bool::ANY,
             clean_ai in proptest::bool::ANY,
+            pipeline in proptest::bool::ANY,
         ) {
             let args = Args {
                 subcommand: None,
@@ -891,6 +937,7 @@ mod tests {
                 ram_budget: None,
                 db_path: None,
                 elastic,
+                pipeline,
                 ..Default::default()
             };
 
@@ -912,6 +959,7 @@ mod tests {
             prop_assert_eq!(opts.export.dry_run, dry_run);
             prop_assert_eq!(opts.crawl.use_sitemap, use_sitemap);
             prop_assert_eq!(opts.elastic.enabled, elastic);
+            prop_assert_eq!(opts.pipeline_enabled, pipeline);
         }
 
         #[cfg_attr(miri, ignore)]

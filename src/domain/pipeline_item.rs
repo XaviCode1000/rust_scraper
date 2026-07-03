@@ -4,6 +4,8 @@ use std::pin::Pin;
 
 use serde::{Deserialize, Serialize};
 
+use super::entities::ScrapedContent;
+
 /// A scraped item flowing through the processing pipeline.
 ///
 /// Represents raw or partially-processed data from a web page.
@@ -40,6 +42,31 @@ impl fmt::Display for ScrapedItem {
             "ScrapedItem {{ url: {}, status: {}, text: {}B, meta: {}, embeddings: {} }}",
             self.url, self.status_code, text_len, meta_count, has_embeddings
         )
+    }
+}
+
+impl From<ScrapedContent> for ScrapedItem {
+    fn from(content: ScrapedContent) -> Self {
+        let mut metadata = std::collections::HashMap::new();
+        if let Some(ref author) = content.author {
+            metadata.insert("author".into(), author.clone());
+        }
+        if let Some(ref date) = content.date {
+            metadata.insert("date".into(), date.clone());
+        }
+        if let Some(ref excerpt) = content.excerpt {
+            metadata.insert("excerpt".into(), excerpt.clone());
+        }
+        metadata.insert("title".into(), content.title.clone());
+
+        Self {
+            url: content.url.to_string(),
+            raw_html: content.html.unwrap_or_default(),
+            text_content: Some(content.content),
+            metadata,
+            status_code: 200,
+            embeddings: None,
+        }
     }
 }
 
@@ -164,5 +191,73 @@ mod tests {
         let item: ScrapedItem = serde_json::from_str(json).unwrap();
         assert!(item.url.is_empty());
         assert_eq!(item.status_code, 0);
+    }
+
+    #[test]
+    fn test_from_scraped_content_preserves_data() {
+        use super::super::entities::ScrapedContent;
+        use super::super::value_objects::ValidUrl;
+
+        let url = ValidUrl::parse("https://example.com").unwrap();
+        let content = ScrapedContent {
+            title: "Test Title".into(),
+            content: "Test content body".into(),
+            url,
+            excerpt: Some("An excerpt".into()),
+            author: Some("Author Name".into()),
+            date: Some("2025-01-15".into()),
+            html: Some("<html><body>raw</body></html>".into()),
+            assets: vec![],
+            correlation_id: None,
+        };
+
+        let item: ScrapedItem = content.into();
+        assert_eq!(item.url, "https://example.com/");
+        assert_eq!(item.raw_html, "<html><body>raw</body></html>");
+        assert_eq!(item.text_content.as_deref(), Some("Test content body"));
+        assert_eq!(item.status_code, 200);
+        assert!(item.embeddings.is_none());
+        assert_eq!(
+            item.metadata.get("title").map(String::as_str),
+            Some("Test Title")
+        );
+        assert_eq!(
+            item.metadata.get("author").map(String::as_str),
+            Some("Author Name")
+        );
+        assert_eq!(
+            item.metadata.get("date").map(String::as_str),
+            Some("2025-01-15")
+        );
+        assert_eq!(
+            item.metadata.get("excerpt").map(String::as_str),
+            Some("An excerpt")
+        );
+    }
+
+    #[test]
+    fn test_from_scraped_content_minimal() {
+        use super::super::entities::ScrapedContent;
+        use super::super::value_objects::ValidUrl;
+
+        let url = ValidUrl::parse("https://minimal.com").unwrap();
+        let content = ScrapedContent {
+            title: String::new(),
+            content: String::new(),
+            url,
+            excerpt: None,
+            author: None,
+            date: None,
+            html: None,
+            assets: vec![],
+            correlation_id: None,
+        };
+
+        let item: ScrapedItem = content.into();
+        assert_eq!(item.url, "https://minimal.com/");
+        assert!(item.raw_html.is_empty());
+        assert_eq!(item.text_content.as_deref(), Some(""));
+        assert!(item.metadata.contains_key("title"));
+        assert!(!item.metadata.contains_key("author"));
     }
 }
