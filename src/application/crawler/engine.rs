@@ -21,7 +21,7 @@ use crate::application::url_filter::is_allowed;
 use crate::domain::{CrawlError, CrawlResult, CrawlerConfig, DiscoveredUrl};
 use crate::infrastructure::checkpoint::BincodeCheckpoint;
 use crate::infrastructure::crawler::{
-    extract_links, fetch_url, is_internal_link, normalize_url, UrlQueue,
+    extract_links, fetch_url, is_internal_link, normalize_url, UrlQueue, UrlSource,
 };
 use crate::infrastructure::session::DomainSessionPool;
 
@@ -216,13 +216,15 @@ impl Engine {
             }
         }
 
-        // Add seed URL to queue
+        // Add seed URL to queue (highest priority)
         let seed_discovered = DiscoveredUrl::html(
             config_clone.seed_url.clone(),
             0,
             config_clone.seed_url.clone(),
         );
-        self.queue.push(seed_discovered).await;
+        self.queue
+            .push_prioritized(seed_discovered, UrlSource::Seed)
+            .await;
 
         let mut tasks = tokio::task::JoinSet::new();
         let mut url_queue = std::collections::VecDeque::new();
@@ -392,7 +394,12 @@ impl Engine {
                                                             url_depth + 1,
                                                             parent_url.clone(),
                                                         );
-                                                        queue_task.push(new_discovered).await;
+                                                        queue_task
+                                                            .push_prioritized(
+                                                                new_discovered,
+                                                                UrlSource::Link,
+                                                            )
+                                                            .await;
                                                     }
                                                 }
                                             }
