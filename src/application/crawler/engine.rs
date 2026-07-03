@@ -484,6 +484,25 @@ fn handle_crawl_result(
     }
 }
 
+/// Engine-level crawl options — controls Engine internals beyond CrawlerConfig.
+///
+/// While `CrawlerConfig` defines *what* to crawl (seed, depth, patterns),
+/// `EngineOptions` controls *how* the Engine operates (checkpointing,
+/// session pooling, robots.txt enforcement).
+///
+/// Named `EngineOptions` (not `CrawlOptions`) to avoid collision with
+/// `application::crawl_options::CrawlOptions`, which is the CLI-level
+/// configuration struct.
+#[derive(Debug, Clone, Default)]
+pub struct EngineOptions {
+    /// Path to save checkpoint files. `None` disables checkpointing.
+    pub checkpoint_path: Option<PathBuf>,
+    /// Enable the domain session pool for per-domain rate limiting.
+    pub session_pool_enabled: bool,
+    /// Skip robots.txt enforcement.
+    pub ignore_robots: bool,
+}
+
 /// Crawl a website starting from the seed URL
 ///
 /// Thin wrapper that creates an Engine, runs the crawl loop, and shuts down.
@@ -548,6 +567,101 @@ pub async fn crawl_site(config: CrawlerConfig) -> Result<CrawlResult, CrawlError
 
     let ignore_robots = config.ignore_robots;
     let mut engine = Engine::new(config, ignore_robots)?;
+    let result = engine.run().await;
+    engine.shutdown().await;
+    result
+}
+
+/// Crawl a website with fine-grained engine options.
+///
+/// This is the advanced entry point for callers that need checkpointing,
+/// session pooling, or explicit robots.txt control beyond what
+/// `CrawlerConfig.ignore_robots` provides.
+///
+/// # Arguments
+///
+/// * `config` - Crawler configuration (seed, depth, patterns, etc.)
+/// * `options` - Engine-level options (checkpoint, session pool, robots)
+///
+/// # Returns
+///
+/// * `Ok(CrawlResult)` - Crawl result with discovered URLs
+/// * `Err(CrawlError)` - Error during crawling
+///
+/// # Examples
+///
+/// ```no_run
+/// use rust_scraper::{domain::CrawlerConfig, application::crawl_site_with_options};
+/// use rust_scraper::application::crawler::engine::EngineOptions;
+/// use std::time::Duration;
+/// use url::Url;
+///
+/// # #[tokio::main]
+/// # async fn main() -> anyhow::Result<()> {
+/// let seed = Url::parse("https://example.com")?;
+/// let config = CrawlerConfig::builder(seed)
+///     .max_depth(2)
+///     .max_pages(50)
+///     .build();
+///
+/// let options = EngineOptions {
+///     checkpoint_path: Some(std::path::PathBuf::from("/tmp/checkpoint")),
+///     session_pool_enabled: true,
+///     ignore_robots: false,
+/// };
+///
+/// let result = crawl_site_with_options(config, options).await?;
+/// println!("Crawled {} pages", result.total_pages);
+/// # Ok(())
+/// # }
+/// ```
+#[instrument(
+    name = "crawl_site_with_options",
+    skip(config, options),
+    fields(
+        seed_url = %config.seed_url,
+        max_depth = config.max_depth,
+        max_pages = config.max_pages,
+        checkpoint_enabled = options.checkpoint_path.is_some(),
+        session_pool = options.session_pool_enabled,
+        ignore_robots = options.ignore_robots
+    )
+)]
+pub async fn crawl_site_with_options(
+    config: CrawlerConfig,
+    options: EngineOptions,
+) -> Result<CrawlResult, CrawlError> {
+    let span = span!(
+        Level::INFO,
+        "crawl_site_with_options",
+        seed_url = %config.seed_url,
+        max_depth = config.max_depth,
+        max_pages = config.max_pages
+    );
+    let _guard = span.enter();
+
+    info!(
+        "Starting crawl from {} with max_depth={} max_pages={} (checkpoint={}, session_pool={}, ignore_robots={})",
+        config.seed_url,
+        config.max_depth,
+        config.max_pages,
+        options.checkpoint_path.is_some(),
+        options.session_pool_enabled,
+        options.ignore_robots
+    );
+
+    let mut engine = Engine::new(config, options.ignore_robots)?;
+
+    // Apply checkpoint if path provided
+    if let Some(ref path) = options.checkpoint_path {
+        engine = engine.with_checkpoint(100, path.clone());
+    }
+
+    // Apply session pool if enabled
+    if options.session_pool_enabled {
+        engine = engine.with_session_pool(Duration::from_secs(2), 5);
+    }
+
     let result = engine.run().await;
     engine.shutdown().await;
     result

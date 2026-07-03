@@ -334,7 +334,7 @@ mod tests {
         let path = tmp.path().join("checkpoint.bin");
 
         // Write only 2 bytes (less than CRC32 header)
-        fs::write(&path, &[0u8; 2]).unwrap();
+        fs::write(&path, [0u8; 2]).unwrap();
 
         let store = BincodeCheckpoint::new();
         let loaded = store.load(&path);
