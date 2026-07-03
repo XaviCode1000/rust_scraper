@@ -87,6 +87,18 @@ pub enum CrawlError {
     /// Storage error (append-only log corruption, backpressure, serialization)
     #[error("error de almacenamiento: {0}")]
     Storage(String),
+
+    /// Checkpoint serialization/deserialization error (bincode)
+    #[error("checkpoint error: {0}")]
+    Checkpoint(String),
+
+    /// Discovery error (robots.txt or sitemap auto-discovery failure)
+    #[error("discovery error: {0}")]
+    Discovery(String),
+
+    /// Session pool error (domain ban management)
+    #[error("session pool error: {0}")]
+    SessionPool(String),
 }
 
 #[cfg(test)]

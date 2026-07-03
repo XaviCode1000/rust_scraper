@@ -157,6 +157,13 @@ governor = "0.6"
 # governor pulls in dashmap 5.x. Both are needed. Do NOT remove either.
 dashmap = "6"
 
+# Binary serialization for checkpoint/session state
+bincode = "1"
+# CRC32 for checkpoint integrity checks
+crc32fast = "1"
+# Interior mutability for session pool (no await across lock)
+parking_lot = "0.12"
+
 # Hasher for u64-keyed URL deduplication (DashSet<u64, ahash::RandomState>).
 # Per-process randomized seed (FR-3 HashDoS resistance). Direct dep — previously
 # only transitive under the `ai` feature. Default `std` feature for hash_one().
