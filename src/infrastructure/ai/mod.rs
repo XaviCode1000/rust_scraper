@@ -107,6 +107,9 @@ pub mod relevance_scorer;
 #[cfg(feature = "ai")]
 pub mod threshold_config;
 
+#[cfg(feature = "ai")]
+pub mod content_pruner;
+
 // Re-exports for convenience (Modules 1-2)
 #[cfg(feature = "ai")]
 pub use cache_config::{
@@ -146,3 +149,6 @@ pub use relevance_scorer::RelevanceScorer;
 
 #[cfg(feature = "ai")]
 pub use threshold_config::ThresholdConfig;
+
+#[cfg(feature = "ai")]
+pub use content_pruner::{ContentPruner, LegibleContentPruner, PruneAggressiveness};

@@ -21,6 +21,137 @@ use crate::infrastructure::observability::metrics_instruments::{
     CRAWLER_BANDWIDTH, CRAWLER_PAGES, CRAWLER_URLS,
 };
 
+use std::sync::Arc;
+
+use dashmap::DashMap;
+use robotstxt::DefaultMatcher;
+
+// ============================================================================
+// Robots.txt Enforcement
+//
+// Functions in this section will be wired into the Engine in PR #6.
+// ============================================================================
+
+/// Parsed robots.txt rules for a domain.
+///
+/// Following **api-non-exhaustive**: can add fields without breaking changes.
+/// Following **own-arc-shared**: wrapped in `Arc` for cache sharing.
+#[derive(Debug, Clone)]
+pub(crate) struct RobotsRules {
+    /// Raw robots.txt content for the robotstxt matcher.
+    content: String,
+    /// Parsed Crawl-delay in seconds, if present.
+    #[allow(dead_code)]
+    crawl_delay_secs: Option<f64>,
+}
+
+/// Cache of robots.txt rules keyed by domain.
+///
+/// Using `DashMap` for lock-free concurrent reads during crawl.
+/// No TTL — robots.txt rarely changes during a single crawl session.
+pub(crate) type RobotsCache = DashMap<String, Arc<RobotsRules>>;
+
+/// Create a new empty robots.txt cache.
+#[must_use]
+pub(crate) fn new_robots_cache() -> RobotsCache {
+    DashMap::new()
+}
+
+/// Parse Crawl-delay from raw robots.txt content.
+///
+/// Searches for `Crawl-delay:` directives (case-insensitive) and returns
+/// the first valid numeric value found.
+fn parse_crawl_delay(content: &str) -> Option<f64> {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.to_lowercase().starts_with("crawl-delay:") {
+            if let Some(val_str) = trimmed.split(':').nth(1) {
+                if let Ok(val) = val_str.trim().parse::<f64>() {
+                    return Some(val);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Fetch and cache robots.txt rules for a domain.
+///
+/// On cache miss, fetches `robots.txt` from the domain root using wreq.
+/// Parses the content and caches the result. Returns `None` if fetching
+/// or parsing fails (fail-open: treat as all-allowed).
+async fn fetch_robots_rules(domain: &str, cache: &RobotsCache) -> Option<Arc<RobotsRules>> {
+    if let Some(rules) = cache.get(domain) {
+        return Some(Arc::clone(rules.value()));
+    }
+
+    let robots_url = format!("https://{domain}/robots.txt");
+    tracing::debug!("Fetching robots.txt from {}", robots_url);
+
+    let content = match wreq::get(&robots_url).send().await {
+        Ok(resp) if resp.status().is_success() => match resp.text().await {
+            Ok(text) => text,
+            Err(e) => {
+                tracing::warn!("Failed to read robots.txt body for {}: {}", domain, e);
+                return None;
+            },
+        },
+        Ok(resp) => {
+            tracing::debug!(
+                "robots.txt for {} returned status {}, treating as all-allowed",
+                domain,
+                resp.status()
+            );
+            return None;
+        },
+        Err(e) => {
+            tracing::warn!("Failed to fetch robots.txt for {}: {}", domain, e);
+            return None;
+        },
+    };
+
+    let crawl_delay = parse_crawl_delay(&content);
+    let rules = Arc::new(RobotsRules {
+        content,
+        crawl_delay_secs: crawl_delay,
+    });
+    cache.insert(domain.to_string(), Arc::clone(&rules));
+    Some(rules)
+}
+
+/// Check if a URL is allowed by the site's robots.txt.
+///
+/// Fetches robots.txt on first encounter (cached per domain).
+/// Uses the `robotstxt` crate's `DefaultMatcher` for path matching.
+/// Fail-open: if robots.txt cannot be fetched, the URL is allowed.
+///
+/// # Arguments
+///
+/// * `url` - The full URL to check
+/// * `domain` - The domain key for cache lookup
+/// * `cache` - Shared robots.txt rules cache
+///
+/// # Returns
+///
+/// `true` if the URL is allowed by robots.txt (or if robots.txt is unavailable).
+pub(crate) async fn is_allowed_by_robots(url: &str, domain: &str, cache: &RobotsCache) -> bool {
+    let rules = match fetch_robots_rules(domain, cache).await {
+        Some(r) => r,
+        None => return true, // fail-open
+    };
+
+    let mut matcher = DefaultMatcher::default();
+    matcher.one_agent_allowed_by_robots(&rules.content, "*", url)
+}
+
+/// Get the crawl-delay for a domain in seconds, if configured.
+///
+/// Returns `None` if no Crawl-delay directive was found.
+#[allow(dead_code)]
+pub(crate) fn get_crawl_delay(domain: &str, cache: &RobotsCache) -> Option<f64> {
+    cache.get(domain).and_then(|r| r.crawl_delay_secs)
+}
+
 // ============================================================================
 // TUI Support — Discover/Scrape Use Cases
 // ============================================================================
@@ -484,7 +615,7 @@ async fn crawl_with_sitemap_internal(
             sitemap_url,
             target_path
         );
-        return crawl_with_subpath_sitemaps(base_url, &base, &parser).await;
+        return crawl_with_subpath_sitemaps(base_url, &base, &parser, 3, 0).await;
     }
 
     // Following own-borrow-over-clone: use Url directly, not String
@@ -506,6 +637,7 @@ async fn crawl_with_sitemap_internal(
 ///
 /// For nested sites like `https://example.com/docs/en/`, this tries
 /// `/docs/sitemap.xml`, `/docs/en/sitemap.xml`, etc.
+/// Follows nested sitemaps recursively up to `max_depth` levels.
 ///
 /// Following **own-borrow-over-clone**: Accepts `&Url` not `&String`.
 /// Following **err-no-unwrap-prod**: Proper error handling throughout.
@@ -513,7 +645,18 @@ async fn crawl_with_subpath_sitemaps(
     base_url: &str,
     base: &Url,
     parser: &SitemapParser,
+    max_depth: usize,
+    current_depth: usize,
 ) -> Result<Vec<DiscoveredUrl>, CrawlError> {
+    if current_depth >= max_depth {
+        tracing::warn!(
+            "sitemap recursion depth {} reached max {}, stopping",
+            current_depth,
+            max_depth
+        );
+        return Ok(Vec::new());
+    }
+
     let path = base.path();
     let segments: Vec<_> = path.split('/').filter(|s| !s.is_empty()).collect();
     let mut all_urls = Vec::new();
@@ -805,5 +948,128 @@ mod tests {
         let base = Url::parse("https://example.com").unwrap();
         let urls = parse_sitemap(xml, &base).unwrap();
         assert!(urls.is_empty());
+    }
+
+    #[test]
+    fn test_robots_txt_disallow_enforcement() {
+        let robots_body = "\
+User-agent: *
+Disallow: /private/
+Disallow: /admin/
+Allow: /public/
+
+User-agent: BadBot
+Disallow: /";
+
+        // URL under Disallow should be blocked
+        let mut matcher = DefaultMatcher::default();
+        assert!(
+            !matcher.one_agent_allowed_by_robots(
+                robots_body,
+                "*",
+                "https://example.com/private/secret"
+            ),
+            "/private/ should be disallowed"
+        );
+        assert!(
+            !matcher.one_agent_allowed_by_robots(
+                robots_body,
+                "*",
+                "https://example.com/admin/config"
+            ),
+            "/admin/ should be disallowed"
+        );
+
+        // URL under Allow should be permitted
+        assert!(
+            matcher.one_agent_allowed_by_robots(
+                robots_body,
+                "*",
+                "https://example.com/public/page"
+            ),
+            "/public/ should be allowed"
+        );
+
+        // Unrestricted URL should be permitted
+        assert!(
+            matcher.one_agent_allowed_by_robots(robots_body, "*", "https://example.com/other"),
+            "/other should be allowed (no rule)"
+        );
+    }
+
+    #[test]
+    fn test_robots_txt_crawl_delay_parsing() {
+        let robots_body = "\
+User-agent: *
+Crawl-delay: 5
+Disallow: /tmp/";
+
+        assert_eq!(parse_crawl_delay(robots_body), Some(5.0));
+
+        let no_delay = "User-agent: *\nDisallow: /";
+        assert_eq!(parse_crawl_delay(no_delay), None);
+
+        let fractional = "User-agent: *\nCrawl-delay: 0.5\n";
+        assert_eq!(parse_crawl_delay(fractional), Some(0.5));
+    }
+
+    #[test]
+    fn test_robots_txt_crawl_delay_case_insensitive() {
+        let robots_body = "user-agent: *\nCrawl-Delay: 10\n";
+        assert_eq!(parse_crawl_delay(robots_body), Some(10.0));
+
+        let robots_body_upper = "User-Agent: *\nCRAWL-DELAY: 3\n";
+        assert_eq!(parse_crawl_delay(robots_body_upper), Some(3.0));
+    }
+
+    #[tokio::test]
+    async fn test_robots_cache_hit() {
+        let cache = new_robots_cache();
+        let rules = Arc::new(RobotsRules {
+            content: "User-agent: *\nDisallow: /private/\n".to_string(),
+            crawl_delay_secs: Some(2.0),
+        });
+        cache.insert("example.com".to_string(), rules);
+
+        // Should allow public URL
+        assert!(is_allowed_by_robots("https://example.com/public", "example.com", &cache).await);
+        // Should disallow private URL
+        assert!(
+            !is_allowed_by_robots("https://example.com/private/secret", "example.com", &cache)
+                .await
+        );
+    }
+
+    #[test]
+    fn test_get_crawl_delay_returns_cached_value() {
+        let cache = new_robots_cache();
+        let rules = Arc::new(RobotsRules {
+            content: String::new(),
+            crawl_delay_secs: Some(7.5),
+        });
+        cache.insert("slow-site.com".to_string(), rules);
+
+        assert_eq!(get_crawl_delay("slow-site.com", &cache), Some(7.5));
+        assert_eq!(get_crawl_delay("unknown.com", &cache), None);
+    }
+
+    #[test]
+    fn test_robots_txt_empty_disallow_all() {
+        let robots_body = "User-agent: *\nDisallow: /\n";
+        let mut matcher = DefaultMatcher::default();
+        assert!(
+            !matcher.one_agent_allowed_by_robots(robots_body, "*", "https://example.com/anything"),
+            "Disallow: / should block everything"
+        );
+    }
+
+    #[test]
+    fn test_robots_txt_empty_permissive() {
+        let robots_body = "User-agent: *\n";
+        let mut matcher = DefaultMatcher::default();
+        assert!(
+            matcher.one_agent_allowed_by_robots(robots_body, "*", "https://example.com/anything"),
+            "Empty robots.txt (no Disallow) should allow everything"
+        );
     }
 }

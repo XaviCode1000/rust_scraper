@@ -141,6 +141,10 @@ pub enum ScraperError {
     #[cfg(feature = "ai")]
     #[error("Error de limpieza semántica: {0}")]
     Semantic(#[from] SemanticError),
+
+    /// HTTP/2 configuration error (ALPN, settings, or handshake failure)
+    #[error("Error de configuración HTTP/2: {0}")]
+    H2Config(String),
 }
 
 /// Semantic cleaning errors (AI/ML operations)
@@ -446,5 +450,12 @@ mod tests {
         let semantic_err = SemanticError::ModelLoad(io_err);
         let scraper_err: ScraperError = semantic_err.into();
         assert!(scraper_err.to_string().contains("limpieza semántica"));
+    }
+
+    #[test]
+    fn test_scraper_error_h2_config() {
+        let err = ScraperError::H2Config("ALPN negotiation failed".to_string());
+        assert!(err.to_string().contains("Error de configuración HTTP/2"));
+        assert!(err.to_string().contains("ALPN negotiation failed"));
     }
 }

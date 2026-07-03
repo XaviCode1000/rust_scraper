@@ -67,7 +67,10 @@ use crate::infrastructure::ai::cache_config::{
     default_cache_dir, CacheConfig, DEFAULT_MODEL_FILE, DEFAULT_MODEL_REPO,
 };
 use crate::infrastructure::ai::model_cache::ModelCache;
-use crate::infrastructure::ai::{HtmlChunker, InferenceEngine, MiniLmTokenizer, RelevanceScorer};
+use crate::infrastructure::ai::{
+    ContentPruner, HtmlChunker, InferenceEngine, LegibleContentPruner, MiniLmTokenizer,
+    RelevanceScorer,
+};
 
 /// Model configuration
 ///
@@ -211,6 +214,10 @@ pub struct SemanticCleanerImpl {
     chunker: HtmlChunker,
     /// Relevance scorer with SIMD cosine similarity
     scorer: RelevanceScorer,
+
+    // Phase 4: Content pruning
+    /// Content pruner (extracts readable content via legible)
+    pruner: LegibleContentPruner,
 
     // Config
     /// Model and pipeline configuration
@@ -367,6 +374,7 @@ impl SemanticCleanerImpl {
             tokenizer,
             chunker,
             scorer,
+            pruner: LegibleContentPruner::standard(),
             config,
             semaphore: Arc::new(Semaphore::new(num_cpus::get().max(1))),
         })
@@ -422,14 +430,23 @@ impl SemanticCleaner for SemanticCleanerImpl {
         Box::pin(async move {
             debug!(
                 html_length = html.len(),
-                "Starting full RAG pipeline: chunk → tokenize → embed → score"
+                "Starting full RAG pipeline: prune → chunk → tokenize → embed → score"
+            );
+
+            // Step 0: Content pruning — extract readable content via legible
+            // On failure or empty result, pass through raw HTML unchanged.
+            let pruned = self.pruner.prune(html);
+            let effective_html = if pruned.is_empty() { html } else { &pruned };
+            debug!(
+                pruned_length = effective_html.len(),
+                "Step 0: Content pruning complete"
             );
 
             // Step 1: Semantic chunking (uses arena internally)
             // Following `own-borrow-over-clone`: borrow html, don't clone
             let chunks = self
                 .chunker
-                .chunk(html)
+                .chunk(effective_html)
                 .map_err(|e| SemanticError::Tokenize(format!("Chunking failed: {}", e)))?;
 
             if chunks.is_empty() {

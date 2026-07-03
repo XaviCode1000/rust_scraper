@@ -106,8 +106,11 @@ impl HttpClient {
             HeaderValue::from_static("1"),
         );
 
+        // Resolve H2/TLS profile from name — overrides tls_emulation if h2_profile is set
+        let profile = HttpClientConfig::resolve_profile(&config.h2_profile);
+
         let builder = Client::builder()
-            .emulation(config.tls_emulation)
+            .emulation(profile)
             .default_headers(headers)
             .timeout(Duration::from_secs(config.timeout_secs))
             .connect_timeout(Duration::from_secs(config.connect_timeout_secs))

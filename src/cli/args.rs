@@ -341,6 +341,32 @@ pub struct Args {
     #[arg(long, default_value = "false", env = "RUST_SCRAPER_ELASTIC")]
     #[clap(next_help_heading = "Elastic Ingestion")]
     pub elastic: bool,
+
+    // ========== Competitive Features Phase 1 ==========
+    /// Pages between automatic checkpoint saves (0 = disabled)
+    #[arg(long, default_value = "100", env = "RUST_SCRAPER_CHECKPOINT_INTERVAL")]
+    #[clap(next_help_heading = "Competitive Features")]
+    pub checkpoint_interval: u64,
+
+    /// Disable checkpoint persistence entirely
+    #[arg(long, default_value = "false", env = "RUST_SCRAPER_NO_CHECKPOINT")]
+    #[clap(next_help_heading = "Competitive Features")]
+    pub no_checkpoint: bool,
+
+    /// Skip robots.txt enforcement
+    #[arg(long, default_value = "false", env = "RUST_SCRAPER_IGNORE_ROBOTS")]
+    #[clap(next_help_heading = "Competitive Features")]
+    pub ignore_robots: bool,
+
+    /// Disable session pool health checks
+    #[arg(long, default_value = "false", env = "RUST_SCRAPER_NO_SESSION_HEALTH")]
+    #[clap(next_help_heading = "Competitive Features")]
+    pub no_session_health: bool,
+
+    /// TLS/HTTP2 profile name (default: Chrome145)
+    #[arg(long, default_value = "Chrome145", env = "RUST_SCRAPER_H2_PROFILE")]
+    #[clap(next_help_heading = "Competitive Features")]
+    pub h2_profile: String,
 }
 
 /// Subcommands.
@@ -436,6 +462,10 @@ impl From<Args> for crate::application::crawl_options::CrawlOptions {
                 state_dir: args.state_dir,
                 use_sitemap: args.use_sitemap,
                 sitemap_url: args.sitemap_url,
+                checkpoint_interval: args.checkpoint_interval,
+                no_checkpoint: args.no_checkpoint,
+                ignore_robots: args.ignore_robots,
+                no_session_health: args.no_session_health,
             },
             network: NetworkOptions {
                 user_agent: args.user_agent,
@@ -449,6 +479,7 @@ impl From<Args> for crate::application::crawl_options::CrawlOptions {
                 download_images: args.download_images,
                 download_documents: args.download_documents,
                 force_js_render: args.force_js_render,
+                h2_profile: args.h2_profile,
             },
             export: ExportOptions {
                 output_format: args.format,
@@ -598,6 +629,14 @@ mod tests {
             ram_budget: Some("4GB".into()),
             db_path: Some(std::path::PathBuf::from("/tmp/test.db")),
             elastic: true,
+
+            // Competitive Features Phase 1
+            checkpoint_interval: 50,
+            no_checkpoint: true,
+            ignore_robots: true,
+            no_session_health: true,
+            h2_profile: "Chrome131".into(),
+
             ..Default::default()
         }
     }
@@ -633,6 +672,10 @@ mod tests {
             opts.crawl.sitemap_url.as_deref(),
             Some("https://example.com/sitemap.xml")
         );
+        assert_eq!(opts.crawl.checkpoint_interval, 50);
+        assert!(opts.crawl.no_checkpoint);
+        assert!(opts.crawl.ignore_robots);
+        assert!(opts.crawl.no_session_health);
 
         // ── NetworkOptions ─────────────────────────────────────────────────
         assert_eq!(opts.network.user_agent.as_deref(), Some("TestAgent/1.0"));
@@ -647,6 +690,7 @@ mod tests {
         assert!(opts.network.download_images);
         assert!(opts.network.download_documents);
         assert!(opts.network.force_js_render);
+        assert_eq!(opts.network.h2_profile, "Chrome131");
 
         // ── ExportOptions ──────────────────────────────────────────────────
         assert_eq!(opts.export.output_format, crate::OutputFormat::Json);

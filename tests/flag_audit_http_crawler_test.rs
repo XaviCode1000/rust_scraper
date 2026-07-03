@@ -83,6 +83,7 @@ fn mirror_build_http_config(opts: &CrawlOptions) -> rust_scraper::HttpClientConf
         accept_language: opts.network.accept_language.clone(),
         user_agent: opts.network.user_agent.clone(),
         timeout_secs: opts.network.timeout_secs,
+        h2_profile: opts.network.h2_profile.clone(),
         ..rust_scraper::HttpClientConfig::default()
     }
 }

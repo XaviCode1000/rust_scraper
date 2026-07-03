@@ -67,6 +67,14 @@ pub struct CrawlLimits {
     pub use_sitemap: bool,
     /// Explicit sitemap URL.
     pub sitemap_url: Option<String>,
+    /// Pages between automatic checkpoint saves (0 = disabled).
+    pub checkpoint_interval: u64,
+    /// Disable checkpoint persistence entirely.
+    pub no_checkpoint: bool,
+    /// Skip robots.txt enforcement.
+    pub ignore_robots: bool,
+    /// Disable session pool health checks.
+    pub no_session_health: bool,
 }
 
 /// HTTP client and network behavior settings.
@@ -94,6 +102,8 @@ pub struct NetworkOptions {
     pub download_documents: bool,
     /// Force JavaScript rendering for SPA sites.
     pub force_js_render: bool,
+    /// TLS/HTTP2 profile name (e.g. Chrome145).
+    pub h2_profile: String,
 }
 
 /// Output format, export format, and Obsidian integration settings.
@@ -156,6 +166,10 @@ impl Default for CrawlLimits {
             state_dir: None,
             use_sitemap: false,
             sitemap_url: None,
+            checkpoint_interval: 100,
+            no_checkpoint: false,
+            ignore_robots: false,
+            no_session_health: false,
         }
     }
 }
@@ -174,6 +188,7 @@ impl Default for NetworkOptions {
             download_images: false,
             download_documents: false,
             force_js_render: false,
+            h2_profile: "Chrome145".to_owned(),
         }
     }
 }
@@ -247,6 +262,10 @@ mod tests {
         assert!(limits.state_dir.is_none());
         assert!(!limits.use_sitemap);
         assert!(limits.sitemap_url.is_none());
+        assert_eq!(limits.checkpoint_interval, 100);
+        assert!(!limits.no_checkpoint);
+        assert!(!limits.ignore_robots);
+        assert!(!limits.no_session_health);
     }
 
     #[test]
@@ -263,6 +282,7 @@ mod tests {
         assert!(!net.download_images);
         assert!(!net.download_documents);
         assert!(!net.force_js_render);
+        assert_eq!(net.h2_profile, "Chrome145");
     }
 
     #[test]

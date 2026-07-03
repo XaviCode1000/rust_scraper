@@ -35,6 +35,8 @@ pub struct CrawlerConfig {
     pub use_sitemap: bool,
     /// Explicit sitemap URL (auto-discovers if None)
     pub sitemap_url: Option<String>,
+    /// Skip robots.txt enforcement.
+    pub ignore_robots: bool,
 }
 
 impl CrawlerConfig {
@@ -59,6 +61,7 @@ impl CrawlerConfig {
             timeout_secs: 30,
             use_sitemap: false,
             sitemap_url: None,
+            ignore_robots: false,
         }
     }
 
@@ -101,6 +104,7 @@ pub struct CrawlerConfigBuilder {
     timeout_secs: u64,
     use_sitemap: bool,
     sitemap_url: Option<String>,
+    ignore_robots: bool,
 }
 
 impl CrawlerConfigBuilder {
@@ -118,6 +122,7 @@ impl CrawlerConfigBuilder {
             timeout_secs: 30,
             use_sitemap: false,
             sitemap_url: None,
+            ignore_robots: false,
         }
     }
 
@@ -193,6 +198,12 @@ impl CrawlerConfigBuilder {
         self
     }
 
+    /// Skip robots.txt enforcement.
+    pub fn ignore_robots(mut self, ignore: bool) -> Self {
+        self.ignore_robots = ignore;
+        self
+    }
+
     #[must_use]
     pub fn build(self) -> CrawlerConfig {
         CrawlerConfig {
@@ -207,6 +218,7 @@ impl CrawlerConfigBuilder {
             timeout_secs: self.timeout_secs,
             use_sitemap: self.use_sitemap,
             sitemap_url: self.sitemap_url,
+            ignore_robots: self.ignore_robots,
         }
     }
 }
