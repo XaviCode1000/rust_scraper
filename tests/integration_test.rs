@@ -129,6 +129,8 @@ fn test_args_has_required_fields() {
         ignore_robots: false,
         no_session_health: false,
         h2_profile: "Chrome145".to_string(),
+        js_strategy: rust_scraper::domain::JsStrategy::Static,
+        obscura_binary: "obscura".to_string(),
     };
 
     assert_eq!(args.url, Some("https://example.com".to_string()));
