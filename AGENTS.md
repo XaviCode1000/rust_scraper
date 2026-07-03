@@ -25,7 +25,7 @@ You are the **Orchestrator-Engineer**. You decide WHAT to do and WHERE to delega
 ### Step 1 — Orient (always first)
 
 ```bash
-codedb_context /var/home/xavi/Projects/rust_scraper task="<describe the change>"
+codedb_context /home/xavi/Projects/rust_scraper task="<describe the change>"
 ```
 
 ### Step 2 — Deep dive (choose by situation)
@@ -61,6 +61,15 @@ gitnexus_context({name: "symbolName"})  # 360° view if needed
 gitnexus_query({query: "concept"})
 gitnexus_read_resource("gitnexus://repo/rust_scraper/process/FlowName")
 ```
+
+### Step 5 — GitNexus CLI discovery (sub-agents)
+
+**Before any GitNexus work, sub-agents MUST run:**
+```bash
+gitnexus --help          # Discover ALL available commands
+gitnexus <command> --help  # Deep-dive on the chosen command
+```
+GitNexus has powerful commands beyond `impact`/`context`/`query`: `trace` (shortest path between symbols), `cypher` (raw graph queries), `check` (structural checks like circular imports), `wiki` (generate docs from knowledge graph), `detect-changes` (map diff to symbols). **Choose the best tool for the mission.**
 
 ### Anti-patterns
 
@@ -98,6 +107,10 @@ Every sub-agent that reads/writes code MUST:
 5. `gitnexus_detect_changes()` before returning
 6. NEVER use `grep`/`rg` (use CodeDB)
 7. NEVER rename with find-and-replace (use `gitnexus_rename`)
+
+### Sub-agent GitNexus discovery rule
+
+Before using any GitNexus command, sub-agents MUST run `gitnexus --help` to see all available tools, then `gitnexus <command> --help` for the chosen command. This ensures they pick the best tool for their mission (e.g., `trace` for path-finding, `cypher` for complex graph queries, `check` for circular imports, `wiki` for documentation).
 
 ### rust-skills categories by task type
 
@@ -144,6 +157,12 @@ cargo check && cargo clippy -- -D warnings && cargo fmt
 **Cloud verification:**
 ```bash
 gh workflow run ci.yml --ref $(git branch --show-current) && gh run watch
+```
+
+**GitNexus index refresh:**
+```bash
+gitnexus analyze --index-only --skip-agents-md    # ALWAYS use --skip-agents-md
+gitnexus analyze --skills --index-only --skip-agents-md  # Only when regenerating skill files
 ```
 
 ---
@@ -272,6 +291,22 @@ This project is indexed by GitNexus as **rust_scraper** (4402 nodes, 10140 edges
 | Tools, resources, schema reference | `gitnexus` |
 | Index, status, clean, wiki CLI commands | `gitnexus` |
 
+## CLI Commands
+
+| Command | Use for |
+|:--------|:--------|
+| `gitnexus analyze --index-only --skip-agents-md` | Refresh index (ALWAYS with `--skip-agents-md`) |
+| `gitnexus impact` | Blast radius before editing |
+| `gitnexus context` | 360° view: callers, callees, processes |
+| `gitnexus query` | Find execution flows by concept |
+| `gitnexus trace <from> <to>` | Shortest path between two symbols |
+| `gitnexus detect-changes` | Map diff to affected symbols/flows |
+| `gitnexus check` | Structural checks (circular imports) |
+| `gitnexus cypher` | Raw graph queries for complex analysis |
+| `gitnexus wiki` | Generate docs from knowledge graph |
+| `gitnexus rename` | Safe rename via call graph |
+| `gitnexus status` | Index freshness check |
+
 <!-- gitnexus:end -->
 
 <!-- codedb:start -->
@@ -280,19 +315,19 @@ This project is indexed by GitNexus as **rust_scraper** (4402 nodes, 10140 edges
 
 CodeDB is a fast structural search engine. Prefer CodeDB MCP tools for indexed structural search. Use the CLI with the explicit project path only as a fallback. GitNexus handles deep graph analysis and execution flows.
 
-> **MCP status:** CodeDB MCP is available again. Use MCP first. If it fails or cannot load the project, fall back to the CLI with explicit path: `codedb /var/home/xavi/Projects/rust_scraper <command>`.
+> **MCP status:** CodeDB MCP is available again. Use MCP first. If it fails or cannot load the project, fall back to the CLI with explicit path: `codedb /home/xavi/Projects/rust_scraper <command>`.
 >
-> Index stale? Run `codedb /var/home/xavi/Projects/rust_scraper index` from the project root.
+> Index stale? Run `codedb /home/xavi/Projects/rust_scraper index` from the project root.
 
 ## When to Use CodeDB
 
-- **Quick file tree** — `codedb_tree` MCP, or CLI fallback: `codedb /var/home/xavi/Projects/rust_scraper tree`
-- **Find symbol definitions** — `codedb_symbol` MCP, or CLI fallback: `codedb /var/home/xavi/Projects/rust_scraper symbol <name>`
-- **Full-text search** — `codedb_search` MCP, or CLI fallback: `codedb /var/home/xavi/Projects/rust_scraper search <query>`
-- **Find all callers** — `codedb_callers` MCP, or CLI fallback: `codedb /var/home/xavi/Projects/rust_scraper callers <name>`
-- **File outline** — `codedb_outline` MCP, or CLI fallback: `codedb /var/home/xavi/Projects/rust_scraper outline <path>`
-- **Dependency graph** — `codedb_deps` MCP, or CLI fallback: `codedb /var/home/xavi/Projects/rust_scraper deps <path>`
-- **Index status** — `codedb_status` MCP, or CLI fallback: `codedb /var/home/xavi/Projects/rust_scraper status`
+- **Quick file tree** — `codedb_tree` MCP, or CLI fallback: `codedb /home/xavi/Projects/rust_scraper tree`
+- **Find symbol definitions** — `codedb_symbol` MCP, or CLI fallback: `codedb /home/xavi/Projects/rust_scraper symbol <name>`
+- **Full-text search** — `codedb_search` MCP, or CLI fallback: `codedb /home/xavi/Projects/rust_scraper search <query>`
+- **Find all callers** — `codedb_callers` MCP, or CLI fallback: `codedb /home/xavi/Projects/rust_scraper callers <name>`
+- **File outline** — `codedb_outline` MCP, or CLI fallback: `codedb /home/xavi/Projects/rust_scraper outline <path>`
+- **Dependency graph** — `codedb_deps` MCP, or CLI fallback: `codedb /home/xavi/Projects/rust_scraper deps <path>`
+- **Index status** — `codedb_status` MCP, or CLI fallback: `codedb /home/xavi/Projects/rust_scraper status`
 
 ## CodeDB vs GitNexus
 
@@ -320,13 +355,13 @@ CodeDB is a fast structural search engine. Prefer CodeDB MCP tools for indexed s
 | `codedb <root> find <name>` | Fuzzy file-name search |
 | `codedb <root> context <task>` | Task-shaped context bundle |
 
-`<root>` = `/var/home/xavi/Projects/rust_scraper` for this project.
+`<root>` = `/home/xavi/Projects/rust_scraper` for this project.
 
 ## Never Do
 
 - NEVER use `codedb_edit` when native edit tools work — it's a fallback only
 - NEVER use CodeDB for impact analysis — use GitNexus `impact` instead
 - NEVER use CodeDB for execution flow tracing — use GitNexus `query`/`context` instead
-- NEVER invoke `codedb mcp` manually during normal agent work — use the configured MCP tools. Use CLI only as fallback with explicit `/var/home/xavi/Projects/rust_scraper` path.
+- NEVER invoke `codedb mcp` manually during normal agent work — use the configured MCP tools. Use CLI only as fallback with explicit `/home/xavi/Projects/rust_scraper` path.
 
 <!-- codedb:end -->
