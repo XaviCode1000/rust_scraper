@@ -49,6 +49,7 @@ pub async fn run(opts: CrawlOptions) -> CliExit {
             .max_depth(opts.crawl.max_depth)
             .include_patterns(opts.crawl.include_patterns.clone())
             .exclude_patterns(opts.crawl.exclude_patterns.clone())
+            .ignore_robots(opts.crawl.ignore_robots)
             .build();
 
         // URL discovery phase

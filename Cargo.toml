@@ -248,6 +248,11 @@ wide = { version = "0.7", optional = true }
 rustls-webpki = ">=0.103.12"
 time = ">=0.3.47"
 
+# Competitive Features Phase 1 — Foundation
+bincode = "1"               # Binary serialization for checkpoint/session state
+crc32fast = "1"             # Fast CRC32 checksums for content deduplication
+robotstxt = "0.3"           # robots.txt parsing and compliance
+
 # MCP Server (Model Context Protocol) — expose scraper tools to AI agents
 rmcp = { version = "1.7", features = ["server", "macros", "schemars", "transport-streamable-http-server"] }
 axum = "0.8"

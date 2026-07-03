@@ -17,6 +17,7 @@ pub mod crawler;
 pub mod export;
 pub mod http;
 pub mod mcp_server;
+pub mod network;
 pub mod observability;
 pub mod obsidian;
 pub mod output;
@@ -28,6 +29,10 @@ pub mod autotuning;
 pub mod bridge;
 pub mod cpu_pool;
 pub mod persistence;
+
+// Competitive Features Phase 1 — checkpoint + session pool
+pub mod checkpoint;
+pub mod session;
 
 #[cfg(feature = "ai")]
 pub mod ai;

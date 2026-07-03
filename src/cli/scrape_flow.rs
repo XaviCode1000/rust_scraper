@@ -234,6 +234,7 @@ fn build_http_client_config(opts: &CrawlOptions) -> HttpClientConfig {
         accept_language: opts.network.accept_language.clone(),
         user_agent: opts.network.user_agent.clone(),
         timeout_secs: opts.network.timeout_secs,
+        h2_profile: opts.network.h2_profile.clone(),
         ..HttpClientConfig::default()
     }
 }

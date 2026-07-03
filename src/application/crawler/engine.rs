@@ -4,20 +4,29 @@
 //! with backpressure and rate limiting. Each task fetches a URL,
 //! extracts links, and pushes discovered URLs to the queue.
 
-use std::sync::atomic::AtomicUsize;
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize};
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use tracing::{debug, error, info, instrument, span, warn, Level};
 use url::Url;
 
 use super::collector::{CrawlMessage, ResultsCollector};
+use super::discovery::{is_allowed_by_robots, new_robots_cache, RobotsCache};
 use crate::application::deduplicator::UrlDeduplicator;
 use crate::application::rate_limiter::{RateLimiterConfig, SharedRateLimiter};
 use crate::application::url_filter::is_allowed;
 use crate::domain::{CrawlError, CrawlResult, CrawlerConfig, DiscoveredUrl};
+use crate::infrastructure::checkpoint::BincodeCheckpoint;
 use crate::infrastructure::crawler::{
     extract_links, fetch_url, is_internal_link, normalize_url, UrlQueue,
 };
+use crate::infrastructure::session::DomainSessionPool;
+
+/// Shared shutdown signal — set to `true` when SIGINT/SIGTERM received.
+type ShutdownSignal = Arc<AtomicBool>;
 
 /// Crawl engine — orchestrates URL fetching with concurrency control
 ///
@@ -28,14 +37,32 @@ pub struct Engine {
     config: Arc<CrawlerConfig>,
     collector: Option<ResultsCollector>,
     visited: Arc<UrlDeduplicator>,
+    /// String URLs for checkpoint persistence (mirrors `visited` hashes).
+    visited_urls: Arc<RwLock<Vec<String>>>,
     queue: Arc<UrlQueue>,
     rate_limiter: SharedRateLimiter,
     error_count: Arc<AtomicUsize>,
+    /// Optional checkpoint persistence for crash recovery.
+    checkpoint: Option<BincodeCheckpoint>,
+    /// Path to save checkpoint files.
+    checkpoint_path: Option<PathBuf>,
+    /// Pages between automatic checkpoint saves (0 = disabled).
+    checkpoint_interval: u64,
+    /// Skip robots.txt enforcement.
+    ignore_robots: bool,
+    /// Shared robots.txt cache for the crawl session.
+    robots_cache: RobotsCache,
+    /// Optional domain session pool for per-domain rate limiting.
+    session_pool: Option<DomainSessionPool>,
+    /// Atomic counter for total pages crawled (used by checkpoint and signal handler).
+    pages_crawled: Arc<AtomicU64>,
+    /// Shared shutdown signal for graceful termination.
+    shutdown: ShutdownSignal,
 }
 
 impl Engine {
     /// Create a new Engine from a CrawlerConfig
-    fn new(config: CrawlerConfig) -> Result<Self, CrawlError> {
+    fn new(config: CrawlerConfig, ignore_robots: bool) -> Result<Self, CrawlError> {
         let config = Arc::new(config);
         let config_clone = Arc::clone(&config);
 
@@ -50,21 +77,124 @@ impl Engine {
         // Create URL queue
         let queue = Arc::new(UrlQueue::new());
 
-        // Track visited URLs — lock-free DashSet
+        // Track visited URLs — lock-free DashSet for dedup, RwLock Vec for checkpoint
         let visited = Arc::new(UrlDeduplicator::new());
+        let visited_urls = Arc::new(RwLock::new(Vec::new()));
 
         // Results collector via mpsc channel
         let collector = ResultsCollector::new(config_clone.max_pages, Some(config_clone.max_pages));
         let error_count = Arc::new(AtomicUsize::new(0));
+        let pages_crawled = Arc::new(AtomicU64::new(0));
+        let shutdown = Arc::new(AtomicBool::new(false));
 
         Ok(Self {
             config,
             collector: Some(collector),
             visited,
+            visited_urls,
             queue,
             rate_limiter,
             error_count,
+            checkpoint: None,
+            checkpoint_path: None,
+            checkpoint_interval: 100,
+            ignore_robots,
+            robots_cache: new_robots_cache(),
+            session_pool: None,
+            pages_crawled,
+            shutdown,
         })
+    }
+
+    /// Enable checkpoint persistence with the given interval and base directory.
+    pub fn with_checkpoint(mut self, interval: u64, base_dir: PathBuf) -> Self {
+        use crate::infrastructure::checkpoint::store::CheckpointPath;
+        let cp_path = CheckpointPath::new(&base_dir);
+        cp_path.ensure_dir().unwrap_or_else(|e| {
+            warn!("Failed to create checkpoint dir: {e}");
+        });
+
+        match BincodeCheckpoint::load(&cp_path.file()) {
+            Ok(cp) => {
+                info!(
+                    "Resuming from checkpoint: {} visited, {} pages",
+                    cp.visited.len(),
+                    cp.pages_crawled
+                );
+                self.checkpoint = Some(cp);
+            },
+            Err(e) => {
+                warn!("Failed to load checkpoint, starting fresh: {e}");
+                self.checkpoint = Some(BincodeCheckpoint::default());
+            },
+        }
+
+        self.checkpoint_path = Some(cp_path.file());
+        self.checkpoint_interval = interval;
+        self
+    }
+
+    /// Enable the domain session pool for per-domain rate limiting.
+    pub fn with_session_pool(mut self, cooldown: Duration, max_failures: u32) -> Self {
+        self.session_pool = Some(DomainSessionPool::new(cooldown, max_failures));
+        self
+    }
+
+    /// Save the current checkpoint to disk (non-blocking wrapper).
+    async fn save_checkpoint(&self) {
+        if let (Some(_cp), Some(path)) = (&self.checkpoint, &self.checkpoint_path) {
+            let visited_set: HashSet<String> = {
+                let urls = self.visited_urls.read().unwrap();
+                urls.iter().cloned().collect()
+            };
+            let pages = self
+                .pages_crawled
+                .load(std::sync::atomic::Ordering::Relaxed);
+            let new_cp = BincodeCheckpoint::from_state(&visited_set, &[], pages);
+
+            // Save on blocking thread to avoid blocking the event loop
+            let path = path.clone();
+            let _ = tokio::task::spawn_blocking(move || new_cp.save(&path)).await;
+        }
+    }
+
+    /// Spawn a signal handler that sets the shutdown flag on SIGINT/SIGTERM.
+    fn spawn_signal_handler(shutdown: ShutdownSignal) {
+        tokio::spawn(async move {
+            let ctrl_c = tokio::signal::ctrl_c();
+            #[cfg(unix)]
+            {
+                use tokio::signal::unix::{signal, SignalKind};
+                let mut sigterm =
+                    signal(SignalKind::terminate()).expect("failed to register SIGTERM handler");
+                tokio::select! {
+                    _ = ctrl_c => {
+                        info!("Received SIGINT — initiating graceful shutdown");
+                    },
+                    _ = sigterm.recv() => {
+                        info!("Received SIGTERM — initiating graceful shutdown");
+                    },
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                ctrl_c.await.ok();
+                info!("Received interrupt — initiating graceful shutdown");
+            }
+            shutdown.store(true, std::sync::atomic::Ordering::SeqCst);
+        });
+    }
+
+    /// Record a URL as visited (both hash dedup and string tracking).
+    fn record_visit(&self, url: &str) -> bool {
+        if self.visited.try_insert(url) {
+            if let Ok(mut urls) = self.visited_urls.write() {
+                urls.push(url.to_string());
+            }
+            true
+        } else {
+            false
+        }
     }
 
     /// Run the crawl loop until completion
@@ -72,6 +202,19 @@ impl Engine {
     /// Returns the collected URLs and error count.
     pub async fn run(&mut self) -> Result<CrawlResult, CrawlError> {
         let config_clone = Arc::clone(&self.config);
+
+        // Spawn signal handler for graceful shutdown
+        Self::spawn_signal_handler(Arc::clone(&self.shutdown));
+
+        // Load checkpoint state if resuming
+        if let Some(ref cp) = self.checkpoint {
+            if !cp.visited.is_empty() {
+                for url in &cp.visited {
+                    self.record_visit(url);
+                }
+                info!("Restored {} visited URLs from checkpoint", cp.visited.len());
+            }
+        }
 
         // Add seed URL to queue
         let seed_discovered = DiscoveredUrl::html(
@@ -91,6 +234,13 @@ impl Engine {
 
         // Main crawl loop
         while !url_queue.is_empty() || !tasks.is_empty() {
+            // Check shutdown signal
+            if self.shutdown.load(std::sync::atomic::Ordering::Relaxed) {
+                info!("Shutdown signal received — saving checkpoint and exiting");
+                self.save_checkpoint().await;
+                break;
+            }
+
             // Check if we've reached max pages (sin lock - atomic)
             if self
                 .collector
@@ -110,6 +260,17 @@ impl Engine {
             // Drain discovered links from the deduplicated UrlQueue
             url_queue.append(&mut self.queue.drain_all().await);
 
+            // Periodic checkpoint save
+            if self.checkpoint_interval > 0 {
+                let pages = self
+                    .pages_crawled
+                    .load(std::sync::atomic::Ordering::Relaxed);
+                if pages > 0 && pages % self.checkpoint_interval == 0 {
+                    debug!("Periodic checkpoint save at {pages} pages");
+                    self.save_checkpoint().await;
+                }
+            }
+
             // Spawn new tasks up to concurrency limit
             while let Some(discovered_url) = url_queue.pop_front() {
                 // Check concurrency limit
@@ -122,15 +283,24 @@ impl Engine {
                 if !self.visited.try_insert(discovered_url.url.as_str()) {
                     continue;
                 }
+                // Record URL string for checkpoint (we just inserted into hash set)
+                if let Ok(mut urls) = self.visited_urls.write() {
+                    urls.push(discovered_url.url.as_str().to_string());
+                }
 
                 // Clone data for task (async-clone-before-await)
                 let config_task = Arc::clone(&self.config);
                 let queue_task = Arc::clone(&self.queue);
                 let results_sender = self.collector.as_ref().unwrap().clone();
                 let visited_task = Arc::clone(&self.visited);
+                let visited_urls_task = Arc::clone(&self.visited_urls);
                 let error_count_task = Arc::clone(&self.error_count);
                 let rate_limiter_task = self.rate_limiter.clone();
                 let discovered_url_task = discovered_url.clone();
+                let session_pool_task = self.session_pool.clone();
+                let pages_crawled_task = Arc::clone(&self.pages_crawled);
+                let ignore_robots_task = self.ignore_robots;
+                let robots_cache_task = self.robots_cache.clone();
 
                 // Clone parent URL before moving discovered_url_task
                 let parent_url = discovered_url_task.url.clone();
@@ -143,11 +313,42 @@ impl Engine {
                     let url_str = discovered_url_task.url.as_str().to_string();
                     let url_depth = discovered_url_task.depth;
 
+                    // Session pool: check if domain is healthy before fetching
+                    if let Some(ref pool) = session_pool_task {
+                        let domain = url::Url::parse(&url_str)
+                            .ok()
+                            .and_then(|u| u.host_str().map(String::from))
+                            .unwrap_or_default();
+                        match pool.acquire(&domain).await {
+                            Ok(true) => {}, // proceed
+                            Ok(false) => {
+                                debug!("Domain {} on cooldown, skipping", domain);
+                                return Ok(());
+                            },
+                            Err(e) => {
+                                warn!("Domain {} unhealthy: {e}", domain);
+                                return Ok(());
+                            },
+                        }
+                    }
+
                     debug!("Crawling: {} (depth={})", url_str, url_depth);
 
                     // Fetch URL
                     match fetch_url(&url_str, &config_task).await {
                         Ok(response) => {
+                            // Report success to session pool
+                            if let Some(ref pool) = session_pool_task {
+                                if let Ok(parsed) = url::Url::parse(&url_str) {
+                                    if let Some(domain) = parsed.host_str() {
+                                        pool.report_success(domain).await;
+                                    }
+                                }
+                            }
+
+                            // Track pages crawled
+                            pages_crawled_task.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
                             // Add to results via channel (sin lock)
                             if let Err(e) = results_sender
                                 .send(CrawlMessage::success(discovered_url_task))
@@ -166,10 +367,26 @@ impl Engine {
                                                 if let Some(seed_domain) =
                                                     config_task.seed_url.host_str()
                                                 {
+                                                    let link_domain =
+                                                        parsed_url.host_str().unwrap_or("");
                                                     if is_internal_link(&normalized, seed_domain)
                                                         && is_allowed(&normalized, &config_task)
+                                                        && (ignore_robots_task
+                                                            || is_allowed_by_robots(
+                                                                &normalized,
+                                                                link_domain,
+                                                                &robots_cache_task,
+                                                            )
+                                                            .await)
                                                         && visited_task.try_insert(&normalized)
                                                     {
+                                                        // Record URL string for checkpoint
+                                                        if let Ok(mut urls) =
+                                                            visited_urls_task.write()
+                                                        {
+                                                            urls.push(normalized.clone());
+                                                        }
+
                                                         let new_discovered = DiscoveredUrl::html(
                                                             parsed_url,
                                                             url_depth + 1,
@@ -190,6 +407,15 @@ impl Engine {
                             }
                         },
                         Err(e) => {
+                            // Report failure to session pool
+                            if let Some(ref pool) = session_pool_task {
+                                if let Ok(parsed) = url::Url::parse(&url_str) {
+                                    if let Some(domain) = parsed.host_str() {
+                                        pool.report_failure(domain).await;
+                                    }
+                                }
+                            }
+
                             error!("Failed to fetch {}: {}", url_str, e);
                             error_count_task.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                             return Err(e);
@@ -213,6 +439,9 @@ impl Engine {
             handle_crawl_result(result, &self.error_count);
         }
 
+        // Final checkpoint save
+        self.save_checkpoint().await;
+
         // Collect results via mpsc channel (shutdown limpio)
         let collected_urls = self.collector.take().unwrap().collect().await;
         let total_pages = collected_urls.len();
@@ -225,6 +454,9 @@ impl Engine {
 
     /// Graceful shutdown — drop the collector sender, receiver drains remaining items
     pub async fn shutdown(mut self) {
+        // Save checkpoint before shutting down
+        self.save_checkpoint().await;
+
         // Take the collector to drop the sender — receiver will drain remaining items
         // The JoinSet tasks will complete naturally
         self.collector.take();
@@ -314,7 +546,8 @@ pub async fn crawl_site(config: CrawlerConfig) -> Result<CrawlResult, CrawlError
         config.seed_url, config.max_depth, config.max_pages
     );
 
-    let mut engine = Engine::new(config)?;
+    let ignore_robots = config.ignore_robots;
+    let mut engine = Engine::new(config, ignore_robots)?;
     let result = engine.run().await;
     engine.shutdown().await;
     result

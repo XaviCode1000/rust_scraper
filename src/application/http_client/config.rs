@@ -35,6 +35,9 @@ pub struct HttpClientConfig {
     pub tls_emulation: wreq_util::Profile,
     /// Custom User-Agent override
     pub user_agent: Option<String>,
+    /// H2/TLS profile name (e.g. "Chrome145", "Chrome131").
+    /// Mapped to `tls_emulation` on construction.
+    pub h2_profile: String,
 }
 
 impl Default for HttpClientConfig {
@@ -53,6 +56,24 @@ impl Default for HttpClientConfig {
             rate_limit_rpm: None,
             tls_emulation: wreq_util::Profile::Chrome145,
             user_agent: None,
+            h2_profile: "Chrome145".to_owned(),
+        }
+    }
+}
+
+impl HttpClientConfig {
+    /// Resolve an H2 profile name to a `wreq_util::Profile`.
+    ///
+    /// Falls back to Chrome145 for unknown names.
+    #[must_use]
+    pub fn resolve_profile(name: &str) -> wreq_util::Profile {
+        match name {
+            "Chrome131" => wreq_util::Profile::Chrome131,
+            "Chrome145" => wreq_util::Profile::Chrome145,
+            _ => {
+                tracing::warn!("Unknown H2 profile '{name}', falling back to Chrome145");
+                wreq_util::Profile::Chrome145
+            },
         }
     }
 }
@@ -81,6 +102,7 @@ mod tests {
         assert_eq!(config.rate_limit_rpm, None);
         assert_eq!(config.tls_emulation, wreq_util::Profile::Chrome145);
         assert_eq!(config.user_agent, None);
+        assert_eq!(config.h2_profile, "Chrome145");
     }
 
     #[test]
@@ -108,6 +130,7 @@ mod tests {
             rate_limit_rpm: Some(30),
             tls_emulation: wreq_util::Profile::Chrome131,
             user_agent: Some("custom".into()),
+            h2_profile: "Chrome131".to_owned(),
         };
 
         assert_eq!(config.accept_language, "es-ES");
@@ -117,5 +140,26 @@ mod tests {
         assert_eq!(config.connect_timeout_secs, 20);
         assert_eq!(config.rate_limit_rpm, Some(30));
         assert_eq!(config.tls_emulation, wreq_util::Profile::Chrome131);
+        assert_eq!(config.h2_profile, "Chrome131");
+    }
+
+    #[test]
+    fn test_resolve_profile_known_names() {
+        assert_eq!(
+            HttpClientConfig::resolve_profile("Chrome131"),
+            wreq_util::Profile::Chrome131
+        );
+        assert_eq!(
+            HttpClientConfig::resolve_profile("Chrome145"),
+            wreq_util::Profile::Chrome145
+        );
+    }
+
+    #[test]
+    fn test_resolve_profile_unknown_falls_back() {
+        assert_eq!(
+            HttpClientConfig::resolve_profile("UnknownProfile"),
+            wreq_util::Profile::Chrome145
+        );
     }
 }

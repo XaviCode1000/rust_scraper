@@ -87,6 +87,18 @@ pub enum CrawlError {
     /// Storage error (append-only log corruption, backpressure, serialization)
     #[error("error de almacenamiento: {0}")]
     Storage(String),
+
+    /// Checkpoint serialization/deserialization error (bincode)
+    #[error("checkpoint error: {0}")]
+    Checkpoint(String),
+
+    /// Session pool error (connection or lifecycle failure)
+    #[error("session pool error: {0}")]
+    SessionPool(String),
+
+    /// Discovery error (robots.txt or sitemap auto-discovery failure)
+    #[error("discovery error: {0}")]
+    Discovery(String),
 }
 
 #[cfg(test)]
@@ -172,5 +184,26 @@ mod tests {
 
         let error = CrawlError::InvalidContentType("image/png".to_string());
         assert!(error.to_string().contains("image/png"));
+    }
+
+    #[test]
+    fn test_crawl_error_checkpoint() {
+        let error = CrawlError::Checkpoint("bincode decode failed".to_string());
+        assert!(error.to_string().contains("checkpoint error"));
+        assert!(error.to_string().contains("bincode decode failed"));
+    }
+
+    #[test]
+    fn test_crawl_error_session_pool() {
+        let error = CrawlError::SessionPool("pool exhausted".to_string());
+        assert!(error.to_string().contains("session pool error"));
+        assert!(error.to_string().contains("pool exhausted"));
+    }
+
+    #[test]
+    fn test_crawl_error_discovery() {
+        let error = CrawlError::Discovery("robots.txt unreachable".to_string());
+        assert!(error.to_string().contains("discovery error"));
+        assert!(error.to_string().contains("robots.txt unreachable"));
     }
 }

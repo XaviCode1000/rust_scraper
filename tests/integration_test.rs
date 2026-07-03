@@ -123,6 +123,12 @@ fn test_args_has_required_fields() {
         cpu_cores: None,
         db_path: None,
         elastic: false,
+        // Competitive Features Phase 1
+        checkpoint_interval: 100,
+        no_checkpoint: false,
+        ignore_robots: false,
+        no_session_health: false,
+        h2_profile: "Chrome145".to_string(),
     };
 
     assert_eq!(args.url, Some("https://example.com".to_string()));

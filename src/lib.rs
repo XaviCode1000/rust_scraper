@@ -90,11 +90,13 @@ pub use application::{
 
 // Infrastructure layer
 pub use infrastructure::{
+    checkpoint::BincodeCheckpoint,
     converter, crawler,
     export::{jsonl_exporter, state_store, vector_exporter},
     http,
     output::file_saver,
     scraper::readability,
+    session::DomainSessionPool,
 };
 
 // Adapters

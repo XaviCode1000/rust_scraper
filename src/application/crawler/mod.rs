@@ -2,6 +2,7 @@
 //!
 //! This module contains the crawler service and its supporting components.
 
+pub mod checkpoint;
 pub mod collector;
 pub mod discovery;
 pub mod engine;
