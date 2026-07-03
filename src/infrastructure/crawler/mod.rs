@@ -26,4 +26,4 @@ pub use resource_downloader::{
 };
 pub use sitemap_config::{SitemapConfig, SitemapConfigBuilder};
 pub use sitemap_parser::{resolve_url, SitemapError, SitemapParser};
-pub use url_queue::UrlQueue;
+pub use url_queue::{UrlQueue, UrlSource};
