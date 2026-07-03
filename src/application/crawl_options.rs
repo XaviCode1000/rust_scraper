@@ -8,6 +8,7 @@ use std::path::PathBuf;
 
 use url::Url;
 
+use crate::cli::args::PipelineOutputFormat;
 use crate::domain::JsStrategy;
 use crate::infrastructure::autotuning::ElasticOverrides;
 use crate::{ConcurrencyConfig, ExportFormat, OutputFormat};
@@ -37,6 +38,10 @@ pub struct CrawlOptions {
     pub export: ExportOptions,
     /// Elastic ingestion tuning.
     pub elastic: IngestionTuning,
+    /// Enable item pipeline processing (validate → clean → output).
+    pub pipeline_enabled: bool,
+    /// Pipeline output format (jsonl, none).
+    pub pipeline_output_format: PipelineOutputFormat,
 }
 
 // ============================================================================
@@ -231,6 +236,8 @@ impl Default for CrawlOptions {
             network: NetworkOptions::default(),
             export: ExportOptions::default(),
             elastic: IngestionTuning::default(),
+            pipeline_enabled: false,
+            pipeline_output_format: PipelineOutputFormat::default(),
         }
     }
 }

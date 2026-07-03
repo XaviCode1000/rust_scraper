@@ -131,6 +131,9 @@ fn test_args_has_required_fields() {
         h2_profile: "Chrome145".to_string(),
         js_strategy: rust_scraper::domain::JsStrategy::Static,
         obscura_binary: "obscura".to_string(),
+        // Item Pipeline
+        pipeline: false,
+        pipeline_output: rust_scraper::cli::args::PipelineOutputFormat::Jsonl,
     };
 
     assert_eq!(args.url, Some("https://example.com".to_string()));
