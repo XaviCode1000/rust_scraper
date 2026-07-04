@@ -39,7 +39,7 @@ use super::file_trace_exporter::FileTraceExporter;
 #[cfg(feature = "otel-metrics")]
 use opentelemetry_otlp::MetricExporter;
 #[cfg(feature = "otel-metrics")]
-use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+use opentelemetry_sdk::metrics::SdkMeterProvider;
 #[cfg(feature = "otel-metrics")]
 use std::time::Duration;
 
@@ -293,22 +293,9 @@ pub fn init_otel_metrics(
             .with_resource(resource)
             .build()
     } else {
-        // Console export for local development — prints metrics to stdout
-        use opentelemetry_sdk::metrics::export::stdout::StdoutExporterBuilder;
-        use opentelemetry_sdk::metrics::PeriodicReader;
-
-        let exporter = StdoutExporterBuilder::new()
-            .with_writer(std::io::stdout())
-            .build();
-
-        let reader = PeriodicReader::builder(exporter)
-            .with_interval(std::time::Duration::from_secs(10))
-            .build();
-
-        SdkMeterProvider::builder()
-            .with_reader(reader)
-            .with_resource(resource)
-            .build()
+        // Local development — no metric export configured
+        // Metrics are recorded but not exported until an OTLP endpoint is set
+        SdkMeterProvider::builder().with_resource(resource).build()
     };
 
     global::set_meter_provider(meter_provider.clone());
