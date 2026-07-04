@@ -35,6 +35,11 @@ use crate::infrastructure::downloader::wreq_downloader::WreqDownloader;
 use crate::infrastructure::downloader::{DownloadError, Downloader, FetchedPage};
 use crate::infrastructure::session::DomainSessionPool;
 
+#[cfg(feature = "otel-metrics")]
+use crate::infrastructure::observability::metrics_instruments::{
+    update_engine_concurrency, ENGINE_CHECKPOINT_SAVES, ENGINE_PAGES_CRAWLED,
+};
+
 /// Shared shutdown signal — set to `true` when SIGINT/SIGTERM received.
 type ShutdownSignal = Arc<AtomicBool>;
 
@@ -260,6 +265,9 @@ impl Engine {
                         new_level
                     );
                     level_clone.set(new_level);
+
+                    #[cfg(feature = "otel-metrics")]
+                    update_engine_concurrency(level_clone.get() as u64);
                 }
             }
         });
@@ -307,6 +315,9 @@ impl Engine {
             // Save on blocking thread to avoid blocking the event loop
             let path = path.clone();
             let _ = tokio::task::spawn_blocking(move || new_cp.save(&path)).await;
+
+            #[cfg(feature = "otel-metrics")]
+            ENGINE_CHECKPOINT_SAVES.add(1, &[]);
         }
     }
 
@@ -587,6 +598,9 @@ impl Engine {
 
                     // Track pages crawled
                     pages_crawled_task.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+                    #[cfg(feature = "otel-metrics")]
+                    ENGINE_PAGES_CRAWLED.add(1, &[]);
 
                     // Pipeline processing: convert to ScrapedItem and run through pipeline
                     if let Some(ref pipeline) = pipeline_task {
@@ -936,4 +950,36 @@ pub async fn crawl_site_with_options(
     let result = engine.run().await;
     engine.shutdown().await;
     result
+}
+
+#[cfg(test)]
+#[cfg(feature = "otel-metrics")]
+mod metrics_tests {
+    use crate::infrastructure::observability::metrics_instruments::{
+        ENGINE_CHECKPOINT_SAVES, ENGINE_CONCURRENCY_LEVEL, ENGINE_PAGES_CRAWLED,
+        engine_concurrency_get, update_engine_concurrency,
+    };
+
+    #[test]
+    fn test_engine_pages_crawled_instrument_init() {
+        let _ = &*ENGINE_PAGES_CRAWLED;
+    }
+
+    #[test]
+    fn test_engine_checkpoint_saves_instrument_init() {
+        let _ = &*ENGINE_CHECKPOINT_SAVES;
+    }
+
+    #[test]
+    fn test_update_engine_concurrency_init() {
+        // Should not panic — setting gauge value
+        update_engine_concurrency(5);
+        let val = engine_concurrency_get();
+        assert_eq!(val, 5);
+    }
+
+    #[test]
+    fn test_engine_concurrency_level_gauge_init() {
+        let _ = &*ENGINE_CONCURRENCY_LEVEL;
+    }
 }
