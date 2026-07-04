@@ -81,6 +81,8 @@ pub struct CrawlLimits {
     pub ignore_robots: bool,
     /// Disable session pool health checks.
     pub no_session_health: bool,
+    /// Enable autoscaled concurrency based on system RAM.
+    pub autoscale_enabled: bool,
 }
 
 /// HTTP client and network behavior settings.
@@ -180,6 +182,7 @@ impl Default for CrawlLimits {
             no_checkpoint: false,
             ignore_robots: false,
             no_session_health: false,
+            autoscale_enabled: false,
         }
     }
 }

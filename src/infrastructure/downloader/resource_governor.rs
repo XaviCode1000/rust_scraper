@@ -107,7 +107,7 @@ impl ResourceGovernor {
     }
 
     /// RAM usage as a percentage (0–100).
-    fn ram_usage_percent() -> u8 {
+    pub fn ram_usage_percent() -> u8 {
         let mut sys = System::new();
         sys.refresh_memory();
         let total = sys.total_memory();

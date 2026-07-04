@@ -128,6 +128,7 @@ fn test_args_has_required_fields() {
         no_checkpoint: false,
         ignore_robots: false,
         no_session_health: false,
+        autoscale: false,
         h2_profile: "Chrome145".to_string(),
         js_strategy: rust_scraper::domain::JsStrategy::Static,
         obscura_binary: "obscura".to_string(),
