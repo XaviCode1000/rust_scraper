@@ -37,6 +37,11 @@ use tracing::{error, info, instrument, warn};
 use super::BatchJob;
 use crate::domain::{CrawlError, CrawlerConfig};
 
+#[cfg(feature = "otel-metrics")]
+use crate::infrastructure::observability::metrics_instruments::{
+    update_batch_concurrency, BATCH_URLS_PROCESSED,
+};
+
 /// Result of processing a batch job
 #[derive(Debug, Clone)]
 pub struct BatchResult {
@@ -128,6 +133,9 @@ impl BatchProcessor {
 
             progress.start_one();
 
+            #[cfg(feature = "otel-metrics")]
+            update_batch_concurrency(join_set.len() as u64 + 1);
+
             join_set.spawn(async move {
                 let _permit = permit; // Hold permit for duration of task
                 let result = process_single_url(&url, config).await;
@@ -139,6 +147,8 @@ impl BatchProcessor {
         while let Some(result) = join_set.join_next().await {
             match result {
                 Ok((url, Ok(_))) => {
+                    #[cfg(feature = "otel-metrics")]
+                    BATCH_URLS_PROCESSED.add(1, &[]);
                     progress.complete_one();
                     info!("Completed crawl for {url}");
                 },
@@ -154,6 +164,8 @@ impl BatchProcessor {
                     errors.push(("unknown".to_string(), format!("Task panicked: {e}")));
                 },
             }
+            #[cfg(feature = "otel-metrics")]
+            update_batch_concurrency(join_set.len() as u64);
         }
 
         let succeeded = progress.completed();

@@ -1,5 +1,10 @@
 use super::{PipelineStage, ScrapedItem, StageOutcome};
 
+#[cfg(feature = "otel-metrics")]
+use crate::infrastructure::observability::metrics_instruments::{
+    PIPELINE_ITEMS_REJECTED, PIPELINE_ITEMS_SKIPPED, PIPELINE_ITEMS_TOTAL,
+};
+
 /// Executes a sequence of [`PipelineStage`]s on [`ScrapedItem`]s.
 ///
 /// Stages are processed in insertion order. The first stage to return
@@ -28,9 +33,24 @@ impl PipelineExecutor {
         for stage in &self.stages {
             match stage.process(item).await {
                 StageOutcome::Continue(updated) => item = updated,
-                outcome => return outcome,
+                StageOutcome::Reject(reason) => {
+                    #[cfg(feature = "otel-metrics")]
+                    {
+                        use opentelemetry::KeyValue;
+                        let stage_name = stage.name().to_owned();
+                        PIPELINE_ITEMS_REJECTED.add(1, &[KeyValue::new("stage", stage_name)]);
+                    }
+                    return StageOutcome::Reject(reason);
+                },
+                StageOutcome::Skip => {
+                    #[cfg(feature = "otel-metrics")]
+                    PIPELINE_ITEMS_SKIPPED.add(1, &[]);
+                    return StageOutcome::Skip;
+                },
             }
         }
+        #[cfg(feature = "otel-metrics")]
+        PIPELINE_ITEMS_TOTAL.add(1, &[]);
         StageOutcome::Continue(item)
     }
 
