@@ -14,6 +14,7 @@ use tracing::{debug, info, instrument, span, warn, Level};
 use url::Url;
 
 use super::collector::{CrawlMessage, ResultsCollector};
+use super::concurrency_level::{ConcurrencyLevel, SharedConcurrencyLevel};
 use super::discovery::{is_allowed_by_robots, new_robots_cache, RobotsCache};
 use crate::application::deduplicator::UrlDeduplicator;
 use crate::application::pipeline::{OutputStage, PipelineExecutor, ScrapedItem, StageOutcome};
@@ -29,6 +30,7 @@ use crate::infrastructure::downloader::chromiumoxide_downloader::ChromiumoxideDo
 use crate::infrastructure::downloader::cookie_bridge::CookieBridge;
 use crate::infrastructure::downloader::hybrid_router::HybridRouter;
 use crate::infrastructure::downloader::obscura_downloader::ObscuraDownloader;
+use crate::infrastructure::downloader::resource_governor::ResourceGovernor;
 use crate::infrastructure::downloader::wreq_downloader::WreqDownloader;
 use crate::infrastructure::downloader::{DownloadError, Downloader, FetchedPage};
 use crate::infrastructure::session::DomainSessionPool;
@@ -112,6 +114,8 @@ pub struct Engine {
     pipeline: Option<Arc<PipelineExecutor>>,
     /// Output stages that receive items after pipeline processing.
     output_stages: Vec<Arc<Box<dyn OutputStage>>>,
+    /// Optional autoscale level for RAM-aware concurrency adjustment.
+    autoscale_level: Option<Arc<SharedConcurrencyLevel>>,
 }
 
 impl Engine {
@@ -163,6 +167,7 @@ impl Engine {
             banned_domains: Arc::new(RwLock::new(Vec::new())),
             pipeline: None,
             output_stages: Vec::new(),
+            autoscale_level: None,
         })
     }
 
@@ -224,6 +229,42 @@ impl Engine {
                     Some(FetchRouter::Hybrid(Arc::new(HybridRouter::new(l1, l2, l3))));
             },
         }
+        self
+    }
+
+    /// Enable autoscaled concurrency based on system RAM.
+    ///
+    /// Spawns a background task that polls `ResourceGovernor::ram_usage_percent()`
+    /// every 5 seconds and adjusts the shared concurrency level accordingly.
+    /// The engine's spawn loop reads this level to compute effective concurrency.
+    pub fn with_autoscale(mut self) -> Self {
+        let level = Arc::new(SharedConcurrencyLevel::new());
+        let level_clone = Arc::clone(&level);
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            interval.tick().await; // skip first immediate tick
+            loop {
+                interval.tick().await;
+                let usage = ResourceGovernor::ram_usage_percent();
+                let new_level = if usage >= 90 {
+                    ConcurrencyLevel::Critical
+                } else if usage >= 80 {
+                    ConcurrencyLevel::Reduced
+                } else {
+                    ConcurrencyLevel::Normal
+                };
+                if level_clone.get() != new_level {
+                    info!(
+                        "Autoscale: RAM {usage}% → concurrency level {:?}",
+                        new_level
+                    );
+                    level_clone.set(new_level);
+                }
+            }
+        });
+
+        self.autoscale_level = Some(level);
         self
     }
 
@@ -395,8 +436,13 @@ impl Engine {
 
             // Spawn new tasks up to concurrency limit
             while let Some(discovered_url) = url_queue.pop_front() {
-                // Check concurrency limit
-                if tasks.len() >= config_clone.concurrency {
+                // Check concurrency limit (autoscale-aware)
+                let max_concurrent = self
+                    .autoscale_level
+                    .as_ref()
+                    .map(|l| l.effective_concurrency(config_clone.concurrency))
+                    .unwrap_or(config_clone.concurrency);
+                if tasks.len() >= max_concurrent {
                     url_queue.push_front(discovered_url);
                     break;
                 }
@@ -634,7 +680,12 @@ impl Engine {
             }
 
             // If no tasks can be spawned and queue is not empty, wait for one task
-            if tasks.len() >= config_clone.concurrency && !url_queue.is_empty() {
+            let max_concurrent = self
+                .autoscale_level
+                .as_ref()
+                .map(|l| l.effective_concurrency(config_clone.concurrency))
+                .unwrap_or(config_clone.concurrency);
+            if tasks.len() >= max_concurrent && !url_queue.is_empty() {
                 if let Some(result) = tasks.join_next().await {
                     handle_crawl_result(result, &self.error_count);
                 }
@@ -710,6 +761,8 @@ pub struct EngineOptions {
     pub ignore_robots: bool,
     /// JavaScript rendering strategy.
     pub js_strategy: JsStrategy,
+    /// Enable autoscaled concurrency based on system RAM.
+    pub autoscale_enabled: bool,
 }
 
 /// Crawl a website starting from the seed URL
@@ -817,6 +870,7 @@ pub async fn crawl_site(config: CrawlerConfig) -> Result<CrawlResult, CrawlError
 ///     checkpoint_path: Some(std::path::PathBuf::from("/tmp/checkpoint")),
 ///     session_pool_enabled: true,
 ///     ignore_robots: false,
+///     autoscale_enabled: true,
 /// };
 ///
 /// let result = crawl_site_with_options(config, options).await?;
@@ -873,6 +927,11 @@ pub async fn crawl_site_with_options(
 
     // Apply JS strategy
     engine = engine.with_js_strategy(options.js_strategy);
+
+    // Apply autoscale if enabled
+    if options.autoscale_enabled {
+        engine = engine.with_autoscale();
+    }
 
     let result = engine.run().await;
     engine.shutdown().await;

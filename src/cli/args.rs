@@ -359,6 +359,11 @@ pub struct Args {
     #[clap(next_help_heading = "Competitive Features")]
     pub ignore_robots: bool,
 
+    /// Enable autoscaled concurrency — dynamically adjusts task concurrency based on RAM usage
+    #[arg(long, default_value = "false", env = "RUST_SCRAPER_AUTOSCALE")]
+    #[clap(next_help_heading = "Competitive Features")]
+    pub autoscale: bool,
+
     /// Disable session pool health checks
     #[arg(long, default_value = "false", env = "RUST_SCRAPER_NO_SESSION_HEALTH")]
     #[clap(next_help_heading = "Competitive Features")]
@@ -508,6 +513,7 @@ impl From<Args> for crate::application::crawl_options::CrawlOptions {
                 no_checkpoint: args.no_checkpoint,
                 ignore_robots: args.ignore_robots,
                 no_session_health: args.no_session_health,
+                autoscale_enabled: args.autoscale,
             },
             network: NetworkOptions {
                 user_agent: args.user_agent,
@@ -681,6 +687,7 @@ mod tests {
             no_checkpoint: true,
             ignore_robots: true,
             no_session_health: true,
+            autoscale: true,
             h2_profile: "Chrome131".into(),
 
             // JS Rendering
@@ -730,6 +737,7 @@ mod tests {
         assert!(opts.crawl.no_checkpoint);
         assert!(opts.crawl.ignore_robots);
         assert!(opts.crawl.no_session_health);
+        assert!(opts.crawl.autoscale_enabled);
 
         // ── NetworkOptions ─────────────────────────────────────────────────
         assert_eq!(opts.network.user_agent.as_deref(), Some("TestAgent/1.0"));
@@ -843,6 +851,7 @@ mod tests {
             opts.pipeline_output_format,
             crate::cli::args::PipelineOutputFormat::Jsonl
         );
+        assert!(!opts.crawl.autoscale_enabled);
     }
 
     #[test]
@@ -890,6 +899,7 @@ mod tests {
             elastic in proptest::bool::ANY,
             clean_ai in proptest::bool::ANY,
             pipeline in proptest::bool::ANY,
+            autoscale in proptest::bool::ANY,
         ) {
             let args = Args {
                 subcommand: None,
@@ -938,6 +948,7 @@ mod tests {
                 db_path: None,
                 elastic,
                 pipeline,
+                autoscale,
                 ..Default::default()
             };
 
@@ -960,6 +971,7 @@ mod tests {
             prop_assert_eq!(opts.crawl.use_sitemap, use_sitemap);
             prop_assert_eq!(opts.elastic.enabled, elastic);
             prop_assert_eq!(opts.pipeline_enabled, pipeline);
+            prop_assert_eq!(opts.crawl.autoscale_enabled, autoscale);
         }
 
         #[cfg_attr(miri, ignore)]
