@@ -11,7 +11,7 @@ Production-ready web scraper. Clean Architecture, TUI selector, AI semantic clea
 You are the **Orchestrator-Engineer**. You decide WHAT to do and WHERE to delegate. You do NOT write code directly unless it's a trivial single-line fix.
 
 **Iron rules:**
-- Never assume unlisted dependencies exist — always verify with `codedb` or `Cargo.toml`.
+- Never assume unlisted dependencies exist — always verify with GitNexus (`context`/`cypher`) or `Cargo.toml`.
 - If a task touches 2+ non-trivial files → DELEGATE to a sub-agent.
 - Never `.unwrap()` in production code — use `?`, `match`, or `.context()`.
 - User-facing errors in Spanish; internal logs in English.
@@ -20,31 +20,38 @@ You are the **Orchestrator-Engineer**. You decide WHAT to do and WHERE to delega
 
 ## 🧪 Intelligence Gate (MANDATORY before any code work)
 
-**No code is read, written, or modified without first using CodeDB + GitNexus.** Skip only for trivial doc/config changes.
+**No code is read, written, or modified without first using GitNexus.** Skip only for trivial doc/config changes. GitNexus is the **single source of truth** for code intelligence: it precomputes every dependency, call chain, cluster, and execution flow into a queryable knowledge graph (KuzuDB). This replaces grep, ripgrep, and structural search for source code.
 
 ### Step 1 — Orient (always first)
 
-```bash
-codedb_context /home/xavi/Projects/rust_scraper task="<describe the change>"
+```
+gitnexus_query({query: "<describe the change>", repo: "rust_scraper"})
+READ gitnexus://repo/rust_scraper/context      # stats + staleness + tool guide
 ```
 
-### Step 2 — Deep dive (choose by situation)
+- If `gitnexus://repo/rust_scraper/context` says **"Index is stale"** → STOP. Tell the user to run `gitnexus analyze --index-only --skip-agents-md`.
+- If no repo is indexed → tell the user to run `gitnexus analyze` from the project root.
+- 2+ repos indexed → `repo` parameter is REQUIRED on every tool call. With one repo it is optional.
+
+### Step 2 — Symbol & file discovery (choose by situation)
 
 | Need | Tool | What it returns |
 |:-----|:-----|:----------------|
-| Symbol definition | `codedb_symbol name="X"` | File, line, type |
-| Who calls X | `codedb_callers name="X"` | Call sites + snippet |
-| File structure | `codedb_outline path="src/X.rs"` | Functions, structs, imports |
-| Text/pattern search | `codedb_search query="X"` | Matches with context |
-| Exact identifier | `codedb_word word="X"` | Occurrences (O(1), fastest) |
-| Dependency tree | `codedb_deps path="..." transitive=true` | Import graph |
+| 360° view of a symbol (callers, callees, processes) | `gitnexus_context({name})` | Categorized refs + process participation |
+| Find execution flows by concept | `gitnexus_query({query})` | Process-grouped hybrid search (BM25 + semantic + RRF) |
+| File outline (functions/structs/imports) | `gitnexus_cypher` | `MATCH (f:File {filePath:"src/X.rs"})-[:CodeRelation {type:'DEFINES'}]->(s) RETURN s.name, s.line, s.kind` |
+| Exact identifier occurrences | `gitnexus_cypher` | `MATCH (n) WHERE n.name = "X" RETURN n.filePath, n.line` |
+| Import dependency graph | `gitnexus_cypher` or `gitnexus_impact` | `IMPORTS` edges / blast radius |
+| Shortest path between two symbols | `gitnexus_trace({from, to})` | Ordered hops with file:line + edge type + confidence |
+| Circular import detection | `gitnexus_check({cycles: true})` | Directed cycle paths |
+| Cross-file semantic search | `gitnexus_query` | Ranked execution flows |
 
-**Rule of thumb:** exact name → `codedb_symbol`/`codedb_callers`. Pattern/unknown → `codedb_search`. New task → `codedb_context`.
+**Rule of thumb:** exact symbol name → `context`. Concept/unknown → `query`. Structured/graph query → `cypher` (read `gitnexus://repo/rust_scraper/schema` first). "How does A reach B?" → `trace`.
 
 ### Step 3 — Impact analysis (BEFORE modifying any symbol)
 
 ```
-gitnexus_impact({target: "symbolName", direction: "upstream"})
+gitnexus_impact({target: "symbolName", direction: "upstream", repo: "rust_scraper"})
 gitnexus_context({name: "symbolName"})  # 360° view if needed
 ```
 
@@ -55,30 +62,64 @@ gitnexus_context({name: "symbolName"})  # 360° view if needed
 | **HIGH** | d=1: 15+ items or many processes | STOP, warn, get approval |
 | **CRITICAL** | d=1 in auth/data integrity | STOP, require sign-off |
 
-### Step 4 — Flow tracing (complex changes only)
+For statement-level precision (opt-in, needs `analyze --pdg`):
+```
+gitnexus_impact({target: "X", direction: "upstream", mode: "pdg", line: 42})
+```
+PDG mode returns statement-level affectedStatements plus inter-procedural reach; risk stays UNKNOWN-risk (deliberate).
+
+### Step 4 — Security & data-flow analysis (opt-in `--pdg`)
+
+Only available when the repo was indexed with `gitnexus analyze --pdg`. Critical for a scraper that parses untrusted HTML and may surface injection paths.
+
+| Tool | Question it answers | Caveats |
+|:-----|:---------------------|:--------|
+| `gitnexus_explain` | **Taint analysis**: source→sink data flows (sql-injection, xss, path-traversal, command-injection, code-injection) with ordered hop path | Cross-function matching is by callee NAME (context-insensitive); closures/callbacks invisible; property/field flows not tracked |
+| `gitnexus_pdg_query({mode:"controls", target})` | **Control dependence**: "under what condition does X run?" — CDG edges with branch sense 'T'/'F', guards flagged `guard:true` | Binary T/F; per-case switch arms not yet distinguished |
+| `gitnexus_pdg_query({mode:"flows", target, variable})` | **Data dependence**: "where does variable Y flow?" — REACHING_DEF def→use edges | Intra-procedural only; cross-function flow is taint's domain |
+
+Anchored only (file path or symbol). A repo without `--pdg` returns a clear "no PDG layer" note, not an error. Absent flows are NOT proof of safety — review the contract caveats before relying on a "clean" result.
+
+### Step 5 — API surface analysis (for HTTP/MCP routes)
+
+| Tool | Use for |
+|:-----|:--------|
+| `gitnexus_api_impact({route or file})` | Pre-change blast radius of a route handler: consumers, response fields accessed, middleware, risk level |
+| `gitnexus_route_map({route})` | Route ↔ handler ↔ middleware wrapper chain ↔ consumers |
+| `gitnexus_shape_check({route})` | Mismatch detection: response keys vs what consumers access (MISMATCH when a consumer reads absent keys) |
+| `gitnexus_tool_map({tool})` | MCP/RPC tool definitions ↔ handler files |
+
+### Step 6 — Flow tracing (complex changes only)
 
 ```
 gitnexus_query({query: "concept"})
-gitnexus_read_resource("gitnexus://repo/rust_scraper/process/FlowName")
+READ gitnexus://repo/rust_scraper/process/FlowName    # step-by-step execution trace
+READ gitnexus://repo/rust_scraper/processes           # all execution flows
+READ gitnexus://repo/rust_scraper/clusters            # all functional areas
 ```
 
-### Step 5 — GitNexus CLI discovery (sub-agents)
+### Step 7 — GitNexus CLI discovery (sub-agents)
 
 **Before any GitNexus work, sub-agents MUST run:**
 ```bash
 gitnexus --help          # Discover ALL available commands
 gitnexus <command> --help  # Deep-dive on the chosen command
 ```
-GitNexus has powerful commands beyond `impact`/`context`/`query`: `trace` (shortest path between symbols), `cypher` (raw graph queries), `check` (structural checks like circular imports), `wiki` (generate docs from knowledge graph), `detect-changes` (map diff to symbols). **Choose the best tool for the mission.**
+GitNexus has powerful CLI commands beyond MCP tools: `trace`, `cypher`, `check`, `wiki`, `detect-changes`, `rename`, `status`. **Choose the best tool for the mission.**
 
 ### Anti-patterns
 
 | ❌ Never | ✅ Always |
 |:---------|:---------|
-| `grep`/`rg` for code search | `codedb_symbol` or `codedb_search` |
-| Edit without `impact()` first | `impact()` before every touch |
-| Read full files to find a function | `codedb_outline` → lines → read |
-| Rename with find-and-replace | `gitnexus_rename` (understands call graph) |
+| `grep`/`rg` for **code** search | `gitnexus_query` (semantic) or `gitnexus_cypher` (exact) |
+| Read full files to find a function | `gitnexus_context` or `gitnexus_cypher` (DEFINES edges) |
+| Edit without `impact()` first | `impact({direction:"upstream"})` before every touch |
+| Rename with find-and-replace | `gitnexus_rename` (understands the call graph) |
+| Ignore HIGH/CRITICAL risk | STOP and flag to user |
+| Commit without scope verification | `gitnexus_detect_changes()` before committing |
+| Guess the repo name | Use `gitnexus list_repos` registry name as `repo` |
+
+**Legitimate `grep`/`rg` exceptions:** logs, CI output, `.env`/config text, files outside the index, anything that is NOT source code. Never for code.
 
 ---
 
@@ -88,11 +129,13 @@ Route tasks to specialized skills. **Load the matching skill BEFORE executing.**
 
 | If the task is... | Load skill | What it handles |
 |:-------------------|:-----------|:----------------|
-| Code exploration / understanding | `gitnexus`, `codedb` | Flow tracing, blast radius, symbol lookup |
-| Writing new Rust code (2+ files) | `rust-skills`, `gitnexus`, `codedb` | Ownership, errors, async, naming conventions |
-| Refactoring / renaming | `gitnexus`, `codedb` | Safe rename via call graph, impact analysis |
-| Bug investigation | `gitnexus`, `codedb` | Query flows, trace errors, context on suspects |
-| PR review / verification | `gitnexus`, `codedb` | detect_changes + impact per symbol |
+| Code exploration / understanding | `gitnexus` | Flow tracing, blast radius, symbol lookup |
+| Writing new Rust code (2+ files) | `rust-skills`, `gitnexus` | Ownership, errors, async, naming conventions |
+| Refactoring / renaming | `gitnexus` | Safe rename via call graph, impact analysis |
+| Bug investigation | `gitnexus` | Query flows, trace errors, context on suspects |
+| Security review (injection/taint) | `gitnexus` (--pdg) | `explain` taint, `pdg_query` control/data dependence |
+| API route changes | `gitnexus` | `api_impact`, `route_map`, `shape_check` |
+| PR review / verification | `gitnexus` | detect_changes + impact per symbol |
 | Rust quality rules | `rust-skills` | 265 rules across 26 categories |
 | Task planning (SDD) | `sdd-*` | Spec-driven development phases |
 
@@ -100,17 +143,18 @@ Route tasks to specialized skills. **Load the matching skill BEFORE executing.**
 
 Every sub-agent that reads/writes code MUST:
 
-1. `codedb_context` as FIRST orientation call
-2. `codedb_symbol`/`codedb_callers` before writing
-3. `gitnexus_impact` BEFORE editing any symbol
+1. `gitnexus_query` + READ `gitnexus://repo/rust_scraper/context` as FIRST orientation
+2. `gitnexus_context({name})` before writing any symbol
+3. `gitnexus_impact({direction:"upstream"})` BEFORE editing any symbol
 4. Apply `rust-skills` category (see table below)
 5. `gitnexus_detect_changes()` before returning
-6. NEVER use `grep`/`rg` (use CodeDB)
-7. NEVER rename with find-and-replace (use `gitnexus_rename`)
+6. NEVER use `grep`/`rg` for code search (use `query`/`cypher`)
+7. NEVER rename with find-and-replace — use `gitnexus_rename` with `dry_run: true` FIRST, then apply
+8. NEVER commit without `detect_changes({scope:"compare", base_ref:"main"})` for regression review
 
 ### Sub-agent GitNexus discovery rule
 
-Before using any GitNexus command, sub-agents MUST run `gitnexus --help` to see all available tools, then `gitnexus <command> --help` for the chosen command. This ensures they pick the best tool for their mission (e.g., `trace` for path-finding, `cypher` for complex graph queries, `check` for circular imports, `wiki` for documentation).
+Before using any GitNexus command, sub-agents MUST run `gitnexus --help`, then `gitnexus <command> --help` for the chosen command. This ensures they pick the best tool for the mission: `trace` for path-finding, `cypher` for complex graph queries, `check` for circular imports, `wiki` for documentation, `explain`/`pdg_query` for security and data-flow.
 
 ### rust-skills categories by task type
 
@@ -161,9 +205,13 @@ gh workflow run ci.yml --ref $(git branch --show-current) && gh run watch
 
 **GitNexus index refresh:**
 ```bash
-gitnexus analyze --index-only --skip-agents-md    # ALWAYS use --skip-agents-md
+gitnexus analyze --index-only --skip-agents-md         # ALWAYS use --skip-agents-md
+gitnexus analyze --pdg --index-only --skip-agents-md   # Enable taint + control/data dependence
 gitnexus analyze --skills --index-only --skip-agents-md  # Only when regenerating skill files
+gitnexus status                                          # Freshness check
 ```
+
+> Plain `gitnexus analyze` preserves existing embeddings. If embeddings were ever enabled, every future analyze needs `--embeddings` again to vectorize new/changed nodes. Use `--drop-embeddings` only on purpose.
 
 ---
 
@@ -199,7 +247,7 @@ gitnexus analyze --skills --index-only --skip-agents-md  # Only when regeneratin
 ### Allowed without asking
 - Read any file in the repo
 - `cargo check`, `cargo clippy`, `cargo fmt`, `cargo nextest run`
-- CodeDB and GitNexus tools
+- GitNexus MCP tools and CLI (`gitnexus analyze`, `status`, `query`, `impact`, `context`, etc.)
 - Edit files within `src/`, `tests/`, `benches/`, `examples/`
 
 ### Ask first
@@ -209,13 +257,15 @@ gitnexus analyze --skills --index-only --skip-agents-md  # Only when regeneratin
 - `cargo build --release` or `cargo llvm-cov`
 - Modifying CI/CD (`.github/`)
 - New files outside `src/`, `tests/`, `benches/`, `examples/`
+- Re-indexing with `--pdg` or `--drop-embeddings` (data-loss / cost implications)
 
 ### Never
 - Commit secrets, `.env`, or credentials
 - `.unwrap()` in production — use `?` or `match`
 - Force push to main
 - Modify `target/`, `dist/`, `build/`
-- Run `gitnexus analyze` in dirty worktree (breaks `detect_changes()`)
+- Run `gitnexus analyze` in a dirty worktree (breaks `detect_changes()`)
+- Use a package runner for GitNexus (`npx`/`bunx`) — install globally; verify with `which gitnexus`
 
 ---
 
@@ -229,6 +279,7 @@ gitnexus analyze --skills --index-only --skip-agents-md  # Only when regeneratin
 - [ ] `cargo check` + `cargo clippy -- -D warnings` + `cargo fmt`
 - [ ] `cargo nextest run` (at least affected module)
 - [ ] `gitnexus_detect_changes()` shows only expected symbols
+- [ ] `gitnexus_detect_changes({scope:"compare", base_ref:"main"})` for regression review
 - [ ] Error messages in Spanish if user-facing
 - [ ] New public items have doc comments
 
@@ -251,117 +302,95 @@ gitnexus analyze --skills --index-only --skip-agents-md  # Only when regeneratin
 
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **rust_scraper** (4402 nodes, 10140 edges, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **rust_scraper** (4402 nodes, 10140 edges, 300 execution flows). GitNexus is the single source of truth for code intelligence here — it replaces grep, ripgrep, and structural search for source code.
 
-> Index stale? Run `gitnexus analyze --index-only --skip-agents-md` from the project root. Use `gitnexus analyze --skills --index-only --skip-agents-md` only when regenerating skill files.
+> Index stale? Run `gitnexus analyze --index-only --skip-agents-md` from the project root. For taint + control/data dependence, run `gitnexus analyze --pdg --index-only --skip-agents-md`.
 
-## Always Do
+## Core Tools (16 MCP tools: 11 per-repo + 5 group)
 
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows. For regression review, compare against the default branch: `detect_changes({scope: "compare", base_ref: "main"})`.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `context({name: "symbolName"})`.
+| Tool | Purpose |
+|:-----|:--------|
+| `query` | Process-grouped hybrid search (BM25 + semantic + RRF) |
+| `context` | 360° symbol view — callers, callees, processes |
+| `impact` | Blast radius with depth + confidence (`mode:"pdg"` for statement-level) |
+| `detect_changes` | Map git diff → affected symbols + flows |
+| `rename` | Multi-file coordinated rename via call graph (`dry_run:true` first, always) |
+| `cypher` | Raw graph queries — read schema resource first |
+| `trace` | Shortest path between two symbols |
+| `check` | Structural checks (circular imports) |
+| `explain` | Taint findings (needs `--pdg`) |
+| `pdg_query` | Control/data dependence (needs `--pdg`) |
+| `api_impact` | Pre-change impact for API route handlers |
+| `route_map` | API route ↔ handler ↔ consumer mapping |
+| `shape_check` | Response shape vs consumer access mismatch |
+| `tool_map` | MCP/RPC tool definitions ↔ handlers |
+| `list_repos` | Discover indexed repos (paginated) |
+| `group_list` / `group_sync` / `group_query` / `group_status` | Multi-repo: contracts, cross-repo search, staleness |
 
-## Never Do
-
-- NEVER edit a function, class, or method without first running `impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
-- NEVER commit changes without running `detect_changes()` to check affected scope.
-
-## Resources
+## MCP Resources
 
 | Resource | Use for |
 |:---------|:--------|
-| `gitnexus://repo/rust_scraper/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/rust_scraper/clusters` | All functional areas |
+| `gitnexus://repos` | List all indexed repos (read first) |
+| `gitnexus://repo/rust_scraper/context` | Stats, staleness, available tools |
+| `gitnexus://repo/rust_scraper/clusters` | All functional areas with cohesion scores |
+| `gitnexus://repo/rust_scraper/cluster/{name}` | Cluster members + file paths |
 | `gitnexus://repo/rust_scraper/processes` | All execution flows |
-| `gitnexus://repo/rust_scraper/process/{name}` | Step-by-step execution trace |
+| `gitnexus://repo/rust_scraper/process/{name}` | Step-by-step trace |
+| `gitnexus://repo/rust_scraper/schema` | Graph schema — read before writing Cypher |
 
-## Skills
+## MCP Prompts
 
-| Task | Skill |
-|:-----|:------|
-| Understand architecture / "How does X work?" | `gitnexus` |
-| Blast radius / "What breaks if I change X?" | `gitnexus` |
-| Trace bugs / "Why is X failing?" | `gitnexus` |
-| Rename / extract / split / refactor | `gitnexus` |
-| Review pull requests | `gitnexus` |
-| Tools, resources, schema reference | `gitnexus` |
-| Index, status, clean, wiki CLI commands | `gitnexus` |
+| Prompt | Purpose |
+|:-------|:--------|
+| `detect_impact` | Pre-commit change analysis: scope, affected processes, risk |
+| `generate_map` | Architecture documentation with Mermaid diagrams |
+
+## Graph Schema (for `cypher`)
+
+**Nodes:** `File` · `Folder` · `Function` · `Class` · `Interface` · `Method` · `Community` · `Process` · `CodeElement` (+ multi-language: `Struct`, `Enum`, `Trait`, `Impl`)
+
+**Edges (via `CodeRelation.type`):** `CONTAINS` · `DEFINES` · `CALLS` · `IMPORTS` · `EXTENDS` · `IMPLEMENTS` · `HAS_METHOD` · `HAS_PROPERTY` · `ACCESSES` · `MEMBER_OF` · `STEP_IN_PROCESS`
+
+```cypher
+-- Who calls a function?
+MATCH (caller)-[:CodeRelation {type: 'CALLS'}]->(f:Function {name: "myFunc"})
+RETURN caller.name, caller.filePath
+
+-- What community owns a symbol?
+MATCH (f:Function {name: "myFunc"})-[:CodeRelation {type: 'MEMBER_OF'}]->(c:Community)
+RETURN c.heuristicLabel
+```
+
+## Risk Table (universal)
+
+| Signal | Risk |
+|:-------|:-----|
+| d=1 dependents (direct callers/importers) | **WILL BREAK** |
+| d=2 dependents | LIKELY AFFECTED |
+| d=3 dependents | MAY NEED TESTING |
+| <5 symbols, 0–1 processes | LOW |
+| 5–15 symbols, 2–5 processes | MEDIUM |
+| >15 symbols or many processes | HIGH |
+| Auth / payments / data integrity path | CRITICAL |
+| d=1 callers exist outside a PR diff | Potential breakage — flag it |
 
 ## CLI Commands
 
 | Command | Use for |
 |:--------|:--------|
 | `gitnexus analyze --index-only --skip-agents-md` | Refresh index (ALWAYS with `--skip-agents-md`) |
-| `gitnexus impact` | Blast radius before editing |
-| `gitnexus context` | 360° view: callers, callees, processes |
-| `gitnexus query` | Find execution flows by concept |
-| `gitnexus trace <from> <to>` | Shortest path between two symbols |
+| `gitnexus analyze --pdg --index-only --skip-agents-md` | Enable taint + control/data dependence |
+| `gitnexus analyze --skills --index-only --skip-agents-md` | Only when regenerating skill files |
+| `gitnexus status` | Index freshness check |
+| `gitnexus query "concept"` | Find execution flows |
+| `gitnexus context Symbol` | 360° view |
+| `gitnexus impact Symbol --direction upstream` | Blast radius |
+| `gitnexus trace <from> <to>` | Shortest path between symbols |
 | `gitnexus detect-changes` | Map diff to affected symbols/flows |
 | `gitnexus check` | Structural checks (circular imports) |
-| `gitnexus cypher` | Raw graph queries for complex analysis |
-| `gitnexus wiki` | Generate docs from knowledge graph |
+| `gitnexus cypher "MATCH ..."` | Raw graph queries |
 | `gitnexus rename` | Safe rename via call graph |
-| `gitnexus status` | Index freshness check |
+| `gitnexus wiki` | Generate docs from knowledge graph |
 
 <!-- gitnexus:end -->
-
-<!-- codedb:start -->
-
-# CodeDB — Structural Code Search
-
-CodeDB is a fast structural search engine. Prefer CodeDB MCP tools for indexed structural search. Use the CLI with the explicit project path only as a fallback. GitNexus handles deep graph analysis and execution flows.
-
-> **MCP status:** CodeDB MCP is available again. Use MCP first. If it fails or cannot load the project, fall back to the CLI with explicit path: `codedb /home/xavi/Projects/rust_scraper <command>`.
->
-> Index stale? Run `codedb /home/xavi/Projects/rust_scraper index` from the project root.
-
-## When to Use CodeDB
-
-- **Quick file tree** — `codedb_tree` MCP, or CLI fallback: `codedb /home/xavi/Projects/rust_scraper tree`
-- **Find symbol definitions** — `codedb_symbol` MCP, or CLI fallback: `codedb /home/xavi/Projects/rust_scraper symbol <name>`
-- **Full-text search** — `codedb_search` MCP, or CLI fallback: `codedb /home/xavi/Projects/rust_scraper search <query>`
-- **Find all callers** — `codedb_callers` MCP, or CLI fallback: `codedb /home/xavi/Projects/rust_scraper callers <name>`
-- **File outline** — `codedb_outline` MCP, or CLI fallback: `codedb /home/xavi/Projects/rust_scraper outline <path>`
-- **Dependency graph** — `codedb_deps` MCP, or CLI fallback: `codedb /home/xavi/Projects/rust_scraper deps <path>`
-- **Index status** — `codedb_status` MCP, or CLI fallback: `codedb /home/xavi/Projects/rust_scraper status`
-
-## CodeDB vs GitNexus
-
-| Use CodeDB for | Use GitNexus for |
-|:---------------|:-----------------|
-| Fast structural search (sub-ms) | Deep execution flow analysis |
-| File trees, outlines, symbol lookup | Impact analysis (blast radius) |
-| Full-text search (trigram) | Process tracing, call chains |
-| Dependency graph (import analysis) | Community detection, clusters |
-
-**Use both:** CodeDB for quick lookups, GitNexus for deep analysis.
-
-## CLI Command Reference
-
-| Command | Example |
-|:--------|:--------|
-| `codedb <root> tree` | Project orientation — file tree with symbol counts |
-| `codedb <root> symbol <name>` | Find where a symbol is defined |
-| `codedb <root> search <query>` | Full-text search (supports regex with `--regex`) |
-| `codedb <root> callers <name>` | Every call site of a symbol |
-| `codedb <root> outline <path>` | Functions/structs/imports in a file |
-| `codedb <root> deps <path>` | Dependency graph (`--depends-on`, `--transitive`) |
-| `codedb <root> status` | Index freshness and size |
-| `codedb <root> hot` | Recently modified files |
-| `codedb <root> find <name>` | Fuzzy file-name search |
-| `codedb <root> context <task>` | Task-shaped context bundle |
-
-`<root>` = `/home/xavi/Projects/rust_scraper` for this project.
-
-## Never Do
-
-- NEVER use `codedb_edit` when native edit tools work — it's a fallback only
-- NEVER use CodeDB for impact analysis — use GitNexus `impact` instead
-- NEVER use CodeDB for execution flow tracing — use GitNexus `query`/`context` instead
-- NEVER invoke `codedb mcp` manually during normal agent work — use the configured MCP tools. Use CLI only as fallback with explicit `/home/xavi/Projects/rust_scraper` path.
-
-<!-- codedb:end -->
