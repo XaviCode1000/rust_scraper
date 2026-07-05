@@ -286,6 +286,19 @@ mod tests {
         assert_eq!(url.as_url().port(), Some(8080));
     }
 
+    #[test]
+    fn test_valid_url_rejects_invalid() {
+        assert!(ValidUrl::parse("not-a-url").is_err());
+    }
+
+    #[test]
+    fn test_valid_url_ftp_scheme_accepted() {
+        // url::Url::parse accepts ftp:// — ValidUrl wraps it without scheme filtering.
+        // This test documents current behavior: ftp scheme is NOT rejected.
+        let result = ValidUrl::parse("ftp://example.com/file");
+        assert!(result.is_ok());
+    }
+
     // ========================================================================
     // CorrelationId tests
     // ========================================================================

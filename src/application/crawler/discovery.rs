@@ -1154,6 +1154,30 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_sitemap_invalid_xml() {
+        // Spec Scenario 9: non-XML content returns Ok with empty vec (graceful degradation)
+        let xml = "not xml at all";
+        let base = Url::parse("https://example.com").unwrap();
+        let urls = parse_sitemap(xml, &base).unwrap();
+        assert!(urls.is_empty());
+    }
+
+    #[test]
+    fn test_parse_sitemap_relative_urls_resolved() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url><loc>/page1</loc></url>
+    <url><loc>https://external.com/page2</loc></url>
+</urlset>"#;
+
+        let base = Url::parse("https://example.com").unwrap();
+        let urls = parse_sitemap(xml, &base).unwrap();
+        assert_eq!(urls.len(), 2);
+        assert!(urls.contains(&"https://example.com/page1".to_string()));
+        assert!(urls.contains(&"https://external.com/page2".to_string()));
+    }
+
+    #[test]
     fn test_robots_txt_disallow_enforcement() {
         let robots_body = "\
 User-agent: *

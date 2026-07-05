@@ -672,6 +672,69 @@ mod tests {
         assert_ne!(a, b);
     }
 
+    #[test]
+    fn test_document_chunk_from_scraped_content() {
+        let scraped = ScrapedContent {
+            title: "Test Title".to_string(),
+            content: "Test content body".to_string(),
+            url: ValidUrl::parse("https://example.com/article").unwrap(),
+            excerpt: Some("An excerpt".to_string()),
+            author: Some("Jane Doe".to_string()),
+            date: Some("2024-06-01".to_string()),
+            html: None,
+            assets: Vec::new(),
+            correlation_id: None,
+        };
+
+        let chunk = DocumentChunk::from_scraped_content(&scraped);
+
+        assert_eq!(chunk.url, "https://example.com/article");
+        assert_eq!(chunk.title, "Test Title");
+        assert_eq!(chunk.content, "Test content body");
+        assert!(chunk.metadata.contains_key("excerpt"));
+        assert!(chunk.metadata.contains_key("author"));
+        assert!(chunk.metadata.contains_key("date"));
+        assert!(chunk.metadata.contains_key("domain"));
+        assert_eq!(chunk.metadata["domain"], "example.com");
+        assert!(chunk.embeddings.is_none());
+    }
+
+    #[test]
+    fn test_document_chunk_validate_empty_content() {
+        let chunk = DocumentChunk::new(
+            uuid::Uuid::new_v4(),
+            "https://example.com",
+            "Title",
+            "",
+        );
+        assert!(matches!(chunk.validate(), Err(ValidationError::EmptyContent)));
+    }
+
+    #[test]
+    fn test_document_chunk_validate_empty_title() {
+        let chunk = DocumentChunk::new(
+            uuid::Uuid::new_v4(),
+            "https://example.com",
+            "",
+            "content here",
+        );
+        assert!(matches!(chunk.validate(), Err(ValidationError::EmptyTitle)));
+    }
+
+    #[test]
+    fn test_document_chunk_validate_invalid_url() {
+        let chunk = DocumentChunk::new(
+            uuid::Uuid::new_v4(),
+            "not-a-url",
+            "Title",
+            "content here",
+        );
+        assert!(matches!(
+            chunk.validate(),
+            Err(ValidationError::InvalidUrl(_))
+        ));
+    }
+
     // -- ScrapedContent Debug test --
 
     #[test]
