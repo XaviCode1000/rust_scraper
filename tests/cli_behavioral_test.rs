@@ -113,6 +113,7 @@ async fn test_single_page_writes_output_file() {
     let files: Vec<_> = std::fs::read_dir(output.path())
         .unwrap()
         .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().map(|ft| ft.is_file()).unwrap_or(false))
         .collect();
     assert!(
         !files.is_empty(),
