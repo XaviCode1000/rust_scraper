@@ -461,7 +461,6 @@ fn test_batch_stdin_processes_urls() {
         .assert();
 }
 
-
 /// --batch-file reads URLs from a file.
 #[test]
 fn test_batch_file_processes_urls() {

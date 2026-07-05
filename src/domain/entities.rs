@@ -701,13 +701,11 @@ mod tests {
 
     #[test]
     fn test_document_chunk_validate_empty_content() {
-        let chunk = DocumentChunk::new(
-            uuid::Uuid::new_v4(),
-            "https://example.com",
-            "Title",
-            "",
-        );
-        assert!(matches!(chunk.validate(), Err(ValidationError::EmptyContent)));
+        let chunk = DocumentChunk::new(uuid::Uuid::new_v4(), "https://example.com", "Title", "");
+        assert!(matches!(
+            chunk.validate(),
+            Err(ValidationError::EmptyContent)
+        ));
     }
 
     #[test]
@@ -723,12 +721,7 @@ mod tests {
 
     #[test]
     fn test_document_chunk_validate_invalid_url() {
-        let chunk = DocumentChunk::new(
-            uuid::Uuid::new_v4(),
-            "not-a-url",
-            "Title",
-            "content here",
-        );
+        let chunk = DocumentChunk::new(uuid::Uuid::new_v4(), "not-a-url", "Title", "content here");
         assert!(matches!(
             chunk.validate(),
             Err(ValidationError::InvalidUrl(_))
