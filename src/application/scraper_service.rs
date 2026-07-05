@@ -11,13 +11,33 @@
 //! - **config-externalize**: Concurrency is configurable via ScraperConfig
 //! - **async-concurrency-limit**: Uses buffer_unordered for concurrency control
 
+use crate::application::http_client::{HttpClientPort, HttpError};
 use crate::domain::{DownloadedAsset, ScrapedContent, ValidUrl};
 use crate::error::{Result, ScraperError};
 use crate::infrastructure::http::waf_engine::WafInspector;
 use crate::ScraperConfig;
 use futures::stream::{self, StreamExt};
 use tracing::{debug, info, instrument, warn};
-use wreq::Client;
+
+/// Convert an [`HttpError`] into a [`ScraperError`] with the URL context.
+fn scraper_error_from_http(err: HttpError, url: &str) -> ScraperError {
+    match err {
+        HttpError::ClientError(code) | HttpError::ServerError(code) => {
+            ScraperError::http(code, url)
+        },
+        HttpError::Forbidden => ScraperError::http(403, url),
+        HttpError::RateLimited(retry_after) => {
+            ScraperError::Network(format!("rate limited, retry after {retry_after}s"))
+        },
+        HttpError::Timeout => ScraperError::Network("request timeout".into()),
+        HttpError::Connection(msg) => ScraperError::Network(msg),
+        HttpError::Request(msg) => ScraperError::Network(msg),
+        HttpError::WafChallenge(provider) => ScraperError::WafBlocked {
+            url: url.to_string(),
+            provider,
+        },
+    }
+}
 
 /// Maximum HTML body size to log/instrument (1MB)
 /// Bodies larger than this are skipped to avoid performance issues
@@ -26,6 +46,51 @@ const MAX_INSTRUMENTED_BODY_SIZE: usize = 1_048_576;
 /// Minimum character threshold for considering content "substantial".
 /// Pages below this threshold after extraction likely require JS rendering.
 const MIN_CONTENT_CHARS: usize = 50;
+
+/// Extract HTML content using a CSS selector.
+///
+/// When `selector` is not "body", parses the HTML and extracts all elements
+/// matching the selector. Returns the outer HTML of matched elements wrapped
+/// in a `<div>` for Readability processing. If no elements match, returns
+/// the original HTML unchanged.
+pub(crate) fn extract_with_selector(html: &str, selector: &str) -> String {
+    if selector == "body" {
+        return html.to_owned();
+    }
+
+    let document = scraper::Html::parse_document(html);
+    let sel = match scraper::Selector::parse(selector) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!(
+                "Invalid CSS selector '{}': {}, falling back to full HTML",
+                selector, e
+            );
+            return html.to_owned();
+        },
+    };
+
+    let matched: Vec<String> = document.select(&sel).map(|el| el.html()).collect();
+
+    if matched.is_empty() {
+        warn!(
+            "CSS selector '{}' matched 0 elements, falling back to full HTML",
+            selector
+        );
+        return html.to_owned();
+    }
+
+    debug!(
+        "CSS selector '{}' matched {} elements",
+        selector,
+        matched.len()
+    );
+
+    format!(
+        "<div id=\"selector-extracted\">{}</div>",
+        matched.join("\n")
+    )
+}
 
 /// Result of SPA content detection analysis.
 ///
@@ -103,7 +168,7 @@ pub fn detect_spa_content(
 /// # }
 /// ```
 pub async fn scrape_with_readability(
-    client: &Client,
+    client: &dyn HttpClientPort,
     url: &url::Url,
 ) -> Result<Vec<ScrapedContent>> {
     scrape_with_config(client, url, &ScraperConfig::default()).await
@@ -131,7 +196,7 @@ pub async fn scrape_with_readability(
     )
 )]
 pub async fn scrape_with_config(
-    client: &Client,
+    client: &dyn HttpClientPort,
     url: &url::Url,
     config: &ScraperConfig,
 ) -> Result<Vec<ScrapedContent>> {
@@ -139,20 +204,16 @@ pub async fn scrape_with_config(
 
     info!("🌐 Fetching: {}", url);
 
-    let response = match client.get(url.as_str()).send().await {
+    let response = match client.get(url.as_str()).await {
         Ok(resp) => resp,
-        Err(e) => return Err(ScraperError::Network(e.to_string())),
+        Err(e) => return Err(scraper_error_from_http(e, url.as_str())),
     };
 
-    let status = response.status();
-    if !status.is_success() {
-        return Err(ScraperError::http(status.as_u16(), url.as_str()));
+    if !(200..300).contains(&response.status) {
+        return Err(ScraperError::http(response.status, url.as_str()));
     }
 
-    let html = response
-        .text()
-        .await
-        .map_err(|e| ScraperError::Network(e.to_string()))?;
+    let html = response.body;
 
     // Record HTML size in span, skip logging for large bodies (>1MB) to avoid performance issues
     let html_size = html.len();
@@ -192,8 +253,11 @@ pub async fn scrape_with_config(
         ((html.len() - cleaned_html.len()) as f64 / html.len() as f64 * 100.0).round()
     );
 
+    // Apply CSS selector extraction if a non-default selector is configured.
+    let extraction_html = extract_with_selector(&cleaned_html, &config.selector);
+
     // Try Readability first, fallback to plain text extraction
-    match crate::infrastructure::scraper::readability::parse(&cleaned_html, Some(url.as_str())) {
+    match crate::infrastructure::scraper::readability::parse(&extraction_html, Some(url.as_str())) {
         Ok(article) => {
             let assets = download_assets_if_enabled(&html, url, config).await?;
 
@@ -231,7 +295,8 @@ pub async fn scrape_with_config(
         },
         Err(e) => {
             warn!("⚠️  Readability failed for {}: {}", url, e);
-            let fallback_content = crate::infrastructure::scraper::fallback::extract_text(&html);
+            let fallback_content =
+                crate::infrastructure::scraper::fallback::extract_text(&extraction_html);
             let assets = download_assets_if_enabled(&html, url, config).await?;
 
             // SPA detection: check if fallback content is minimal
@@ -303,7 +368,7 @@ pub async fn scrape_with_config(
 /// # Note
 /// Failed URLs are logged but don't stop the entire batch.
 pub async fn scrape_multiple_with_limit(
-    client: &Client,
+    client: &dyn HttpClientPort,
     urls: &[url::Url],
     config: &ScraperConfig,
 ) -> Result<Vec<ScrapedContent>> {
@@ -319,10 +384,8 @@ pub async fn scrape_multiple_with_limit(
 
     let results: Vec<Result<Vec<ScrapedContent>>> = stream::iter(urls.to_vec())
         .map(|url| {
-            let client = client.clone();
             let config = config.clone();
-            let url = url.clone();
-            async move { scrape_with_config(&client, &url, &config).await }
+            async move { scrape_with_config(client, &url, &config).await }
         })
         .buffer_unordered(config.scraper_concurrency)
         .collect()
@@ -372,6 +435,8 @@ pub(crate) async fn download_assets_if_enabled(
 mod tests {
     use super::*;
     use crate::application::http_client::create_http_client;
+    use crate::application::http_client::port::{HttpClientPort, HttpResponse};
+    use std::collections::HashMap;
 
     #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
     #[tokio::test]
@@ -490,5 +555,233 @@ mod tests {
             detect_spa_content("https://example.com", "", "<html><body></body></html>");
         assert!(result_without_markers.is_some());
         assert!(!result_without_markers.unwrap().has_spa_markers);
+    }
+
+    // --- Mock-based tests for HttpClientPort integration ---
+
+    struct MockHttpClient {
+        responses: HashMap<String, crate::application::http_client::HttpResult<HttpResponse>>,
+    }
+
+    impl MockHttpClient {
+        fn new() -> Self {
+            Self {
+                responses: HashMap::new(),
+            }
+        }
+
+        fn with_response(
+            mut self,
+            url: &str,
+            result: crate::application::http_client::HttpResult<HttpResponse>,
+        ) -> Self {
+            self.responses.insert(url.to_string(), result);
+            self
+        }
+    }
+
+    impl HttpClientPort for MockHttpClient {
+        fn get(
+            &self,
+            url: &str,
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = crate::application::http_client::HttpResult<HttpResponse>,
+                    > + Send
+                    + '_,
+            >,
+        > {
+            let result = self
+                .responses
+                .get(url)
+                .cloned()
+                .unwrap_or(Err(HttpError::ClientError(404)));
+            Box::pin(async move { result })
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mock_html_returns_title_and_content() {
+        let html = r#"<!DOCTYPE html>
+<html>
+<head><title>Test Page</title></head>
+<body>
+<article>
+<h1>Main Heading</h1>
+<p>This is the content of the article. It has enough text to be extracted by Readability.</p>
+</article>
+</body>
+</html>"#;
+
+        let url = url::Url::parse("https://example.com").unwrap();
+        let mock = MockHttpClient::new().with_response(
+            url.as_str(),
+            Ok(HttpResponse {
+                status: 200,
+                body: html.to_string(),
+                headers: HashMap::new(),
+            }),
+        );
+
+        let result = scrape_with_readability(&mock, &url).await;
+        match &result {
+            Ok(contents) => {
+                assert!(!contents.is_empty());
+                assert!(!contents[0].content.is_empty());
+            },
+            Err(e) => panic!("mock HTML should succeed, got: {e}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mock_404_returns_http_error() {
+        let url = url::Url::parse("https://example.com/notfound").unwrap();
+        let mock =
+            MockHttpClient::new().with_response(url.as_str(), Err(HttpError::ClientError(404)));
+
+        let result = scrape_with_readability(&mock, &url).await;
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, ScraperError::Http { status: 404, .. }),
+            "expected Http(404), got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_mock_empty_body_graceful_handling() {
+        let url = url::Url::parse("https://example.com").unwrap();
+        let mock = MockHttpClient::new().with_response(
+            url.as_str(),
+            Ok(HttpResponse {
+                status: 200,
+                body: String::new(),
+                headers: HashMap::new(),
+            }),
+        );
+
+        let result = scrape_with_readability(&mock, &url).await;
+        // Empty body should not panic — Readability or fallback handles it
+        match &result {
+            Ok(contents) => assert!(!contents.is_empty()),
+            Err(e) => panic!("empty body should succeed, got: {e}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mock_timeout_error_propagation() {
+        let url = url::Url::parse("https://slow.example.com").unwrap();
+        let mock = MockHttpClient::new().with_response(url.as_str(), Err(HttpError::Timeout));
+
+        let result = scrape_with_readability(&mock, &url).await;
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("timeout"),
+            "error should mention timeout: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_mock_connection_error_propagation() {
+        let url = url::Url::parse("https://unreachable.example.com").unwrap();
+        let mock = MockHttpClient::new().with_response(
+            url.as_str(),
+            Err(HttpError::Connection("connection refused".into())),
+        );
+
+        let result = scrape_with_readability(&mock, &url).await;
+        assert!(result.is_err());
+
+        let err = result.unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("connection refused"),
+            "error should mention connection: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_mock_forbidden_returns_403() {
+        let url = url::Url::parse("https://blocked.example.com").unwrap();
+        let mock = MockHttpClient::new().with_response(url.as_str(), Err(HttpError::Forbidden));
+
+        let result = scrape_with_readability(&mock, &url).await;
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            ScraperError::Http { status, .. } => assert_eq!(status, 403),
+            other => panic!("expected Http(403), got: {other}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mock_server_error_returns_500() {
+        let url = url::Url::parse("https://error.example.com").unwrap();
+        let mock =
+            MockHttpClient::new().with_response(url.as_str(), Err(HttpError::ServerError(500)));
+
+        let result = scrape_with_readability(&mock, &url).await;
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            ScraperError::Http { status, .. } => assert_eq!(status, 500),
+            other => panic!("expected Http(500), got: {other}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_mock_non_200_status_returns_error() {
+        let url = url::Url::parse("https://example.com").unwrap();
+        let mock = MockHttpClient::new().with_response(
+            url.as_str(),
+            Ok(HttpResponse {
+                status: 301,
+                body: String::new(),
+                headers: HashMap::new(),
+            }),
+        );
+
+        let result = scrape_with_readability(&mock, &url).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_mock_rate_limited_error() {
+        let url = url::Url::parse("https://api.example.com").unwrap();
+        let mock =
+            MockHttpClient::new().with_response(url.as_str(), Err(HttpError::RateLimited(60)));
+
+        let result = scrape_with_readability(&mock, &url).await;
+        assert!(result.is_err());
+
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("rate limited"),
+            "error should mention rate limiting: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_mock_waf_challenge_error() {
+        let url = url::Url::parse("https://protected.example.com").unwrap();
+        let mock = MockHttpClient::new().with_response(
+            url.as_str(),
+            Err(HttpError::WafChallenge("Cloudflare".into())),
+        );
+
+        let result = scrape_with_readability(&mock, &url).await;
+        assert!(result.is_err());
+
+        match result.unwrap_err() {
+            ScraperError::WafBlocked { provider, .. } => {
+                assert_eq!(provider, "Cloudflare");
+            },
+            other => panic!("expected WafBlocked, got: {other}"),
+        }
     }
 }

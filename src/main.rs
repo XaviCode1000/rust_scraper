@@ -152,6 +152,14 @@ async fn __main() -> CliExit {
     let mut args = match Args::try_parse() {
         Ok(args) => args,
         Err(e) => {
+            // clap returns DisplayHelp/DisplayVersion for --help/--version
+            // These are NOT errors — print and exit 0
+            if e.kind() == clap::error::ErrorKind::DisplayHelp
+                || e.kind() == clap::error::ErrorKind::DisplayVersion
+            {
+                e.print().ok();
+                return CliExit::Success;
+            }
             eprintln!("{}", e);
             return CliExit::UsageError("invalid arguments".into());
         },
@@ -192,8 +200,11 @@ async fn __main() -> CliExit {
     // 4. URL handling with interactive wizard
     // =========================================================================
 
+    // Batch mode reads URLs from stdin/file — --url is not required
+    let is_batch = args.batch || args.batch_file.is_some();
+
     // If no URL provided, check for interactive mode
-    if args.url.is_none() {
+    if args.url.is_none() && !is_batch {
         // CI environment always requires --url
         if is_ci() {
             eprintln!("Error: --url is required for scraping (CI mode)");

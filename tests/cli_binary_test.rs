@@ -47,27 +47,24 @@ fn test_invalid_url_shows_error() {
 // ============================================================================
 
 /// Test that --help contains scraper description
-///
-/// Note: --help exits with code 64 because the app uses try_parse()
-/// which treats DisplayHelp as an error. The help text is still printed.
+/// Test that --help prints usage and exits with code 0.
 #[test]
 fn test_help_contains_scraper() {
-    // The help text goes to stderr due to try_parse() behavior
     cmd()
         .arg("--help")
         .assert()
-        .code(64)
-        .stderr(predicate::str::contains("web scraper"));
+        .code(0)
+        .stdout(predicate::str::contains("web scraper"));
 }
 
-/// Test that --version outputs something
+/// Test that --version outputs version and exits with code 0.
 #[test]
 fn test_version() {
     cmd()
         .arg("--version")
         .assert()
-        .code(64)
-        .stderr(predicate::str::contains("1.1.0"));
+        .code(0)
+        .stdout(predicate::str::contains("1.1.0"));
 }
 
 // ============================================================================

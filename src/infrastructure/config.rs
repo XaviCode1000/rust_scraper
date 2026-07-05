@@ -79,6 +79,8 @@ pub struct ScraperConfig {
     pub scraper_concurrency: usize,
     /// Maximum pages to scrape (None = unlimited)
     pub max_pages: Option<usize>,
+    /// CSS selector for content extraction (default: "body")
+    pub selector: String,
 }
 
 impl Default for ScraperConfig {
@@ -91,6 +93,7 @@ impl Default for ScraperConfig {
             download_timeout_secs: 30,
             scraper_concurrency: 3, // HDD-aware: nproc - 1 for 4C CPU
             max_pages: None,
+            selector: "body".to_owned(),
         }
     }
 }
@@ -154,6 +157,13 @@ impl ScraperConfig {
     #[must_use]
     pub fn with_max_pages(mut self, pages: usize) -> Self {
         self.max_pages = Some(pages);
+        self
+    }
+
+    /// Set CSS selector for content extraction.
+    #[must_use]
+    pub fn with_selector(mut self, selector: String) -> Self {
+        self.selector = selector;
         self
     }
 }

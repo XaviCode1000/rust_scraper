@@ -40,6 +40,13 @@ pub fn handle_completions(shell: Shell) -> CliExit {
 /// 2. Scraping with progress
 /// 3. Export results
 pub async fn run(opts: CrawlOptions) -> CliExit {
+    // Dry-run mode: list planned URLs without any network requests
+    if opts.export.dry_run {
+        println!("Dry-run: 1 URL(s) would be scraped:");
+        println!("  {}", opts.url);
+        return CliExit::Success;
+    }
+
     // Batch mode: process URLs from stdin or file, then exit early
     if opts.batch.enabled {
         return run_batch(opts).await;
@@ -71,7 +78,8 @@ pub async fn run(opts: CrawlOptions) -> CliExit {
     let mut scraper_config = ScraperConfig::default()
         .with_output_dir(opts.export.output_dir.clone())
         .with_scraper_concurrency(opts.network.concurrency.resolve())
-        .with_max_pages(opts.crawl.max_pages);
+        .with_max_pages(opts.crawl.max_pages)
+        .with_selector(opts.crawl.selector.clone());
 
     // Apply download flags (builder pattern requires conditional application)
     if opts.network.download_images {
