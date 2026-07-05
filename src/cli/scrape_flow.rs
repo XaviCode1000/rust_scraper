@@ -7,6 +7,7 @@ use url::Url;
 
 use crate::adapters::tui::{ScrapeError, ScrapeProgress, ScrapeStatus};
 use crate::application::crawl_options::CrawlOptions;
+use crate::application::crawler::discovery::{is_allowed_by_robots, new_robots_cache};
 use crate::application::export_factory;
 use crate::application::scrape_single_url_for_tui;
 use crate::domain::ScrapedContent;
@@ -123,6 +124,9 @@ pub async fn scrape_urls(
 
     let _total_urls = urls.len();
 
+    // Robots.txt cache — shared across all URLs in this batch
+    let robots_cache = new_robots_cache();
+
     // Apply max_pages limit if configured
     let urls_to_process = if let Some(max_pages) = scraper_config.max_pages {
         let limited: Vec<_> = urls.iter().take(max_pages).cloned().collect();
@@ -167,6 +171,26 @@ pub async fn scrape_urls(
                         status: ScrapeStatus::Fetching,
                     })
                     .await;
+            }
+        }
+
+        // Robots.txt enforcement — skip disallowed URLs unless --ignore-robots
+        if !opts.crawl.ignore_robots {
+            let domain = url.host_str().unwrap_or("unknown");
+            if !is_allowed_by_robots(url_str, domain, &robots_cache).await {
+                info!("Blocked by robots.txt: {}", url_str);
+                if !opts.export.quiet {
+                    if let Some(ref tx) = progress_tx {
+                        let _ = tx
+                            .send(ScrapeProgress::Failed {
+                                url: url_str.to_string(),
+                                error: ScrapeError::Other("blocked by robots.txt".into()),
+                            })
+                            .await;
+                    }
+                }
+                failures.push((url_str.to_string(), "blocked by robots.txt".into()));
+                continue;
             }
         }
 
@@ -241,7 +265,7 @@ fn build_http_client_config(opts: &CrawlOptions) -> HttpClientConfig {
 
 #[cfg(test)]
 mod tests {
-    use super::build_http_client_config;
+    use super::{build_http_client_config, is_allowed_by_robots, new_robots_cache};
     use crate::application::crawl_options::CrawlOptions;
 
     #[test]
@@ -265,5 +289,18 @@ mod tests {
         let config = build_http_client_config(&opts);
 
         assert_eq!(config.timeout_secs, 30);
+    }
+
+    #[tokio::test]
+    async fn robots_cache_allows_public_urls() {
+        let cache = new_robots_cache();
+        // No robots.txt for localhost → fail-open → allowed
+        assert!(is_allowed_by_robots("http://localhost:18080/page", "localhost", &cache).await);
+    }
+
+    #[test]
+    fn ignore_robots_flag_defaults_to_false() {
+        let opts = CrawlOptions::default();
+        assert!(!opts.crawl.ignore_robots);
     }
 }

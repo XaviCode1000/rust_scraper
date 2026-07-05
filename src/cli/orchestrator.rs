@@ -40,6 +40,13 @@ pub fn handle_completions(shell: Shell) -> CliExit {
 /// 2. Scraping with progress
 /// 3. Export results
 pub async fn run(opts: CrawlOptions) -> CliExit {
+    // Dry-run mode: list planned URLs without any network requests
+    if opts.export.dry_run {
+        println!("Dry-run: 1 URL(s) would be scraped:");
+        println!("  {}", opts.url);
+        return CliExit::Success;
+    }
+
     // Batch mode: process URLs from stdin or file, then exit early
     if opts.batch.enabled {
         return run_batch(opts).await;
@@ -49,13 +56,17 @@ pub async fn run(opts: CrawlOptions) -> CliExit {
         plan_urls(true, opts.url.clone(), Vec::new())
     } else {
         // Create crawler config from CrawlOptions
-        let crawler_config = CrawlerConfig::builder(opts.url.clone())
+        let mut crawler_config = CrawlerConfig::builder(opts.url.clone())
             .max_pages(opts.crawl.max_pages)
             .max_depth(opts.crawl.max_depth)
             .include_patterns(opts.crawl.include_patterns.clone())
             .exclude_patterns(opts.crawl.exclude_patterns.clone())
             .ignore_robots(opts.crawl.ignore_robots)
-            .build();
+            .use_sitemap(opts.crawl.use_sitemap);
+        if let Some(ref sitemap_url) = opts.crawl.sitemap_url {
+            crawler_config = crawler_config.sitemap_url(sitemap_url);
+        }
+        let crawler_config = crawler_config.build();
 
         // URL discovery phase
         let discovered_urls: Vec<url::Url> = discover_urls(&crawler_config, &opts).await;
@@ -71,7 +82,8 @@ pub async fn run(opts: CrawlOptions) -> CliExit {
     let mut scraper_config = ScraperConfig::default()
         .with_output_dir(opts.export.output_dir.clone())
         .with_scraper_concurrency(opts.network.concurrency.resolve())
-        .with_max_pages(opts.crawl.max_pages);
+        .with_max_pages(opts.crawl.max_pages)
+        .with_selector(opts.crawl.selector.clone());
 
     // Apply download flags (builder pattern requires conditional application)
     if opts.network.download_images {
@@ -264,13 +276,17 @@ async fn run_batch(opts: CrawlOptions) -> CliExit {
     use crate::application::batch::BatchManager;
     use crate::domain::CrawlerConfig;
 
-    let crawler_config = CrawlerConfig::builder(opts.url.clone())
+    let mut crawler_config = CrawlerConfig::builder(opts.url.clone())
         .max_pages(opts.crawl.max_pages)
         .max_depth(opts.crawl.max_depth)
         .include_patterns(opts.crawl.include_patterns.clone())
         .exclude_patterns(opts.crawl.exclude_patterns.clone())
         .ignore_robots(opts.crawl.ignore_robots)
-        .build();
+        .use_sitemap(opts.crawl.use_sitemap);
+    if let Some(ref sitemap_url) = opts.crawl.sitemap_url {
+        crawler_config = crawler_config.sitemap_url(sitemap_url);
+    }
+    let crawler_config = crawler_config.build();
 
     let manager_result = if let Some(ref path) = opts.batch.batch_file {
         info!("Reading URLs from file: {}", path.display());

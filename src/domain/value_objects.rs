@@ -28,7 +28,7 @@ use uuid::Uuid;
 /// let traceparent = correlation_id.to_traceparent();
 /// assert!(traceparent.starts_with("00-"));
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CorrelationId {
     /// 128-bit UUID v7 (timestamp + random)
     trace_id: Uuid,
@@ -164,7 +164,7 @@ impl std::fmt::Display for CorrelationId {
 /// let valid = ValidUrl::parse("https://example.com").unwrap();
 /// assert!(valid.as_str().starts_with("https://example.com"));
 /// ```
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ValidUrl(url::Url);
 
 impl ValidUrl {
@@ -284,6 +284,19 @@ mod tests {
         let url = ValidUrl::parse("http://localhost:8080/api").unwrap();
         assert_eq!(url.host_str(), Some("localhost"));
         assert_eq!(url.as_url().port(), Some(8080));
+    }
+
+    #[test]
+    fn test_valid_url_rejects_invalid() {
+        assert!(ValidUrl::parse("not-a-url").is_err());
+    }
+
+    #[test]
+    fn test_valid_url_ftp_scheme_accepted() {
+        // url::Url::parse accepts ftp:// — ValidUrl wraps it without scheme filtering.
+        // This test documents current behavior: ftp scheme is NOT rejected.
+        let result = ValidUrl::parse("ftp://example.com/file");
+        assert!(result.is_ok());
     }
 
     // ========================================================================

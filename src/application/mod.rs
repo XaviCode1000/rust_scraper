@@ -31,6 +31,7 @@ pub use crawler::{
 };
 pub use deduplicator::{normalize_url, UrlDeduplicator};
 pub use http_client::create_http_client;
+pub use http_client::HttpClientPort;
 pub use rate_limiter::{RateLimiterConfig, SharedRateLimiter};
 pub use scraper_service::{
     detect_spa_content, scrape_multiple_with_limit, scrape_with_config, scrape_with_readability,

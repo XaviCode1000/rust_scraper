@@ -452,6 +452,33 @@ mod tests {
     }
 
     #[test]
+    fn test_is_allowed_exclude_takes_precedence_over_include() {
+        let seed = Url::parse("https://example.com").unwrap();
+        let config = CrawlerConfig::builder(seed)
+            .include_pattern("example.com".to_string())
+            .exclude_pattern("admin.example.com".to_string())
+            .build();
+
+        // Exclude wins over include
+        assert!(!is_allowed("https://admin.example.com/settings", &config));
+        // Non-excluded include still passes
+        assert!(is_allowed("https://example.com/page", &config));
+    }
+
+    #[test]
+    fn test_is_allowed_multiple_exclude_patterns() {
+        let seed = Url::parse("https://example.com").unwrap();
+        let config = CrawlerConfig::builder(seed)
+            .exclude_pattern("admin.example.com".to_string())
+            .exclude_pattern("draft.example.com".to_string())
+            .build();
+
+        assert!(!is_allowed("https://admin.example.com/page", &config));
+        assert!(!is_allowed("https://draft.example.com/post", &config));
+        assert!(is_allowed("https://public.example.com/page", &config));
+    }
+
+    #[test]
     fn test_is_excluded_ssrf_safe() {
         // SSRF bypass attempt should NOT be excluded (different host)
         let patterns = vec!["*.example.com".to_string()];

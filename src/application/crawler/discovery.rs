@@ -27,6 +27,122 @@ use dashmap::DashMap;
 use robotstxt::DefaultMatcher;
 
 // ============================================================================
+// Binary file download helpers
+// ============================================================================
+
+/// Simple percent-decoding for filenames (handles common cases).
+fn percent_decode(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let mut chars = input.chars();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            let hex: String = chars.by_ref().take(2).collect();
+            if let Ok(byte) = u8::from_str_radix(&hex, 16) {
+                result.push(byte as char);
+            } else {
+                result.push('%');
+                result.push_str(&hex);
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
+/// Derive a filename from Content-Disposition header or URL path.
+///
+/// Priority: Content-Disposition `filename` > URL path basename > fallback.
+fn derive_filename_from_response(
+    headers: &wreq::header::HeaderMap,
+    url: &Url,
+    content_type: &str,
+) -> String {
+    // Try Content-Disposition header first
+    if let Some(disposition) = headers.get(wreq::header::CONTENT_DISPOSITION) {
+        if let Ok(val) = disposition.to_str() {
+            // Parse filename*=UTF-8''encoded or filename="name"
+            if let Some(name) = parse_content_disposition(val) {
+                return name;
+            }
+        }
+    }
+
+    // Derive from URL path
+    let path = url.path();
+    let basename = path.rsplit('/').next().unwrap_or("");
+    if !basename.is_empty() && basename != "/" {
+        // Clean up the basename — remove query params that may be appended
+        let clean = basename.split('?').next().unwrap_or(basename);
+        if !clean.is_empty() {
+            return clean.to_string();
+        }
+    }
+
+    // Fallback: generate filename from content type
+    let ext = match content_type {
+        ct if ct.contains("application/pdf") => "pdf",
+        ct if ct.contains("application/zip") => "zip",
+        ct if ct.contains("application/x-tar") => "tar",
+        ct if ct.contains("image/png") => "png",
+        ct if ct.contains("image/jpeg") => "jpg",
+        ct if ct.contains("image/gif") => "gif",
+        ct if ct.contains("image/webp") => "webp",
+        ct if ct.contains("image/svg") => "svg",
+        ct if ct.contains("audio/mpeg") => "mp3",
+        ct if ct.contains("video/mp4") => "mp4",
+        _ => "bin",
+    };
+
+    // Use URL host + path hash for uniqueness
+    let host = url.host_str().unwrap_or("unknown");
+    let path_hash = {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        path.hash(&mut hasher);
+        format!("{:x}", hasher.finish())
+    };
+    format!("{}_{}.{ext}", host.replace('.', "_"), &path_hash[..8])
+}
+
+/// Parse Content-Disposition header value to extract filename.
+///
+/// Supports:
+/// - `filename="report.pdf"`
+/// - `filename=report.pdf`
+/// - `filename*=UTF-8''encoded-name.pdf`
+fn parse_content_disposition(value: &str) -> Option<String> {
+    // Try filename*= first (RFC 5987 encoding)
+    for part in value.split(';') {
+        let part = part.trim();
+        if let Some(rest) = part.strip_prefix("filename*=") {
+            // Format: UTF-8''encoded_name
+            if let Some(name) = rest.strip_prefix("UTF-8''") {
+                // Simple percent-decoding for common cases
+                let decoded = percent_decode(name);
+                if !decoded.is_empty() {
+                    return Some(decoded);
+                }
+            }
+        }
+    }
+
+    // Try filename= (standard)
+    for part in value.split(';') {
+        let part = part.trim();
+        if let Some(rest) = part.strip_prefix("filename=") {
+            let name = rest.trim_matches(|c| c == '"' || c == '\'');
+            if !name.is_empty() {
+                return Some(name.to_string());
+            }
+        }
+    }
+
+    None
+}
+
+// ============================================================================
 // Robots.txt Enforcement
 //
 // Functions in this section will be wired into the Engine in PR #6.
@@ -399,6 +515,89 @@ pub async fn scrape_single_url_for_tui(
         return Err(ScraperError::http(status.as_u16(), url.as_str()));
     }
 
+    // Check content-type before reading body to handle binary content (PDFs, etc.)
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_string();
+
+    let is_binary = content_type.contains("application/pdf")
+        || content_type.contains("application/octet-stream")
+        || content_type.contains("application/zip")
+        || content_type.contains("application/x-")
+        || content_type.contains("image/")
+        || content_type.contains("audio/")
+        || content_type.contains("video/");
+
+    if is_binary {
+        debug!("Binary content type detected: {} for {}", content_type, url);
+
+        // Save binary file when download_documents is enabled
+        let saved_path = if config.download_documents {
+            let filename = derive_filename_from_response(response.headers(), url, &content_type);
+            let output_path = config.output_dir.join(&filename);
+
+            match response.bytes().await {
+                Ok(bytes) => {
+                    if let Err(e) = std::fs::create_dir_all(&config.output_dir) {
+                        warn!(
+                            "Failed to create output directory {}: {}",
+                            config.output_dir.display(),
+                            e
+                        );
+                    } else if let Err(e) = std::fs::write(&output_path, &bytes) {
+                        warn!(
+                            "Failed to save binary file {}: {}",
+                            output_path.display(),
+                            e
+                        );
+                    } else {
+                        info!(
+                            "💾 Saved binary file: {} ({} bytes)",
+                            output_path.display(),
+                            bytes.len()
+                        );
+                    }
+                    Some(output_path)
+                },
+                Err(e) => {
+                    warn!("Failed to read binary response for {}: {}", url, e);
+                    None
+                },
+            }
+        } else {
+            let _ = response.bytes().await;
+            None
+        };
+
+        let assets =
+            crate::application::scraper_service::download_assets_if_enabled("", url, config)
+                .await?;
+
+        let content = if let Some(ref path) = saved_path {
+            format!("[Binary file saved: {}] {}", path.display(), url.as_str())
+        } else {
+            format!("[Binary content: {content_type}] {}", url.as_str())
+        };
+
+        return Ok(ScrapedContent {
+            title: url
+                .host_str()
+                .ok_or_else(|| ScraperError::invalid_url(format!("URL missing host: {url}")))?
+                .to_string(),
+            content,
+            url: ValidUrl::new(url.clone()),
+            excerpt: None,
+            author: None,
+            date: None,
+            html: None,
+            assets,
+            correlation_id: None,
+        });
+    }
+
     let html = response
         .text()
         .await
@@ -417,8 +616,12 @@ pub async fn scrape_single_url_for_tui(
     // confused by navigation elements, JavaScript bundles, and CSS.
     let cleaned_html = crate::infrastructure::converter::html_cleaner::clean_html(&html);
 
+    // Apply CSS selector extraction if a non-default selector is configured.
+    let extraction_html =
+        crate::application::scraper_service::extract_with_selector(&cleaned_html, &config.selector);
+
     // Try Readability first, fallback to plain text extraction
-    match readability::parse(&cleaned_html, Some(url.as_str())) {
+    match readability::parse(&extraction_html, Some(url.as_str())) {
         Ok(article) => {
             #[cfg(feature = "otel-metrics")]
             CRAWLER_PAGES.add(1, &[opentelemetry::KeyValue::new("method", "readability")]);
@@ -442,7 +645,7 @@ pub async fn scrape_single_url_for_tui(
         },
         Err(e) => {
             warn!("⚠️  Readability failed for {}: {}", url, e);
-            let fallback_content = fallback::extract_text(&html);
+            let fallback_content = fallback::extract_text(&extraction_html);
 
             // Check if fallback produced poor content (likely extraction failure)
             const MIN_FALLBACK_CONTENT: usize = 100;
@@ -948,6 +1151,30 @@ mod tests {
         let base = Url::parse("https://example.com").unwrap();
         let urls = parse_sitemap(xml, &base).unwrap();
         assert!(urls.is_empty());
+    }
+
+    #[test]
+    fn test_parse_sitemap_invalid_xml() {
+        // Spec Scenario 9: non-XML content returns Ok with empty vec (graceful degradation)
+        let xml = "not xml at all";
+        let base = Url::parse("https://example.com").unwrap();
+        let urls = parse_sitemap(xml, &base).unwrap();
+        assert!(urls.is_empty());
+    }
+
+    #[test]
+    fn test_parse_sitemap_relative_urls_resolved() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url><loc>/page1</loc></url>
+    <url><loc>https://external.com/page2</loc></url>
+</urlset>"#;
+
+        let base = Url::parse("https://example.com").unwrap();
+        let urls = parse_sitemap(xml, &base).unwrap();
+        assert_eq!(urls.len(), 2);
+        assert!(urls.contains(&"https://example.com/page1".to_string()));
+        assert!(urls.contains(&"https://external.com/page2".to_string()));
     }
 
     #[test]

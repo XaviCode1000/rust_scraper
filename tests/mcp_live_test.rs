@@ -52,6 +52,7 @@ fn send_request(cmd: &mut Command, request: &str) -> serde_json::Value {
 }
 
 #[test]
+#[ignore = "requires cargo build --release --example mcp_server_stdio"]
 fn test_mcp_binary_exists() {
     // Just verify the binary exists and is executable
     let mut cmd = Command::cargo_bin("examples/mcp_server_stdio").expect(
@@ -63,6 +64,7 @@ fn test_mcp_binary_exists() {
 }
 
 #[test]
+#[ignore = "requires cargo build --release --example mcp_server_stdio"]
 fn test_mcp_tools_list() {
     let mut cmd =
         Command::cargo_bin("examples/mcp_server_stdio").expect("MCP server binary not found");
@@ -130,6 +132,7 @@ fn test_mcp_tools_list() {
 }
 
 #[test]
+#[ignore = "requires cargo build --release --example mcp_server_stdio"]
 fn test_mcp_validate_url_tool() {
     let mut cmd =
         Command::cargo_bin("examples/mcp_server_stdio").expect("MCP server binary not found");
@@ -153,6 +156,7 @@ fn test_mcp_validate_url_tool() {
 }
 
 #[test]
+#[ignore = "requires cargo build --release --example mcp_server_stdio"]
 fn test_mcp_invalid_url_shows_error() {
     let mut cmd =
         Command::cargo_bin("examples/mcp_server_stdio").expect("MCP server binary not found");
@@ -172,6 +176,7 @@ fn test_mcp_invalid_url_shows_error() {
 }
 
 #[test]
+#[ignore = "requires cargo build --release --example mcp_server_stdio"]
 fn test_mcp_clean_html_removes_scripts() {
     let mut cmd =
         Command::cargo_bin("examples/mcp_server_stdio").expect("MCP server binary not found");
@@ -200,6 +205,7 @@ fn test_mcp_clean_html_removes_scripts() {
 }
 
 #[test]
+#[ignore = "requires cargo build --release --example mcp_server_stdio"]
 fn test_mcp_extract_domain() {
     let mut cmd =
         Command::cargo_bin("examples/mcp_server_stdio").expect("MCP server binary not found");
@@ -218,6 +224,7 @@ fn test_mcp_extract_domain() {
 }
 
 #[test]
+#[ignore = "requires cargo build --release --example mcp_server_stdio"]
 fn test_mcp_list_waf_providers() {
     let mut cmd =
         Command::cargo_bin("examples/mcp_server_stdio").expect("MCP server binary not found");

@@ -127,7 +127,7 @@ impl DocumentChunk<Draft> {
 /// Represents a downloaded asset (image or document)
 ///
 /// Contains metadata about the original URL and local storage location.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DownloadedAsset {
     /// Original URL of the asset
     pub url: String,
@@ -145,7 +145,7 @@ pub struct DownloadedAsset {
 /// - Extracted content (title, text)
 /// - Metadata (author, date, excerpt)
 /// - Downloaded assets (images, documents)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ScrapedContent {
     /// Title of the page/article
     pub title: String,
@@ -168,6 +168,17 @@ pub struct ScrapedContent {
     /// Distributed tracing correlation ID (links to OTel span context)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub correlation_id: Option<CorrelationId>,
+}
+
+impl std::fmt::Display for ScrapedContent {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let title = if self.title.is_empty() {
+            "(untitled)"
+        } else {
+            self.title.as_str()
+        };
+        write!(f, "{title} — {}", self.url)
+    }
 }
 
 /// Export format variants for RAG pipeline
@@ -603,5 +614,128 @@ mod tests {
     #[test]
     fn test_export_format_vector_name() {
         assert_eq!(ExportFormat::Vector.name(), "Vector");
+    }
+
+    // -- ScrapedContent Display tests --
+
+    fn make_scraped(title: &str, url: &str) -> ScrapedContent {
+        ScrapedContent {
+            title: title.to_string(),
+            content: "body".to_string(),
+            url: ValidUrl::parse(url).unwrap(),
+            excerpt: None,
+            author: None,
+            date: None,
+            html: None,
+            assets: Vec::new(),
+            correlation_id: None,
+        }
+    }
+
+    #[test]
+    fn scraped_content_display_shows_title_and_url() {
+        let s = make_scraped("My Article", "https://example.com/post");
+        let output = format!("{s}");
+        assert!(output.contains("My Article"));
+        assert!(output.contains("https://example.com"));
+    }
+
+    #[test]
+    fn scraped_content_display_empty_title_shows_placeholder() {
+        let s = make_scraped("", "https://example.com");
+        let output = format!("{s}");
+        assert!(output.contains("(untitled)"));
+    }
+
+    // -- ScrapedContent PartialEq tests --
+
+    #[test]
+    fn scraped_content_equal_when_identical() {
+        let a = make_scraped("Title", "https://example.com");
+        let b = make_scraped("Title", "https://example.com");
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn scraped_content_not_equal_different_url() {
+        let a = make_scraped("Title", "https://example.com/a");
+        let b = make_scraped("Title", "https://example.com/b");
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn scraped_content_not_equal_different_content() {
+        let mut a = make_scraped("Title", "https://example.com");
+        a.content = "one".to_string();
+        let mut b = make_scraped("Title", "https://example.com");
+        b.content = "two".to_string();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn test_document_chunk_from_scraped_content() {
+        let scraped = ScrapedContent {
+            title: "Test Title".to_string(),
+            content: "Test content body".to_string(),
+            url: ValidUrl::parse("https://example.com/article").unwrap(),
+            excerpt: Some("An excerpt".to_string()),
+            author: Some("Jane Doe".to_string()),
+            date: Some("2024-06-01".to_string()),
+            html: None,
+            assets: Vec::new(),
+            correlation_id: None,
+        };
+
+        let chunk = DocumentChunk::from_scraped_content(&scraped);
+
+        assert_eq!(chunk.url, "https://example.com/article");
+        assert_eq!(chunk.title, "Test Title");
+        assert_eq!(chunk.content, "Test content body");
+        assert!(chunk.metadata.contains_key("excerpt"));
+        assert!(chunk.metadata.contains_key("author"));
+        assert!(chunk.metadata.contains_key("date"));
+        assert!(chunk.metadata.contains_key("domain"));
+        assert_eq!(chunk.metadata["domain"], "example.com");
+        assert!(chunk.embeddings.is_none());
+    }
+
+    #[test]
+    fn test_document_chunk_validate_empty_content() {
+        let chunk = DocumentChunk::new(uuid::Uuid::new_v4(), "https://example.com", "Title", "");
+        assert!(matches!(
+            chunk.validate(),
+            Err(ValidationError::EmptyContent)
+        ));
+    }
+
+    #[test]
+    fn test_document_chunk_validate_empty_title() {
+        let chunk = DocumentChunk::new(
+            uuid::Uuid::new_v4(),
+            "https://example.com",
+            "",
+            "content here",
+        );
+        assert!(matches!(chunk.validate(), Err(ValidationError::EmptyTitle)));
+    }
+
+    #[test]
+    fn test_document_chunk_validate_invalid_url() {
+        let chunk = DocumentChunk::new(uuid::Uuid::new_v4(), "not-a-url", "Title", "content here");
+        assert!(matches!(
+            chunk.validate(),
+            Err(ValidationError::InvalidUrl(_))
+        ));
+    }
+
+    // -- ScrapedContent Debug test --
+
+    #[test]
+    fn scraped_content_debug_contains_key_fields() {
+        let s = make_scraped("Debug Test", "https://example.com");
+        let dbg = format!("{s:?}");
+        assert!(dbg.contains("Debug Test"));
+        assert!(dbg.contains("example.com"));
+        assert!(dbg.contains("ScrapedContent"));
     }
 }
