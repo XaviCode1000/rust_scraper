@@ -1053,7 +1053,7 @@ impl McpHandler {
 
     /// Match a URL against a glob pattern
     #[tool(
-        description = "Check if a URL matches a glob-style pattern. SSRF-safe, host-only comparison."
+        description = "Check if a URL matches a glob-style pattern. Supports path patterns (start with '/') and host patterns."
     )]
     #[instrument(skip(self), fields(url = %params.url, pattern = %params.pattern))]
     async fn match_url_pattern(
@@ -1068,7 +1068,7 @@ impl McpHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
 
-        let matches = params.url.contains(&params.pattern) || params.pattern == "*";
+        let matches = crate::domain::matches_pattern(&params.url, &params.pattern);
         Ok(CallToolResult::success(vec![Content::text(
             matches.to_string(),
         )]))
