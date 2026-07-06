@@ -228,15 +228,24 @@ mod tests {
     #[test]
     fn test_matches_pattern_path_pattern() {
         // Path patterns start with '/' → match against URL path component
-        assert!(matches_pattern("https://example.com/admin/settings", "/admin/*"));
-        assert!(matches_pattern("https://example.com/admin/users", "/admin/*"));
+        assert!(matches_pattern(
+            "https://example.com/admin/settings",
+            "/admin/*"
+        ));
+        assert!(matches_pattern(
+            "https://example.com/admin/users",
+            "/admin/*"
+        ));
         assert!(!matches_pattern("https://example.com/page", "/admin/*"));
     }
 
     #[test]
     fn test_matches_pattern_path_pattern_exact() {
         assert!(matches_pattern("https://example.com/pricing", "/pricing"));
-        assert!(!matches_pattern("https://example.com/pricing/page", "/pricing"));
+        assert!(!matches_pattern(
+            "https://example.com/pricing/page",
+            "/pricing"
+        ));
     }
 
     #[test]
@@ -251,7 +260,10 @@ mod tests {
     #[test]
     fn test_matches_pattern_host_pattern_unchanged() {
         assert!(matches_pattern("https://example.com/page", "example.com"));
-        assert!(!matches_pattern("https://sub.example.com/page", "example.com"));
+        assert!(!matches_pattern(
+            "https://sub.example.com/page",
+            "example.com"
+        ));
         assert!(matches_pattern(
             "https://sub.example.com/page",
             "*.example.com"
