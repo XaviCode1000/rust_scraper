@@ -1268,3 +1268,25 @@ async fn test_sitemap_url_scrapes_listed_urls() {
         "output should contain content from sitemap page B"
     );
 }
+
+// ============================================================================
+// 12. Default feature flags (Issue #126)
+// ============================================================================
+
+/// Images feature must be enabled by default — download-images works without --features full.
+#[test]
+fn test_images_feature_enabled_by_default() {
+    assert!(
+        cfg!(feature = "images"),
+        "images feature must be enabled by default — users expect --download-images to work out of the box"
+    );
+}
+
+/// Documents feature must be enabled by default — download-documents works without --features full.
+#[test]
+fn test_documents_feature_enabled_by_default() {
+    assert!(
+        cfg!(feature = "documents"),
+        "documents feature must be enabled by default — users expect --download-documents to work out of the box"
+    );
+}
