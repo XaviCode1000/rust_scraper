@@ -4,17 +4,38 @@
 //! - `[text](https://same-domain.com/page)` → `[[page-slug|text]]`
 //! - Extracts URL-safe slugs from paths
 
+use heck::ToKebabCase;
 use pulldown_cmark::{Event, Options, Parser, Tag, TagEnd};
+
+/// Decode common percent-encoded characters and normalize underscores to spaces.
+#[inline]
+fn decode_and_normalize(s: &str) -> String {
+    s.replace("%20", " ")
+        .replace("%2F", "/")
+        .replace("%2f", "/")
+        .replace("%3A", ":")
+        .replace("%3a", ":")
+        .replace("%2D", "-")
+        .replace("%2d", "-")
+        .replace("%2E", ".")
+        .replace("%2e", ".")
+        .replace('_', " ")
+}
 
 /// Extract a URL-safe slug from a URL path.
 ///
 /// Strips query strings, fragments, trailing slashes, and file extensions.
-/// Takes the last path segment and converts to lowercase kebab-case.
+/// For paths with 2+ segments, combines the last 2 segments for better context
+/// (e.g., `/product/1` → `product-1` instead of just `1`).
+/// Uses `heck::ToKebabCase` for consistent kebab-case conversion.
 ///
 /// # Examples
-/// - "/blog/my-post" -> "my-post"
-/// - "/docs/api/v2.html?page=1" -> "api-v2"
 /// - "/" -> "index"
+/// - "/about" -> "about"
+/// - "/product/1" -> "product-1"
+/// - "/blog/my-post" -> "blog-my-post"
+/// - "/docs/api/v2" -> "api-v2"
+/// - "/docs/api/v2/endpoints" -> "v2-endpoints"
 /// - "/My%20Post%20Title" -> "my-post-title" (URL-decoded)
 pub fn slug_from_url(url_path: &str) -> String {
     // Strip query string
@@ -32,41 +53,19 @@ pub fn slug_from_url(url_path: &str) -> String {
         .trim_end_matches(".aspx")
         .trim_end_matches(".jsp");
 
-    // Take last segment
-    let segment = path.rsplit('/').next().unwrap_or(path);
+    // Collect non-empty segments
+    let segments: Vec<&str> = path.split('/').filter(|s| !s.is_empty()).collect();
 
-    if segment.is_empty() {
-        return "index".to_string();
-    }
-
-    // Manually decode common percent-encoded characters
-    let decoded = segment
-        .replace("%20", " ")
-        .replace("%2F", "/")
-        .replace("%2f", "/")
-        .replace("%3A", ":")
-        .replace("%3a", ":")
-        .replace("%2D", "-")
-        .replace("%2d", "-")
-        .replace("%2E", ".")
-        .replace("%2e", ".")
-        .replace("_", " ");
-
-    // Convert to lowercase and replace non-alphanumeric with hyphens
-    let mut slug = String::with_capacity(decoded.len());
-    let mut last_was_hyphen = false;
-
-    for ch in decoded.chars() {
-        if ch.is_ascii_alphanumeric() {
-            slug.push(ch.to_ascii_lowercase());
-            last_was_hyphen = false;
-        } else if !last_was_hyphen {
-            slug.push('-');
-            last_was_hyphen = true;
+    match segments.len() {
+        0 => "index".to_string(),
+        1 => decode_and_normalize(segments[0]).to_kebab_case(),
+        _ => {
+            let len = segments.len();
+            let parent = decode_and_normalize(segments[len - 2]).to_kebab_case();
+            let current = decode_and_normalize(segments[len - 1]).to_kebab_case();
+            format!("{parent}-{current}")
         }
     }
-
-    slug.trim_matches('-').to_string()
 }
 
 /// Determines if a URL should be converted to a wiki-link.
@@ -395,7 +394,7 @@ mod tests {
 
     #[test]
     fn test_slug_simple_path() {
-        assert_eq!(slug_from_url("/blog/my-post"), "my-post");
+        assert_eq!(slug_from_url("/blog/my-post"), "blog-my-post");
     }
 
     #[test]
@@ -410,7 +409,7 @@ mod tests {
 
     #[test]
     fn test_slug_with_extension() {
-        assert_eq!(slug_from_url("/docs/api.html"), "api");
+        assert_eq!(slug_from_url("/docs/api.html"), "docs-api");
     }
 
     #[test]
@@ -420,7 +419,7 @@ mod tests {
 
     #[test]
     fn test_slug_nested_with_date() {
-        assert_eq!(slug_from_url("/2026/04/03/hello-world/"), "hello-world");
+        assert_eq!(slug_from_url("/2026/04/03/hello-world/"), "03-hello-world");
     }
 
     #[test]
@@ -431,5 +430,20 @@ mod tests {
     #[test]
     fn test_slug_multiple_extensions() {
         assert_eq!(slug_from_url("/page.asp?id=1"), "page");
+    }
+
+    #[test]
+    fn test_slug_two_segments() {
+        assert_eq!(slug_from_url("/product/1"), "product-1");
+    }
+
+    #[test]
+    fn test_slug_deep_nesting() {
+        assert_eq!(slug_from_url("/docs/api/v2/endpoints"), "v2-endpoints");
+    }
+
+    #[test]
+    fn test_slug_single_segment() {
+        assert_eq!(slug_from_url("/about"), "about");
     }
 }

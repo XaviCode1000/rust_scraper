@@ -4240,6 +4240,7 @@ dependencies = [
  "futures",
  "globset",
  "governor",
+ "heck",
  "hf-hub",
  "htmd",
  "html-to-markdown-rs",
