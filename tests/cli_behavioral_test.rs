@@ -450,27 +450,73 @@ async fn test_max_pages_limits_crawl() {
 // ============================================================================
 
 /// --batch from stdin processes URLs and exits.
-#[test]
-fn test_batch_stdin_processes_urls() {
-    let _ = cmd()
+#[tokio::test]
+async fn test_batch_stdin_processes_urls() {
+    let server = MockServer::start().await;
+
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            "<html><body><article>\
+                 <h1>Batch Stdin Test</h1>\
+                 <p>Content from batch stdin processing.</p>\
+                 </article></body></html>",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    cmd()
         .arg("--batch")
-        .write_stdin("https://example.com\n")
+        .write_stdin(format!("{}\n", server.uri()))
         .timeout(Duration::from_secs(10))
-        .assert();
+        .assert()
+        .success();
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(
+        requests.len(),
+        1,
+        "batch stdin should fetch exactly the provided URL, got {} requests",
+        requests.len()
+    );
 }
 
-/// --batch-file reads URLs from a file.
-#[test]
-fn test_batch_file_processes_urls() {
+/// --batch-file reads URLs from a file and processes them.
+#[tokio::test]
+async fn test_batch_file_processes_urls() {
+    let server = MockServer::start().await;
     let temp = TempDir::new().unwrap();
-    let batch_file = temp.path().join("urls.txt");
-    std::fs::write(&batch_file, "https://example.com\n").unwrap();
 
-    let _ = cmd()
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            "<html><body><article>\
+                 <h1>Batch File Test</h1>\
+                 <p>Content from batch file processing.</p>\
+                 </article></body></html>",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let batch_file = temp.path().join("urls.txt");
+    std::fs::write(&batch_file, format!("{}\n", server.uri())).unwrap();
+
+    cmd()
         .arg("--batch-file")
         .arg(&batch_file)
         .timeout(Duration::from_secs(10))
-        .assert();
+        .assert()
+        .success();
+
+    let requests = server.received_requests().await.unwrap();
+    assert_eq!(
+        requests.len(),
+        1,
+        "batch-file should fetch exactly the URL from the file, got {} requests",
+        requests.len()
+    );
 }
 
 /// --batch with empty stdin exits with code 64 ("No URLs provided").

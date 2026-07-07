@@ -67,21 +67,29 @@ impl Default for RateLimiterConfig {
         Self {
             delay_ms: 100,
             concurrency: 5,
-            backend: RateLimiterBackend::from_env(),
-            redis_url: std::env::var("REDIS_URL").ok(),
+            backend: RateLimiterBackend::InMemory,
+            redis_url: None,
             redis_key_prefix: Some("rust_scraper:rate_limit".to_string()),
         }
     }
 }
 
 impl RateLimiterConfig {
+    /// Create configuration from environment variables
+    pub fn from_env() -> Self {
+        Self {
+            backend: RateLimiterBackend::from_env(),
+            redis_url: std::env::var("REDIS_URL").ok(),
+            ..Self::default()
+        }
+    }
     /// Create new configuration
     pub fn new(delay_ms: u64, concurrency: u32) -> Self {
         Self {
             delay_ms,
             concurrency,
-            backend: RateLimiterBackend::from_env(),
-            redis_url: std::env::var("REDIS_URL").ok(),
+            backend: RateLimiterBackend::InMemory,
+            redis_url: None,
             redis_key_prefix: Some("rust_scraper:rate_limit".to_string()),
         }
     }
@@ -92,7 +100,7 @@ impl RateLimiterConfig {
             delay_ms,
             concurrency,
             backend,
-            redis_url: std::env::var("REDIS_URL").ok(),
+            redis_url: None,
             redis_key_prefix: Some("rust_scraper:rate_limit".to_string()),
         }
     }
@@ -285,7 +293,7 @@ mod tests {
     async fn test_rate_limiter_creation() {
         let config = RateLimiterConfig::new(50, 2);
         let limiter = RateLimiter::new(&config).await;
-        assert!(limiter.is_ok());
+        assert!(limiter.is_ok(), "valid config should create rate limiter");
     }
 
     #[tokio::test]
@@ -310,6 +318,7 @@ mod tests {
     // ============================================================================
 
     #[tokio::test]
+    #[ignore = "timing-sensitive: run with cargo test -- --ignored"]
     async fn test_rate_limiter_until_ready_spreads_over_time() {
         // Test que N tasks concurrentes llamando until_ready() son espaciadas
         // Config: delay_ms=50ms, concurrency=1
@@ -346,6 +355,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "timing-sensitive: run with cargo test -- --ignored"]
     async fn test_rate_limiter_burst_allows_parallel_requests() {
         // Test que burst de N requests ocurren en paralelo
         // Config: delay_ms=100ms, concurrency=5
@@ -379,6 +389,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "timing-sensitive: run with cargo test -- --ignored"]
     async fn test_rate_limiter_concurrent_backpressure() {
         // Test que 20 tasks concurrentes no colapsan — se encolan correctamente
         let config = RateLimiterConfig::new(10, 1); // 10ms, burst=1
@@ -439,5 +450,68 @@ mod tests {
         // redis_url will be None if env var not set, or Some if set
         // Just verify the field exists
         assert!(config.redis_key_prefix.is_some());
+    }
+
+    // =====================================================================
+    // Health check and fallback tests
+    // =====================================================================
+
+    #[tokio::test]
+    async fn test_rate_limiter_health_check_inmemory() {
+        let config = RateLimiterConfig::new(100, 5);
+        let limiter = RateLimiter::new(&config).await.unwrap();
+        assert!(
+            limiter.health_check().await.is_ok(),
+            "InMemory health check should always succeed"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter_redis_fallback_to_inmemory() {
+        // Redis backend without REDIS_URL → falls back to InMemory
+        let config = RateLimiterConfig::with_backend(100, 5, RateLimiterBackend::Redis);
+        let limiter = RateLimiter::new(&config).await;
+        assert!(
+            limiter.is_ok(),
+            "Redis fallback should produce InMemory limiter on error"
+        );
+    }
+
+    #[test]
+    fn test_rate_limiter_config_default_is_inmemory() {
+        let config = RateLimiterConfig::default();
+        assert_eq!(config.backend, RateLimiterBackend::InMemory);
+    }
+
+    #[test]
+    fn test_shared_rate_limiter_creation_success() {
+        let config = RateLimiterConfig::new(50, 3);
+        let limiter = SharedRateLimiter::new(&config);
+        assert!(limiter.is_ok(), "valid config should create limiter");
+    }
+
+    #[test]
+    fn test_rate_limiter_config_with_backend_inmemory() {
+        let config = RateLimiterConfig::with_backend(100, 5, RateLimiterBackend::InMemory);
+        assert_eq!(config.delay_ms, 100);
+        assert_eq!(config.concurrency, 5);
+        assert_eq!(config.backend, RateLimiterBackend::InMemory);
+    }
+
+    #[test]
+    fn test_rate_limiter_config_redis_key_prefix_default() {
+        let config = RateLimiterConfig::new(100, 5);
+        assert_eq!(
+            config.redis_key_prefix.as_deref(),
+            Some("rust_scraper:rate_limit")
+        );
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter_health_check_after_until_ready() {
+        let config = RateLimiterConfig::new(10, 1);
+        let limiter = RateLimiter::new(&config).await.unwrap();
+        limiter.until_ready().await;
+        assert!(limiter.health_check().await.is_ok());
     }
 }

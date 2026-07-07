@@ -434,20 +434,18 @@ pub(crate) async fn download_assets_if_enabled(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::http_client::create_http_client;
     use crate::application::http_client::port::{HttpClientPort, HttpResponse};
     use std::collections::HashMap;
 
-    #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
     #[tokio::test]
     async fn test_scrape_with_config_invalid_url() {
-        let client = create_http_client().unwrap();
         let url = url::Url::parse("https://invalid-host-that-does-not-exist-12345.com").unwrap();
         let config = ScraperConfig::default();
+        let mock =
+            MockHttpClient::new().with_response(url.as_str(), Err(HttpError::Connection("no route to host".into())));
 
-        let result = scrape_with_config(&client, &url, &config).await;
-        // Should fail gracefully, not panic
-        assert!(result.is_err());
+        let result = scrape_with_config(&mock, &url, &config).await;
+        assert!(result.is_err(), "connection error should propagate as Err");
     }
 
     #[test]
@@ -858,5 +856,191 @@ mod tests {
     #[test]
     fn test_min_content_chars_is_50() {
         assert_eq!(MIN_CONTENT_CHARS, 50);
+    }
+
+    // =====================================================================
+    // extract_with_selector tests (pure function, no I/O)
+    // =====================================================================
+
+    #[test]
+    fn test_extract_with_selector_body_passthrough() {
+        let html = "<html><body><p>Hello</p></body></html>";
+        let result = extract_with_selector(html, "body");
+        assert_eq!(
+            result, html,
+            "selector 'body' should return original HTML unchanged"
+        );
+    }
+
+    #[test]
+    fn test_extract_with_selector_extracts_matching_elements() {
+        let html = r#"<html><body>
+            <div class="main"><p>Main content</p></div>
+            <div class="sidebar"><p>Sidebar</p></div>
+        </body></html>"#;
+        let result = extract_with_selector(html, "div.main");
+        assert!(
+            result.contains("Main content"),
+            "should contain matched element content"
+        );
+        assert!(
+            result.contains("selector-extracted"),
+            "should wrap in selector-extracted div"
+        );
+        assert!(
+            !result.contains("Sidebar"),
+            "should NOT contain unmatched element content"
+        );
+    }
+
+    #[test]
+    fn test_extract_with_selector_no_matches_falls_back() {
+        let html = "<html><body><p>Hello</p></body></html>";
+        let result = extract_with_selector(html, "article");
+        assert_eq!(result, html, "no matches should fall back to original HTML");
+    }
+
+    #[test]
+    fn test_extract_with_selector_invalid_syntax_falls_back() {
+        let html = "<html><body><p>Hello</p></body></html>";
+        let result = extract_with_selector(html, ">>>invalid");
+        assert_eq!(
+            result, html,
+            "invalid selector syntax should fall back to original HTML"
+        );
+    }
+
+    #[test]
+    fn test_extract_with_selector_multiple_matches_joined() {
+        let html = r#"<html><body>
+            <li>Item 1</li>
+            <li>Item 2</li>
+            <li>Item 3</li>
+        </body></html>"#;
+        let result = extract_with_selector(html, "li");
+        assert!(result.contains("Item 1"));
+        assert!(result.contains("Item 2"));
+        assert!(result.contains("Item 3"));
+    }
+
+    #[test]
+    fn test_extract_with_selector_id_selector() {
+        let html = r#"<html><body>
+            <div id="target"><p>Targeted</p></div>
+            <div id="other"><p>Other</p></div>
+        </body></html>"#;
+        let result = extract_with_selector(html, "#target");
+        assert!(result.contains("Targeted"));
+        assert!(!result.contains("Other"));
+    }
+
+    // =====================================================================
+    // scrape_multiple_with_limit partial failure
+    // =====================================================================
+
+    #[tokio::test]
+    async fn test_scrape_multiple_partial_failure() {
+        let html = r#"<!DOCTYPE html>
+<html>
+<head><title>Test</title></head>
+<body>
+<article>
+<h1>Article Title</h1>
+<p>This is substantial content that should be extracted by Readability. It has enough text to pass the minimum threshold.</p>
+</article>
+</body>
+</html>"#;
+
+        let url_ok = url::Url::parse("https://example.com/ok").unwrap();
+        let url_fail = url::Url::parse("https://example.com/fail").unwrap();
+        let mock = MockHttpClient::new()
+            .with_response(
+                url_ok.as_str(),
+                Ok(HttpResponse {
+                    status: 200,
+                    body: html.to_string(),
+                    headers: HashMap::new(),
+                }),
+            )
+            .with_response(url_fail.as_str(), Err(HttpError::ClientError(404)));
+
+        let config = ScraperConfig::default();
+        let result = scrape_multiple_with_limit(&mock, &[url_ok, url_fail], &config)
+            .await
+            .expect("should not fail overall even with partial URL failures");
+
+        assert_eq!(
+            result.len(),
+            1,
+            "only the successful URL should produce content"
+        );
+    }
+
+    // =====================================================================
+    // Title extraction verification
+    // =====================================================================
+
+    #[tokio::test]
+    async fn test_mock_extracts_title() {
+        let html = r#"<!DOCTYPE html>
+<html>
+<head><title>My Page Title</title></head>
+<body>
+<article>
+<h1>Main Heading</h1>
+<p>This is enough content to pass the minimum character threshold for readability extraction algorithm to work properly.</p>
+</article>
+</body>
+</html>"#;
+
+        let url = url::Url::parse("https://example.com").unwrap();
+        let mock = MockHttpClient::new().with_response(
+            url.as_str(),
+            Ok(HttpResponse {
+                status: 200,
+                body: html.to_string(),
+                headers: HashMap::new(),
+            }),
+        );
+
+        let result = scrape_with_readability(&mock, &url).await.unwrap();
+        assert!(!result.is_empty());
+        // Readability should extract the title
+        assert!(
+            !result[0].title.is_empty(),
+            "title should be extracted from HTML"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_mock_extracts_non_empty_content() {
+        let html = r#"<!DOCTYPE html>
+<html>
+<head><title>Page</title></head>
+<body>
+<article>
+<h1>Heading</h1>
+<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam.</p>
+</article>
+</body>
+</html>"#;
+
+        let url = url::Url::parse("https://example.com").unwrap();
+        let mock = MockHttpClient::new().with_response(
+            url.as_str(),
+            Ok(HttpResponse {
+                status: 200,
+                body: html.to_string(),
+                headers: HashMap::new(),
+            }),
+        );
+
+        let result = scrape_with_readability(&mock, &url).await.unwrap();
+        assert!(!result.is_empty());
+        assert!(
+            !result[0].content.is_empty(),
+            "content should be non-empty after extraction"
+        );
+        assert_eq!(result[0].url.as_str(), url.as_str());
     }
 }

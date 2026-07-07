@@ -75,15 +75,17 @@ impl BatchProcessor {
     ///
     /// * `max_concurrent` - Maximum number of concurrent crawl operations
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if `max_concurrent` is 0.
-    pub fn new(max_concurrent: usize) -> Self {
-        assert!(max_concurrent > 0, "max_concurrent must be > 0");
-        Self {
+    /// Returns [`BatchError::InvalidConcurrency`] if `max_concurrent` is 0.
+    pub fn new(max_concurrent: usize) -> Result<Self, BatchError> {
+        if max_concurrent == 0 {
+            return Err(BatchError::InvalidConcurrency);
+        }
+        Ok(Self {
             max_concurrent_jobs: max_concurrent,
             semaphore: Arc::new(Semaphore::new(max_concurrent)),
-        }
+        })
     }
 
     /// Get the maximum concurrency limit
@@ -219,6 +221,10 @@ pub enum BatchError {
     #[error("batch contains no URLs")]
     EmptyBatch,
 
+    /// Concurrency limit must be greater than zero
+    #[error("max_concurrent must be > 0")]
+    InvalidConcurrency,
+
     /// Semaphore was closed unexpectedly
     #[error("concurrency semaphore was closed")]
     SemaphoreClosed,
@@ -231,25 +237,30 @@ pub enum BatchError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::batch::BatchProgress;
+    use crate::application::batch::{BatchJob, BatchJobStatus, BatchProgress};
     use crate::domain::CrawlerConfig;
     use url::Url;
 
     #[test]
     fn test_batch_processor_creation() {
-        let processor = BatchProcessor::new(5);
+        let processor = BatchProcessor::new(5).unwrap();
         assert_eq!(processor.max_concurrent(), 5);
     }
 
     #[test]
-    #[should_panic(expected = "max_concurrent must be > 0")]
-    fn test_batch_processor_zero_concurrency() {
-        let _ = BatchProcessor::new(0);
+    fn test_batch_processor_zero_concurrency_returns_error() {
+        let result = BatchProcessor::new(0);
+        assert!(result.is_err(), "zero concurrency should return Err");
+        let err = result.err().unwrap();
+        assert!(
+            matches!(err, BatchError::InvalidConcurrency),
+            "expected InvalidConcurrency, got: {err}"
+        );
     }
 
     #[tokio::test]
     async fn test_process_empty_batch() {
-        let processor = BatchProcessor::new(3);
+        let processor = BatchProcessor::new(3).unwrap();
         let config = CrawlerConfig::new(Url::parse("https://example.com").unwrap());
         let job = BatchJob::new("test-1".to_string(), vec![], config);
 
@@ -262,13 +273,13 @@ mod tests {
         let progress = BatchProgress::new(100);
         let mut join_set = JoinSet::new();
 
-        // Simulate 100 concurrent tasks
-        for _ in 0..100 {
+        // Deterministic outcomes: first 50 succeed, last 50 fail
+        for i in 0..100 {
             let p = progress.clone();
             join_set.spawn(async move {
                 p.start_one();
                 tokio::task::yield_now().await;
-                if rand::random::<bool>() {
+                if i < 50 {
                     p.complete_one();
                     true
                 } else {
@@ -289,8 +300,8 @@ mod tests {
         }
 
         assert_eq!(successes + failures, 100);
-        assert_eq!(progress.completed(), successes);
-        assert_eq!(progress.failed(), failures);
+        assert_eq!(progress.completed(), 50);
+        assert_eq!(progress.failed(), 50);
         assert!(progress.is_complete());
     }
 
@@ -328,5 +339,179 @@ mod tests {
         let cloned = progress.clone();
         assert_eq!(cloned.total(), 5);
         assert_eq!(cloned.completed(), 2);
+    }
+
+    // =====================================================================
+    // BatchResult structure tests
+    // =====================================================================
+
+    #[test]
+    fn test_batch_result_all_succeeded() {
+        let result = BatchResult {
+            job_id: "job-ok".to_string(),
+            total: 3,
+            succeeded: 3,
+            failed: 0,
+            errors: vec![],
+        };
+        assert_eq!(result.total, result.succeeded);
+        assert_eq!(result.failed, 0);
+        assert!(result.errors.is_empty());
+    }
+
+    #[test]
+    fn test_batch_result_all_failed() {
+        let result = BatchResult {
+            job_id: "job-fail".to_string(),
+            total: 2,
+            succeeded: 0,
+            failed: 2,
+            errors: vec![
+                ("https://a.com".to_string(), "error a".to_string()),
+                ("https://b.com".to_string(), "error b".to_string()),
+            ],
+        };
+        assert_eq!(result.succeeded, 0);
+        assert_eq!(result.failed, result.total);
+        assert_eq!(result.errors.len(), 2);
+    }
+
+    #[test]
+    fn test_batch_result_counts_consistent() {
+        let errors: Vec<(String, String)> = (0..5)
+            .map(|i| (format!("url-{i}"), format!("err-{i}")))
+            .collect();
+        let result = BatchResult {
+            job_id: "job-mixed".to_string(),
+            total: 10,
+            succeeded: 5,
+            failed: 5,
+            errors,
+        };
+        assert_eq!(result.succeeded + result.failed, result.total);
+        assert_eq!(result.errors.len(), result.failed);
+    }
+
+    // =====================================================================
+    // BatchProcessor concurrency tests
+    // =====================================================================
+
+    #[test]
+    fn test_batch_processor_various_concurrency_values() {
+        for n in [1, 2, 4, 8, 16] {
+            let processor = BatchProcessor::new(n).unwrap();
+            assert_eq!(processor.max_concurrent(), n);
+        }
+    }
+
+    #[test]
+    fn test_batch_processor_single_concurrency() {
+        let processor = BatchProcessor::new(1).unwrap();
+        assert_eq!(processor.max_concurrent(), 1);
+    }
+
+    // =====================================================================
+    // BatchJob status transitions
+    // =====================================================================
+
+    #[test]
+    fn test_batch_job_lifecycle() {
+        let config = CrawlerConfig::new(Url::parse("https://example.com").unwrap());
+        let mut job = BatchJob::new(
+            "lifecycle".to_string(),
+            vec!["https://example.com".to_string()],
+            config,
+        );
+
+        assert_eq!(job.status, BatchJobStatus::Pending);
+
+        job.start();
+        assert_eq!(job.status, BatchJobStatus::Running);
+
+        job.complete();
+        assert_eq!(job.status, BatchJobStatus::Completed);
+    }
+
+    #[test]
+    fn test_batch_job_failure_state() {
+        let config = CrawlerConfig::new(Url::parse("https://example.com").unwrap());
+        let mut job = BatchJob::new("fail-job".to_string(), vec![], config);
+
+        job.fail("network error".to_string());
+        assert_eq!(
+            job.status,
+            BatchJobStatus::Failed("network error".to_string())
+        );
+    }
+
+    #[test]
+    fn test_batch_job_status_display() {
+        assert_eq!(BatchJobStatus::Pending.to_string(), "Pending");
+        assert_eq!(BatchJobStatus::Running.to_string(), "Running");
+        assert_eq!(BatchJobStatus::Completed.to_string(), "Completed");
+        assert_eq!(
+            BatchJobStatus::Failed("oops".to_string()).to_string(),
+            "Failed: oops"
+        );
+    }
+
+    // =====================================================================
+    // BatchProgress edge cases
+    // =====================================================================
+
+    #[test]
+    fn test_batch_progress_percent_partial() {
+        let progress = BatchProgress::new(4);
+        progress.start_one();
+        progress.complete_one();
+        progress.start_one();
+        progress.fail_one();
+
+        assert!((progress.percent() - 50.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_batch_progress_in_progress_count() {
+        let progress = BatchProgress::new(5);
+        assert_eq!(progress.in_progress(), 0);
+
+        progress.start_one();
+        assert_eq!(progress.in_progress(), 1);
+
+        progress.start_one();
+        assert_eq!(progress.in_progress(), 2);
+
+        progress.complete_one();
+        assert_eq!(progress.in_progress(), 1);
+
+        progress.fail_one();
+        assert_eq!(progress.in_progress(), 0);
+    }
+
+    // =====================================================================
+    // BatchError display tests
+    // =====================================================================
+
+    #[test]
+    fn test_batch_error_empty_batch_display() {
+        let err = BatchError::EmptyBatch;
+        assert!(err.to_string().contains("no URLs"));
+    }
+
+    #[test]
+    fn test_batch_error_crawl_failed_display() {
+        let err = BatchError::CrawlFailed {
+            url: "https://example.com".to_string(),
+            error: CrawlError::InvalidUrl("bad url".to_string()),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("example.com"));
+        assert!(msg.contains("crawl failed"));
+    }
+
+    #[test]
+    fn test_batch_error_semaphore_closed_display() {
+        let err = BatchError::SemaphoreClosed;
+        assert!(err.to_string().contains("semaphore"));
     }
 }

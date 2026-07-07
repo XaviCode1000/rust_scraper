@@ -49,7 +49,8 @@ impl BatchManager {
     #[must_use]
     pub fn new(max_concurrent: usize) -> Self {
         Self {
-            processor: BatchProcessor::new(max_concurrent),
+            processor: BatchProcessor::new(max_concurrent)
+                .expect("BatchManager requires max_concurrent > 0"),
             jobs: Vec::new(),
         }
     }
