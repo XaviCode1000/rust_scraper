@@ -63,6 +63,66 @@ compile time. These rules don't slow down your program while it's running.</p>
         .to_string()
 }
 
+fn large_html_document() -> String {
+    let mut sections = Vec::new();
+    for i in 0..50 {
+        sections.push(format!(
+            r#"<section>
+<h2>Section {i}: Advanced Topic</h2>
+<p>This is section {i} of the document. It contains detailed information about
+an advanced topic in software engineering. The content includes multiple
+paragraphs to simulate a realistic documentation page.</p>
+<p>Here we discuss the implications of the design pattern and how it applies
+to real-world scenarios. The pattern helps reduce complexity and improve
+maintainability of large codebases.</p>
+<h3>Subsection {i}.1</h3>
+<p>Additional details about this subsection. We explore edge cases and
+provide examples of how to use this pattern effectively in production.</p>
+<pre><code>impl Feature for Component {{
+    fn execute(&self) -> Result<Output> {{
+        // Implementation for feature {i}
+        Ok(Output::new("result"))
+    }}
+}}</code></pre>
+<ul>
+<li>Benefit {i}.1: Improved code organization</li>
+<li>Benefit {i}.2: Better testability</li>
+<li>Benefit {i}.3: Reduced coupling</li>
+</ul>
+<blockquote><p>This is an important insight from section {i}.</p></blockquote>
+</section>"#
+        ));
+    }
+
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head><title>Comprehensive Software Engineering Guide</title></head>
+<body>
+<nav><a href="/">Home</a> | <a href="/docs">Docs</a></nav>
+<article>
+<h1>Comprehensive Software Engineering Guide</h1>
+<p class="meta">Published on March 10, 2025 by Expert Author</p>
+<p>This is a comprehensive guide covering advanced software engineering topics.
+Each section provides detailed explanations with code examples.</p>
+{}
+</article>
+<aside class="sidebar">
+<h3>Table of Contents</h3>
+<ul>{}</ul>
+</aside>
+<footer>Copyright 2025. All rights reserved.</footer>
+<script>console.log("analytics");</script>
+</body>
+</html>"#,
+        sections.join("\n"),
+        (0..50)
+            .map(|i| format!("<li><a href=\"#s{i}\">Section {i}</a></li>"))
+            .collect::<Vec<_>>()
+            .join("")
+    )
+}
+
 fn bench_html_conversion(c: &mut Criterion) {
     let html = realistic_html();
     let size = html.len();
@@ -70,9 +130,28 @@ fn bench_html_conversion(c: &mut Criterion) {
     let mut group = c.benchmark_group("html_conversion");
     group.throughput(Throughput::Bytes(size as u64));
     group.bench_function("convert_to_markdown", |b| {
-        b.iter(|| black_box(convert_to_markdown(black_box(&html))))
+        b.iter(|| {
+            let result = convert_to_markdown(black_box(&html));
+            assert!(!result.is_empty());
+            black_box(result)
+        })
     });
     group.finish();
+
+    // Large HTML document benchmark
+    let large_html = large_html_document();
+    let large_size = large_html.len();
+
+    let mut large_group = c.benchmark_group("html_conversion_large");
+    large_group.throughput(Throughput::Bytes(large_size as u64));
+    large_group.bench_function("convert_large_document", |b| {
+        b.iter(|| {
+            let result = convert_to_markdown(black_box(&large_html));
+            assert!(!result.is_empty());
+            black_box(result)
+        })
+    });
+    large_group.finish();
 }
 
 criterion_group!(benches, bench_html_conversion);

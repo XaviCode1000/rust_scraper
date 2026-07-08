@@ -85,4 +85,110 @@ mod tests {
             assert_eq!(strategy, deserialized);
         }
     }
+
+    // -- FromStr error messages --
+
+    #[test]
+    fn from_str_error_contains_invalid_name() {
+        let err = "unknown".parse::<JsStrategy>().unwrap_err();
+        assert!(err.contains("unknown"));
+        assert!(err.contains("expected static, hybrid, or full"));
+    }
+
+    #[test]
+    fn from_str_case_insensitive_mixed() {
+        assert_eq!("HyBrid".parse::<JsStrategy>().unwrap(), JsStrategy::Hybrid);
+        assert_eq!("FULL".parse::<JsStrategy>().unwrap(), JsStrategy::Full);
+        assert_eq!("Static".parse::<JsStrategy>().unwrap(), JsStrategy::Static);
+    }
+
+    #[test]
+    fn from_str_empty_string() {
+        assert!("".parse::<JsStrategy>().is_err());
+    }
+
+    // -- Clone and Copy --
+
+    #[test]
+    fn clone_produces_equal_value() {
+        for strat in [JsStrategy::Static, JsStrategy::Hybrid, JsStrategy::Full] {
+            let cloned = strat;
+            assert_eq!(strat, cloned);
+        }
+    }
+
+    // -- Hash --
+
+    #[test]
+    fn hash_equal_values_equal_hashes() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let h1 = {
+            let mut hasher = DefaultHasher::new();
+            JsStrategy::Static.hash(&mut hasher);
+            hasher.finish()
+        };
+        let h2 = {
+            let mut hasher = DefaultHasher::new();
+            JsStrategy::Static.hash(&mut hasher);
+            hasher.finish()
+        };
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn hash_different_values_different_hashes() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        let h1 = {
+            let mut hasher = DefaultHasher::new();
+            JsStrategy::Static.hash(&mut hasher);
+            hasher.finish()
+        };
+        let h2 = {
+            let mut hasher = DefaultHasher::new();
+            JsStrategy::Full.hash(&mut hasher);
+            hasher.finish()
+        };
+        assert_ne!(h1, h2);
+    }
+
+    // -- Serde edge cases --
+
+    #[test]
+    fn serde_deserialize_from_json_string() {
+        let json = r#""static""#;
+        let strat: JsStrategy = serde_json::from_str(json).unwrap();
+        assert_eq!(strat, JsStrategy::Static);
+    }
+
+    #[test]
+    fn serde_deserialize_hybrid_json() {
+        let json = r#""hybrid""#;
+        let strat: JsStrategy = serde_json::from_str(json).unwrap();
+        assert_eq!(strat, JsStrategy::Hybrid);
+    }
+
+    #[test]
+    fn serde_invalid_json_value() {
+        let result = serde_json::from_str::<JsStrategy>(r#""turbo""#);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn serde_serialize_produces_quoted_string() {
+        let json = serde_json::to_string(&JsStrategy::Full).unwrap();
+        assert_eq!(json, r#""full""#);
+    }
+
+    // -- Debug --
+
+    #[test]
+    fn debug_output() {
+        assert_eq!(format!("{:?}", JsStrategy::Static), "Static");
+        assert_eq!(format!("{:?}", JsStrategy::Hybrid), "Hybrid");
+        assert_eq!(format!("{:?}", JsStrategy::Full), "Full");
+    }
 }

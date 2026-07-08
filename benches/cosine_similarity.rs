@@ -14,7 +14,11 @@ fn bench_cosine_similarity(c: &mut Criterion) {
     let mut group = c.benchmark_group("cosine_similarity");
     group.throughput(Throughput::Elements(1));
     group.bench_function("simd_384d", |bencher| {
-        bencher.iter(|| black_box(cosine_similarity(black_box(&a), black_box(&b))))
+        bencher.iter(|| {
+            let result = cosine_similarity(black_box(&a), black_box(&b));
+            assert!((-1.0..=1.0).contains(&result));
+            black_box(result)
+        })
     });
     group.finish();
 }

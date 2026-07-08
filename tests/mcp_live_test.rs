@@ -1,13 +1,13 @@
 //! Live integration tests for the MCP server binary over stdio.
 //!
-//! These tests launch the MCP server binary and test the actual JSON-RPC
-//! protocol, verifying tool registration and basic responses.
+//! **Manual validation only** — these tests are excluded from CI via `#[ignore]`
+//! because they require a pre-built binary (`cargo build --release --example mcp_server_stdio`).
+//! For automated regression testing, use `mcp_lifecycle_test.rs` instead, which
+//! tests the same MCP session lifecycle over HTTP without needing a pre-built binary.
 //!
-//! Run:
+//! Run manually:
 //!   cargo nextest run --release --test-threads 1 mcp_live_test
 //!   cargo test --release --test mcp_live_test -- --nocapture
-//!
-//! Requires: `cargo build --release --example mcp_server_stdio` first.
 
 use assert_cmd::Command;
 use std::time::Duration;
