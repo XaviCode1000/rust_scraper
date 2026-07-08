@@ -18,6 +18,11 @@ test-output/
 *.gcda
 **/mutants.out*/
 
+# Fuzzing (cargo-fuzz)
+fuzz/corpus/
+fuzz/artifacts/
+fuzz/coverage/
+
 # ═══════════════════════════════════════════════════════════
 # AI AGENTS
 # ═══════════════════════════════════════════════════════════
