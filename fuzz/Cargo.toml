@@ -8,15 +8,61 @@ edition = "2021"
 cargo-fuzz = true
 
 [dependencies]
-libfuzzer-sys = "0.4"
+libfuzzer-sys = { version = "0.4", features = ["arbitrary-derive"] }
+arbitrary = { version = "1", features = ["derive"] }
 url = "2"
 
 [dependencies.rust_scraper]
 path = ".."
 
+# ============================================================================
+# Fuzz Targets — ordered by risk (highest exposure to untrusted input first)
+# ============================================================================
+
+# --- TIER 1: Core HTML pipeline (processes raw web content) ---
+
 [[bin]]
 name = "fuzz_html_cleaner"
 path = "fuzz_targets/fuzz_html_cleaner.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_convert_to_markdown"
+path = "fuzz_targets/fuzz_convert_to_markdown.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_readability_parse"
+path = "fuzz_targets/fuzz_readability_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_extract_text"
+path = "fuzz_targets/fuzz_extract_text.rs"
+test = false
+doc = false
+bench = false
+
+# --- TIER 2: XML/Sitemap parsing (network-received bytes) ---
+
+[[bin]]
+name = "fuzz_parse_sitemap"
+path = "fuzz_targets/fuzz_parse_sitemap.rs"
+test = false
+doc = false
+bench = false
+
+# --- TIER 3: Link/URL processing (user-controlled URLs) ---
+
+[[bin]]
+name = "fuzz_extract_links"
+path = "fuzz_targets/fuzz_extract_links.rs"
 test = false
 doc = false
 bench = false
@@ -29,22 +75,56 @@ doc = false
 bench = false
 
 [[bin]]
-name = "fuzz_extract_links"
-path = "fuzz_targets/fuzz_extract_links.rs"
+name = "fuzz_url_normalization"
+path = "fuzz_targets/fuzz_url_normalization.rs"
+test = false
+doc = false
+bench = false
+
+# --- TIER 4: Security-sensitive (WAF, compression, cookies) ---
+
+[[bin]]
+name = "fuzz_waf_detection"
+path = "fuzz_targets/fuzz_waf_detection.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
-name = "fuzz_parse_sitemap"
-path = "fuzz_targets/fuzz_parse_sitemap.rs"
+name = "fuzz_compression_detect"
+path = "fuzz_targets/fuzz_compression_detect.rs"
+test = false
+doc = false
+bench = false
+
+# --- TIER 5: Content processing (post-extraction pipeline) ---
+
+[[bin]]
+name = "fuzz_wikilinks"
+path = "fuzz_targets/fuzz_wikilinks.rs"
 test = false
 doc = false
 bench = false
 
 [[bin]]
-name = "fuzz_extract_text"
-path = "fuzz_targets/fuzz_extract_text.rs"
+name = "fuzz_syntax_highlight"
+path = "fuzz_targets/fuzz_syntax_highlight.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_slug_from_url"
+path = "fuzz_targets/fuzz_slug_from_url.rs"
+test = false
+doc = false
+bench = false
+
+# --- TIER 6: Asset extraction ---
+
+[[bin]]
+name = "fuzz_extract_assets"
+path = "fuzz_targets/fuzz_extract_assets.rs"
 test = false
 doc = false
 bench = false
