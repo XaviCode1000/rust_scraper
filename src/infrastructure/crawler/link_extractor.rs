@@ -147,7 +147,10 @@ pub fn normalize_url(url: &str) -> String {
             normalized.push('/');
         }
 
-        normalized
+        // Trim trailing whitespace — the url crate preserves path whitespace on
+        // first parse but strips it on re-parse, breaking idempotency.
+        // Caught by cargo-fuzz fuzz_url_normalization target.
+        normalized.trim().to_string()
     } else {
         without_fragment.to_string()
     }
