@@ -41,29 +41,6 @@ impl LinkProcessor {
             .unwrap_or(false)
     }
 
-    /// Normalize a URL (remove fragments, trailing slashes, etc.)
-    ///
-    /// Pure function for URL normalization.
-    pub fn normalize_url(url: &str) -> String {
-        // Remove fragment
-        let without_fragment = url.split('#').next().unwrap_or(url);
-
-        // Parse and rebuild URL for consistent normalization
-        if let Ok(parsed) = url::Url::parse(without_fragment) {
-            // Keep trailing slash if present, remove query params for deduplication
-            let mut normalized = parsed[..url::Position::AfterPath].to_string();
-
-            // Preserve trailing slash
-            if without_fragment.ends_with('/') && !normalized.ends_with('/') {
-                normalized.push('/');
-            }
-
-            normalized
-        } else {
-            without_fragment.to_string()
-        }
-    }
-
     /// Extract domain from URL
     ///
     /// Pure function for domain extraction.
@@ -100,43 +77,5 @@ mod tests {
             "invalid-url",
             "example.com"
         ));
-    }
-
-    #[test]
-    fn test_link_processor_normalize_url_remove_fragment() {
-        assert_eq!(
-            LinkProcessor::normalize_url("https://example.com/page#section"),
-            "https://example.com/page"
-        );
-        assert_eq!(
-            LinkProcessor::normalize_url("https://example.com/page#top"),
-            "https://example.com/page"
-        );
-    }
-
-    #[test]
-    fn test_link_processor_normalize_url_preserve_trailing_slash() {
-        assert_eq!(
-            LinkProcessor::normalize_url("https://example.com/page/"),
-            "https://example.com/page/"
-        );
-        assert_eq!(
-            LinkProcessor::normalize_url("https://example.com/page/#section"),
-            "https://example.com/page/"
-        );
-    }
-
-    #[test]
-    fn test_link_processor_normalize_url_no_change() {
-        assert_eq!(
-            LinkProcessor::normalize_url("https://example.com/page"),
-            "https://example.com/page"
-        );
-    }
-
-    #[test]
-    fn test_link_processor_normalize_url_invalid() {
-        let result = LinkProcessor::normalize_url("not-a-valid-url");
-        assert_eq!(result, "not-a-valid-url");
     }
 }

@@ -110,6 +110,45 @@ test-dev-with-impact:
         -E "not test(ai_integration)"
 
 # =============================================
+# FUZZING (seguridad — detecta vulns y panics)
+# =============================================
+
+# Smoke test: ejecuta cada target por 5 segundos
+fuzz-smoke:
+    @echo "🔍 Smoke testing all fuzz targets (5s each)..."
+    @for target in fuzz_html_cleaner fuzz_convert_to_markdown fuzz_readability_parse fuzz_extract_text fuzz_parse_sitemap fuzz_extract_links fuzz_url_validation fuzz_url_normalization fuzz_waf_detection fuzz_compression_detect fuzz_wikilinks fuzz_syntax_highlight fuzz_slug_from_url fuzz_extract_assets; do \
+        echo "  → $$target"; \
+        cargo +nightly fuzz run $$target -- -max_total_time=5 2>&1 | tail -1; \
+    done
+    @echo "✅ All targets smoke-tested"
+
+# Fuzz un target específico por N segundos (default: 60)
+fuzz-target target seconds="60":
+    @echo "🎯 Fuzzing {{target}} for {{seconds}}s..."
+    cargo +nightly fuzz run {{target}} -- -max_total_time={{seconds}}
+
+# Fuzz todos los targets por 10 minutos (para CI nocturno)
+fuzz-full:
+    @echo "🔬 Running full fuzz suite (10 min per target)..."
+    @for target in fuzz_html_cleaner fuzz_convert_to_markdown fuzz_readability_parse fuzz_extract_text fuzz_parse_sitemap fuzz_extract_links fuzz_url_validation fuzz_url_normalization fuzz_waf_detection fuzz_compression_detect fuzz_wikilinks fuzz_syntax_highlight fuzz_slug_from_url fuzz_extract_assets; do \
+        echo "=== $$target ==="; \
+        cargo +nightly fuzz run $$target -- -max_total_time=600 || echo "FAILED: $$target"; \
+    done
+    @echo "✅ Full fuzz suite complete"
+
+# Coverage report: qué tan bien cubre el fuzzing el código
+fuzz-coverage target:
+    @echo "📊 Generating coverage for {{target}}..."
+    cargo +nightly fuzz coverage {{target}}
+    @echo "✅ Coverage report in fuzz/coverage/{{target}}/"
+
+# Limpiar artifacts de fuzzing (corpus, crashes, coverage)
+fuzz-clean:
+    @echo "🧹 Cleaning fuzz artifacts..."
+    rm -rf fuzz/artifacts/*/crash-* fuzz/artifacts/*/oom-* fuzz/artifacts/*/leak-*
+    @echo "✅ Fuzz artifacts cleaned"
+
+# =============================================
 # CI / GATE FINAL (antes de commit / PR)
 # =============================================
 

@@ -4,7 +4,7 @@
 //! Implements 80/20 rule: prioritize recent content (lastmod) and
 //! filter parameter-heavy URLs to maximize crawl efficiency.
 
-use crate::infrastructure::crawler::SitemapConfig;
+use crate::infrastructure::crawler::{normalize_url, SitemapConfig};
 use std::collections::HashSet;
 use url::Url;
 
@@ -83,7 +83,7 @@ impl BatchProcessor {
         let mut result = Vec::new();
 
         for url in urls {
-            let normalized_str = url.to_string();
+            let normalized_str = normalize_url(url.as_str());
 
             if seen.insert(normalized_str) {
                 result.push(url);

@@ -71,13 +71,44 @@ jobs:
           fi
 
   # ============================================================================
+  # AUTOFIX: Auto-format and auto-fix clippy before gates run.
+  # Only on PRs — pushes to main/develop are trusted.
+  # If fixes are made, commits and pushes them, which re-triggers CI.
+  # ============================================================================
+  autofix:
+    name: Auto-fix fmt + clippy
+    needs: [toolchain]
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Auto-format
+        run: cargo fmt --all
+      - name: Auto-fix clippy
+        run: cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged -- -D warnings
+      - name: Commit fixes if any
+        run: |
+          git diff --quiet && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "style: auto-fix fmt + clippy"
+          git push
+
+  # ============================================================================
   # TIER 1: FORMAT GATE (30-60 seconds)
   # No compilation needed — instant feedback on style.
   # If this fails, NOTHING else runs.
   # ============================================================================
   fmt:
     name: Check formatting
-    needs: [toolchain]
+    needs: [autofix]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -102,7 +133,7 @@ jobs:
   # ============================================================================
   clippy:
     name: Clippy (strict)
-    needs: [fmt]
+    needs: [autofix, fmt]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

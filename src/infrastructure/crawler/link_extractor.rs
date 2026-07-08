@@ -105,9 +105,19 @@ pub fn is_internal_link(url: &str, domain: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Normalize a URL (remove fragments, trailing slashes, etc.)
+/// Normalize a URL (remove fragments, strip www, remove default ports, etc.)
 ///
 /// Following **own-borrow-over-clone**: Accepts `&str`.
+///
+/// This is the **canonical** URL normalizer for the scraper. All URL
+/// normalization should go through this function.
+///
+/// Options:
+/// - `strip_hash: true` — removes URL fragments (`#section`)
+/// - `strip_www: true` — removes `www.` prefix for better dedup
+/// - `remove_trailing_slash: false` — preserves trailing slashes
+/// - `remove_query_parameters: All` — strips query strings for dedup
+/// - `sort_query_parameters: true` — consistent ordering
 ///
 /// # Arguments
 ///
@@ -127,30 +137,38 @@ pub fn is_internal_link(url: &str, domain: &str) -> bool {
 ///     "https://example.com/page"
 /// );
 /// assert_eq!(
-///     normalize_url("https://example.com/page/"),
-///     "https://example.com/page/"
+///     normalize_url("https://www.example.com/page"),
+///     "https://example.com/page"
+/// );
+/// assert_eq!(
+///     normalize_url("https://example.com:443/page"),
+///     "https://example.com/page"
 /// );
 /// ```
 #[inline]
 #[must_use]
 pub fn normalize_url(url: &str) -> String {
-    // Remove fragment
-    let without_fragment = url.split('#').next().unwrap_or(url);
+    use url_normalize::{normalize_url as normalize, Options, RemoveQueryParameters};
 
-    // Parse and rebuild URL for consistent normalization
-    if let Ok(parsed) = Url::parse(without_fragment) {
-        // Keep trailing slash if present, remove query params for deduplication
-        let mut normalized = parsed[..url::Position::AfterPath].to_string();
-
-        // Preserve trailing slash
-        if without_fragment.ends_with('/') && !normalized.ends_with('/') {
-            normalized.push('/');
-        }
-
-        normalized
-    } else {
-        without_fragment.to_string()
+    // Non-URLs (no scheme) should not be normalized — return as-is.
+    // This prevents "not-a-valid-url" → "http://not-a-valid-url" conversion.
+    if !url.contains("://") {
+        return url.to_string();
     }
+
+    let opts = Options {
+        strip_hash: true,
+        remove_trailing_slash: false,
+        remove_query_parameters: RemoveQueryParameters::All,
+        sort_query_parameters: true,
+        strip_www: true,
+        force_https: false,
+        ..Options::default()
+    };
+
+    // url-normalize handles WHATWG preprocessing (control chars, backslashes,
+    // trailing whitespace) and produces idempotent output.
+    normalize(url, &opts).unwrap_or_else(|_| url.to_string())
 }
 
 /// Extract domain from URL
@@ -315,6 +333,30 @@ mod tests {
         assert_eq!(result, "not-a-valid-url");
     }
 
+    #[test]
+    fn test_normalize_url_strips_www() {
+        assert_eq!(
+            normalize_url("https://www.example.com/page"),
+            "https://example.com/page"
+        );
+        assert_eq!(
+            normalize_url("https://www.example.com/page/"),
+            "https://example.com/page/"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_removes_default_port() {
+        assert_eq!(
+            normalize_url("https://example.com:443/page"),
+            "https://example.com/page"
+        );
+        assert_eq!(
+            normalize_url("http://example.com:80/page"),
+            "http://example.com/page"
+        );
+    }
+
     // ============================================================================
     // Error path tests
     // ============================================================================
@@ -356,8 +398,8 @@ mod tests {
         "#;
 
         let links = extract_links(html, "https://example.com").unwrap();
-        // Empty href resolves to the base URL itself
-        assert!(links.contains(&"https://example.com/".to_string()));
+        // Empty href resolves to the base URL itself (no trailing slash added)
+        assert!(links.contains(&"https://example.com".to_string()));
         assert!(links.contains(&"https://example.com/page".to_string()));
     }
 

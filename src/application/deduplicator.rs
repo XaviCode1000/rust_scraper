@@ -16,7 +16,6 @@
 //!   process lifetime, so identical URLs hash to identical `u64` keys
 
 use dashmap::DashSet;
-use url::Url;
 
 /// Lock-free URL deduplicator.
 ///
@@ -88,56 +87,6 @@ impl Default for UrlDeduplicator {
         // `RandomState::default()` (frozen compile-time keys), violating FR-3.
         Self::new()
     }
-}
-
-/// Normalize a URL for consistent deduplication and filtering.
-///
-/// - Removes trailing slashes
-/// - Removes `www.` prefix
-/// - Drops default ports (80, 443)
-/// - Lowercases the host (via `Url` parsing)
-pub fn normalize_url(url: &Url) -> String {
-    let scheme = url.scheme();
-    let host = url.host_str().unwrap_or("");
-    let port = url.port();
-    let path = url.path();
-
-    // Build normalized string manually to avoid borrow issues
-    let mut result = format!("{scheme}://");
-
-    // Handle www prefix
-    let host = host.strip_prefix("www.").unwrap_or(host);
-
-    // Handle default port - add only if not default
-    let port_str = match (port, scheme) {
-        (None, _) => "",
-        (Some(80), _) => "", // Remove port 80 regardless of scheme
-        (Some(443), "https") => "",
-        (Some(p), _) => &format!(":{p}"),
-    };
-
-    result.push_str(host);
-    result.push_str(port_str);
-
-    // Remove trailing slash from path
-    let path = if path.ends_with('/') && path.len() > 1 {
-        &path[..path.len() - 1]
-    } else {
-        path
-    };
-
-    // Don't add path if it's just "/" (root)
-    if path != "/" && !path.is_empty() {
-        result.push_str(path);
-    }
-
-    // Add query string if present
-    if let Some(query) = url.query() {
-        result.push('?');
-        result.push_str(query);
-    }
-
-    result
 }
 
 #[cfg(test)]
@@ -237,19 +186,5 @@ mod tests {
             handle.await.unwrap();
         }
         assert_eq!(dedup.len(), 1000);
-    }
-
-    #[test]
-    fn test_normalize_url_preserved() {
-        // normalize_url is kept (DC-3 only deletes the legacy ResultsCollector,
-        // not this helper). Verify it still behaves as documented.
-        let url = Url::parse("https://www.example.com/").unwrap();
-        assert_eq!(normalize_url(&url), "https://example.com");
-
-        let url = Url::parse("https://www.example.com/page/").unwrap();
-        assert_eq!(normalize_url(&url), "https://example.com/page");
-
-        let url = Url::parse("https://example.com:80/page").unwrap();
-        assert_eq!(normalize_url(&url), "https://example.com/page");
     }
 }
