@@ -105,9 +105,19 @@ pub fn is_internal_link(url: &str, domain: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Normalize a URL (remove fragments, trailing slashes, etc.)
+/// Normalize a URL (remove fragments, strip www, remove default ports, etc.)
 ///
 /// Following **own-borrow-over-clone**: Accepts `&str`.
+///
+/// This is the **canonical** URL normalizer for the scraper. All URL
+/// normalization should go through this function.
+///
+/// Options:
+/// - `strip_hash: true` — removes URL fragments (`#section`)
+/// - `strip_www: true` — removes `www.` prefix for better dedup
+/// - `remove_trailing_slash: false` — preserves trailing slashes
+/// - `remove_query_parameters: All` — strips query strings for dedup
+/// - `sort_query_parameters: true` — consistent ordering
 ///
 /// # Arguments
 ///
@@ -127,8 +137,12 @@ pub fn is_internal_link(url: &str, domain: &str) -> bool {
 ///     "https://example.com/page"
 /// );
 /// assert_eq!(
-///     normalize_url("https://example.com/page/"),
-///     "https://example.com/page/"
+///     normalize_url("https://www.example.com/page"),
+///     "https://example.com/page"
+/// );
+/// assert_eq!(
+///     normalize_url("https://example.com:443/page"),
+///     "https://example.com/page"
 /// );
 /// ```
 #[inline]
@@ -147,7 +161,7 @@ pub fn normalize_url(url: &str) -> String {
         remove_trailing_slash: false,
         remove_query_parameters: RemoveQueryParameters::All,
         sort_query_parameters: true,
-        strip_www: false,
+        strip_www: true,
         force_https: false,
         ..Options::default()
     };
@@ -317,6 +331,30 @@ mod tests {
     fn test_normalize_url_invalid() {
         let result = normalize_url("not-a-valid-url");
         assert_eq!(result, "not-a-valid-url");
+    }
+
+    #[test]
+    fn test_normalize_url_strips_www() {
+        assert_eq!(
+            normalize_url("https://www.example.com/page"),
+            "https://example.com/page"
+        );
+        assert_eq!(
+            normalize_url("https://www.example.com/page/"),
+            "https://example.com/page/"
+        );
+    }
+
+    #[test]
+    fn test_normalize_url_removes_default_port() {
+        assert_eq!(
+            normalize_url("https://example.com:443/page"),
+            "https://example.com/page"
+        );
+        assert_eq!(
+            normalize_url("http://example.com:80/page"),
+            "http://example.com/page"
+        );
     }
 
     // ============================================================================

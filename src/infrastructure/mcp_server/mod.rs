@@ -1021,9 +1021,9 @@ impl McpHandler {
         }
     }
 
-    /// Normalize a URL (remove fragments, trailing slashes, etc.)
+    /// Normalize a URL (remove fragments, preserve trailing slashes, remove default ports)
     #[tool(
-        description = "Normalize a URL by removing fragments, trailing slashes, and default ports."
+        description = "Normalize a URL by removing fragments, preserving trailing slashes, and removing default ports."
     )]
     #[instrument(skip(self), fields(url = %params.url))]
     async fn normalize_url(
@@ -1048,7 +1048,7 @@ impl McpHandler {
 
         let opts = Options {
             strip_hash: true,
-            remove_trailing_slash: true,
+            remove_trailing_slash: false,
             remove_query_parameters: RemoveQueryParameters::All,
             sort_query_parameters: true,
             strip_www: false,

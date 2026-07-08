@@ -24,7 +24,7 @@ use crate::domain::{CrawlError, CrawlResult, CrawlerConfig, DiscoveredUrl, JsStr
 use crate::infrastructure::checkpoint::store::BannedDomain;
 use crate::infrastructure::checkpoint::BincodeCheckpoint;
 use crate::infrastructure::crawler::{
-    extract_links, fetch_url, is_internal_link, normalize_url, UrlQueue, UrlSource,
+    extract_links, fetch_url, is_internal_link, UrlQueue, UrlSource,
 };
 use crate::infrastructure::downloader::chromiumoxide_downloader::ChromiumoxideDownloader;
 use crate::infrastructure::downloader::cookie_bridge::CookieBridge;
@@ -646,24 +646,24 @@ impl Engine {
                         match extract_links(&response, &url_str) {
                             Ok(links) => {
                                 for link in links {
-                                    let normalized = normalize_url(&link);
-                                    if let Ok(parsed_url) = Url::parse(&normalized) {
+                                    // extract_links() already normalizes each link
+                                    if let Ok(parsed_url) = Url::parse(&link) {
                                         if let Some(seed_domain) = config_task.seed_url.host_str() {
                                             let link_domain = parsed_url.host_str().unwrap_or("");
-                                            if is_internal_link(&normalized, seed_domain)
-                                                && is_allowed(&normalized, &config_task)
+                                            if is_internal_link(&link, seed_domain)
+                                                && is_allowed(&link, &config_task)
                                                 && (ignore_robots_task
                                                     || is_allowed_by_robots(
-                                                        &normalized,
+                                                        &link,
                                                         link_domain,
                                                         &robots_cache_task,
                                                     )
                                                     .await)
-                                                && visited_task.try_insert(&normalized)
+                                                && visited_task.try_insert(&link)
                                             {
                                                 // Record URL string for checkpoint
                                                 if let Ok(mut urls) = visited_urls_task.write() {
-                                                    urls.push(normalized.clone());
+                                                    urls.push(link.clone());
                                                 }
 
                                                 let new_discovered = DiscoveredUrl::html(
