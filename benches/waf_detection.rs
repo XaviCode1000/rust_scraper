@@ -10,10 +10,10 @@ fn bench_waf_verify_integrity(c: &mut Criterion) {
     group.throughput(Throughput::Bytes(body.len() as u64));
     group.bench_function("verify_integrity_500kb", |b| {
         b.iter(|| {
-            black_box(WafInspector::verify_integrity(
-                black_box(&HeaderMap::new()),
-                black_box(&body),
-            ))
+            let result =
+                WafInspector::verify_integrity(black_box(&HeaderMap::new()), black_box(&body));
+            assert!(result.is_ok());
+            black_box(result)
         })
     });
     group.finish();

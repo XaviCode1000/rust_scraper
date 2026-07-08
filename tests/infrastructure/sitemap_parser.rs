@@ -3,8 +3,8 @@
 //! Parses real XML fixtures from tests/fixtures/sitemap/ and exercises
 //! SitemapParser + SitemapConfig against wiremock MockServer.
 
-use rust_scraper::infrastructure::crawler::{resolve_url, SitemapError, SitemapParser};
 use rust_scraper::infrastructure::crawler::SitemapConfig;
+use rust_scraper::infrastructure::crawler::{resolve_url, SitemapError, SitemapParser};
 use url::Url;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -152,9 +152,7 @@ async fn parse_from_mock_server_non_xml_content_type() {
         .await;
 
     let parser = SitemapParser::new();
-    let result = parser
-        .parse_from_url(&format!("{}/feed", mock.uri()))
-        .await;
+    let result = parser.parse_from_url(&format!("{}/feed", mock.uri())).await;
 
     assert!(matches!(result, Err(SitemapError::InvalidContentType(_))));
 }

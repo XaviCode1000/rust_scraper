@@ -1,8 +1,8 @@
 //! Integration tests for BincodeCheckpoint — save/load roundtrip, corrupt files,
 //! atomic writes, banned domains, and large checkpoints.
 
-use rust_scraper::BincodeCheckpoint;
 use rust_scraper::infrastructure::checkpoint::store::{BannedDomain, CheckpointPath};
+use rust_scraper::BincodeCheckpoint;
 use std::collections::HashSet;
 use std::fs;
 use tempfile::TempDir;
@@ -96,8 +96,8 @@ fn partial_json_returns_error() {
 
 #[test]
 fn load_nonexistent_returns_default() {
-    let cp = BincodeCheckpoint::load(std::path::Path::new("/nonexistent/path/checkpoint.json"))
-        .unwrap();
+    let cp =
+        BincodeCheckpoint::load(std::path::Path::new("/nonexistent/path/checkpoint.json")).unwrap();
     assert!(cp.visited.is_empty());
     assert!(cp.queued.is_empty());
     assert_eq!(cp.pages_crawled, 0);
@@ -115,13 +115,17 @@ fn save_overwrites_previous_checkpoint() {
     for i in 0..5 {
         v1.insert(format!("https://page{i}.com"));
     }
-    BincodeCheckpoint::from_state(&v1, &[], 5, vec![]).save(&path).unwrap();
+    BincodeCheckpoint::from_state(&v1, &[], 5, vec![])
+        .save(&path)
+        .unwrap();
 
     // Second save with 2 URLs
     let mut v2 = HashSet::new();
     v2.insert("https://x.com".to_string());
     v2.insert("https://y.com".to_string());
-    BincodeCheckpoint::from_state(&v2, &[], 2, vec![]).save(&path).unwrap();
+    BincodeCheckpoint::from_state(&v2, &[], 2, vec![])
+        .save(&path)
+        .unwrap();
 
     let loaded = BincodeCheckpoint::load(&path).unwrap();
     assert_eq!(loaded.visited.len(), 2, "should have 2, not 5+2");
@@ -152,7 +156,9 @@ fn resume_adds_new_data_to_loaded_checkpoint() {
     // Phase 1: initial crawl
     let mut v1 = HashSet::new();
     v1.insert("https://page1.com".to_string());
-    BincodeCheckpoint::from_state(&v1, &[], 1, vec![]).save(&path).unwrap();
+    BincodeCheckpoint::from_state(&v1, &[], 1, vec![])
+        .save(&path)
+        .unwrap();
 
     // Phase 2: resume
     let mut loaded = BincodeCheckpoint::load(&path).unwrap();

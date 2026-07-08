@@ -3,7 +3,7 @@
 //! Uses tempfile for real I/O verification of JSONL output.
 
 use rust_scraper::domain::entities::ExportFormat;
-use rust_scraper::domain::exporter::{ExporterConfig, Exporter};
+use rust_scraper::domain::exporter::{Exporter, ExporterConfig};
 use rust_scraper::domain::{DocumentChunkUnvalidated, ScrapedContent, ValidUrl};
 use rust_scraper::infrastructure::export::JsonlExporter;
 use std::fs;
@@ -116,8 +116,8 @@ fn each_line_is_valid_json() {
 
     let content = fs::read_to_string(tmp.path().join("valid.jsonl")).unwrap();
     for (i, line) in content.lines().enumerate() {
-        let json: serde_json::Value =
-            serde_json::from_str(line).unwrap_or_else(|e| panic!("line {i} is not valid JSON: {e}"));
+        let json: serde_json::Value = serde_json::from_str(line)
+            .unwrap_or_else(|e| panic!("line {i} is not valid JSON: {e}"));
         assert!(json["title"].as_str().unwrap().contains("Item"));
     }
 }

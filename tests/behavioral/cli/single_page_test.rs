@@ -88,10 +88,7 @@ async fn single_page_json_format_creates_json_file() {
 
     // JSON output goes to results.json at the output root (not in domain subdirs)
     let json_files = t.find_files("json");
-    assert!(
-        !json_files.is_empty(),
-        "expected at least one .json file"
-    );
+    assert!(!json_files.is_empty(), "expected at least one .json file");
 }
 
 #[tokio::test]
@@ -149,10 +146,7 @@ async fn single_page_text_format_creates_txt_file() {
         .success();
 
     let txt_files = t.find_files("txt");
-    assert!(
-        !txt_files.is_empty(),
-        "expected at least one .txt file"
-    );
+    assert!(!txt_files.is_empty(), "expected at least one .txt file");
 }
 
 #[tokio::test]
@@ -201,7 +195,8 @@ async fn single_page_quiet_suppresses_stdout() {
         .mount(&t.server)
         .await;
 
-    let output = t.scraper_cmd()
+    let output = t
+        .scraper_cmd()
         .arg("--single-page")
         .arg("--quiet")
         .output()

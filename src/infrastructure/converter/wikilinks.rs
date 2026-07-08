@@ -130,9 +130,12 @@ fn transform_and_serialize<'a>(
 ) -> String {
     let mut result = String::new();
     let mut in_link = false;
+    let mut link_has_image = false;
     let mut link_url = String::new();
     let mut link_text_parts: Vec<Event<'a>> = Vec::new();
     let mut depth = 0;
+    // Track image URLs for reconstruction when link contains images
+    let mut image_urls: Vec<String> = Vec::new();
 
     for event in events {
         match &event {
@@ -144,8 +147,10 @@ fn transform_and_serialize<'a>(
             }) => {
                 if depth == 0 {
                     in_link = true;
+                    link_has_image = false;
                     link_url = dest_url.to_string();
                     link_text_parts.clear();
+                    image_urls.clear();
                 }
                 depth += 1;
                 if !in_link {
@@ -157,7 +162,35 @@ fn transform_and_serialize<'a>(
                     in_link = false;
                     depth = 0;
 
-                    if let Some(slug) = should_convert_wikilink(&link_url, base_domain) {
+                    // If the link contains an image (e.g. [![alt](img)](url)),
+                    // preserve the original markdown — don't convert to wiki-link.
+                    // Wiki-links can't hold images, and converting would lose the asset.
+                    if link_has_image {
+                        let needs_space =
+                            !result.is_empty() && !result.ends_with(' ') && !result.ends_with('\n');
+                        if needs_space {
+                            result.push(' ');
+                        }
+                        // Reconstruct: [![alt](img_url)](link_url) — preserve all images
+                        let alt_text = extract_text_from_events(&link_text_parts);
+                        tracing::debug!("WIKILINK: reconstructing image link, alt={}, img_count={}, link_url={}", alt_text, image_urls.len(), link_url);
+                        result.push('[');
+                        for (i, img_url) in image_urls.iter().enumerate() {
+                            if i > 0 {
+                                // Multiple images: use text fallback for alt on 2nd+
+                                result.push_str("![img](");
+                            } else {
+                                result.push_str("![");
+                                result.push_str(&alt_text);
+                                result.push_str("](");
+                            }
+                            result.push_str(img_url);
+                            result.push(')');
+                        }
+                        result.push_str("](");
+                        result.push_str(&link_url);
+                        result.push(')');
+                    } else if let Some(slug) = should_convert_wikilink(&link_url, base_domain) {
                         let link_text = extract_text_from_events(&link_text_parts);
                         let normalized_text = link_text.to_lowercase().trim().replace(' ', "-");
 
@@ -198,9 +231,16 @@ fn transform_and_serialize<'a>(
                     }
                 }
             },
-            Event::Start(Tag::Image { .. }) => {
+            Event::Start(Tag::Image {
+                dest_url,
+                title: _,
+                id: _,
+                link_type: _,
+            }) => {
                 if in_link {
-                    link_text_parts.push(event);
+                    link_has_image = true;
+                    image_urls.push(dest_url.to_string());
+                    tracing::debug!("WIKILINK: detected image inside link, url={}", dest_url);
                 } else {
                     push_event_text(&event, &mut result);
                 }
@@ -215,7 +255,7 @@ fn transform_and_serialize<'a>(
             },
             Event::End(TagEnd::Image) => {
                 if in_link {
-                    link_text_parts.push(event);
+                    // Don't push image end event — we reconstruct it manually
                 } else {
                     push_event_text(&event, &mut result);
                 }
@@ -471,5 +511,99 @@ mod tests {
     #[test]
     fn test_slug_single_segment() {
         assert_eq!(slug_from_url("/about"), "about");
+    }
+
+    #[test]
+    fn test_link_with_image_preserved() {
+        // [![alt](img_url)](link_url) should NOT be converted to wiki-link
+        // because the image would be lost
+        let md = "[![icon](https://example.com/img.svg)](https://example.com/page)";
+        let result = convert_wiki_links(md, "example.com");
+        assert_eq!(
+            result,
+            "[![icon](https://example.com/img.svg)](https://example.com/page)"
+        );
+    }
+
+    #[test]
+    fn test_link_with_image_relative_preserved() {
+        let md = "[![alt](/images/logo.png)](/about)";
+        let result = convert_wiki_links(md, "example.com");
+        assert_eq!(result, "[![alt](/images/logo.png)](/about)");
+    }
+
+    #[test]
+    fn test_plain_link_still_converted() {
+        // Plain text links should still be converted
+        let md = "[About Page](https://example.com/about)";
+        let result = convert_wiki_links(md, "example.com");
+        assert_eq!(result, "[[about|About Page]]");
+    }
+
+    #[test]
+    fn test_multiple_links_mixed_images_and_text() {
+        let md = "[![icon](https://example.com/img.svg)](https://example.com/page) and [About Page](https://example.com/about)";
+        let result = convert_wiki_links(md, "example.com");
+        // Image link preserved, text link converted
+        assert!(result.contains("[![icon](https://example.com/img.svg)](https://example.com/page)"));
+        assert!(result.contains("[[about|About Page]]"));
+    }
+
+    // === Phase 2: Edge-case hardening ===
+
+    #[test]
+    fn test_link_with_multiple_images_preserves_first() {
+        // Multiple images in one link — guard rail detects image and preserves
+        let md = "[![a](https://example.com/a.png)![b](https://example.com/b.png)](https://example.com/page)";
+        let result = convert_wiki_links(md, "example.com");
+        // Must NOT convert to wiki-link (has images)
+        assert!(
+            !result.contains("[["),
+            "Image link must not become wiki-link, got: {result}"
+        );
+        // First image URL should be present
+        assert!(
+            result.contains("https://example.com/a.png"),
+            "First image URL must survive, got: {result}"
+        );
+    }
+
+    #[test]
+    fn test_link_with_image_and_text_siblings() {
+        // Image with text around it inside a link
+        let md = "[text before ![alt](https://example.com/img.png) text after](https://example.com/page)";
+        let result = convert_wiki_links(md, "example.com");
+        // Must NOT convert to wiki-link
+        assert!(
+            !result.contains("[["),
+            "Image link with text must not become wiki-link, got: {result}"
+        );
+        // Image URL must survive
+        assert!(
+            result.contains("https://example.com/img.png"),
+            "Image URL must survive, got: {result}"
+        );
+        // Link URL must survive
+        assert!(
+            result.contains("https://example.com/page"),
+            "Link URL must survive, got: {result}"
+        );
+    }
+
+    #[test]
+    fn test_link_with_emphasis_around_image() {
+        // **[![alt](img)](url)** — emphasis wrapping image link
+        let md = "**[![alt](https://example.com/img.png)](https://example.com/page)**";
+        let result = convert_wiki_links(md, "example.com");
+        // Must NOT convert to wiki-link
+        assert!(
+            !result.contains("[["),
+            "Emphasized image link must not become wiki-link, got: {result}"
+        );
+        // Image URL preserved
+        assert!(
+            result.contains("https://example.com/img.png"),
+            "Image URL must survive emphasis, got: {result}"
+        );
     }
 }

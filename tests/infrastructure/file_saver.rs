@@ -70,7 +70,13 @@ fn creates_output_directory_if_missing() {
     let output = tmp.path().join("nested").join("output");
 
     let results = vec![make_content("https://example.com/p", "Title", "Body")];
-    save_results(&results, &output, &OutputFormat::Markdown, &ObsidianOptions::default()).unwrap();
+    save_results(
+        &results,
+        &output,
+        &OutputFormat::Markdown,
+        &ObsidianOptions::default(),
+    )
+    .unwrap();
 
     assert!(output.exists());
     assert_eq!(count_files(&output), 1);
@@ -82,7 +88,13 @@ fn creates_multiple_parent_levels() {
     let output = tmp.path().join("a").join("b").join("c").join("d");
 
     let results = vec![make_content("https://example.com/p", "Deep", "Content")];
-    save_results(&results, &output, &OutputFormat::Markdown, &ObsidianOptions::default()).unwrap();
+    save_results(
+        &results,
+        &output,
+        &OutputFormat::Markdown,
+        &ObsidianOptions::default(),
+    )
+    .unwrap();
 
     assert!(output.exists());
 }
@@ -98,7 +110,13 @@ fn markdown_file_contains_title_and_content() {
         "This is the body.",
     )];
 
-    save_results(&results, tmp.path(), &OutputFormat::Markdown, &ObsidianOptions::default()).unwrap();
+    save_results(
+        &results,
+        tmp.path(),
+        &OutputFormat::Markdown,
+        &ObsidianOptions::default(),
+    )
+    .unwrap();
 
     let files = read_all_files(tmp.path());
     assert_eq!(files.len(), 1);
@@ -112,7 +130,13 @@ fn markdown_includes_frontmatter_delimiters() {
     let tmp = TempDir::new().unwrap();
     let results = vec![make_content("https://example.com/p", "Title", "Body")];
 
-    save_results(&results, tmp.path(), &OutputFormat::Markdown, &ObsidianOptions::default()).unwrap();
+    save_results(
+        &results,
+        tmp.path(),
+        &OutputFormat::Markdown,
+        &ObsidianOptions::default(),
+    )
+    .unwrap();
 
     let files = read_all_files(tmp.path());
     assert!(files[0].1.starts_with("---\n"));
@@ -128,7 +152,13 @@ fn markdown_with_metadata_fields() {
     item.date = Some("2025-06-01".to_string());
     item.excerpt = Some("A short excerpt.".to_string());
 
-    save_results(&[item], tmp.path(), &OutputFormat::Markdown, &ObsidianOptions::default()).unwrap();
+    save_results(
+        &[item],
+        tmp.path(),
+        &OutputFormat::Markdown,
+        &ObsidianOptions::default(),
+    )
+    .unwrap();
 
     let files = read_all_files(tmp.path());
     assert!(files[0].1.contains("Jane Doe"));
@@ -145,7 +175,13 @@ fn html_content_converts_to_markdown() {
         "<h1>Hello</h1><p>Paragraph text.</p>",
     )];
 
-    save_results(&results, tmp.path(), &OutputFormat::Markdown, &ObsidianOptions::default()).unwrap();
+    save_results(
+        &results,
+        tmp.path(),
+        &OutputFormat::Markdown,
+        &ObsidianOptions::default(),
+    )
+    .unwrap();
 
     let files = read_all_files(tmp.path());
     assert!(files[0].1.contains("Hello"));
@@ -159,7 +195,11 @@ fn second_save_overwrites_first_for_same_url() {
     let tmp = TempDir::new().unwrap();
 
     save_results(
-        &[make_content("https://example.com/p", "Original", "Original content.")],
+        &[make_content(
+            "https://example.com/p",
+            "Original",
+            "Original content.",
+        )],
         tmp.path(),
         &OutputFormat::Markdown,
         &ObsidianOptions::default(),
@@ -167,7 +207,11 @@ fn second_save_overwrites_first_for_same_url() {
     .unwrap();
 
     save_results(
-        &[make_content("https://example.com/p", "Updated", "Updated content.")],
+        &[make_content(
+            "https://example.com/p",
+            "Updated",
+            "Updated content.",
+        )],
         tmp.path(),
         &OutputFormat::Markdown,
         &ObsidianOptions::default(),
@@ -187,7 +231,13 @@ fn json_output_creates_results_json() {
     let tmp = TempDir::new().unwrap();
     let results = vec![make_content("https://example.com/p", "JSON Test", "Body")];
 
-    save_results(&results, tmp.path(), &OutputFormat::Json, &ObsidianOptions::default()).unwrap();
+    save_results(
+        &results,
+        tmp.path(),
+        &OutputFormat::Json,
+        &ObsidianOptions::default(),
+    )
+    .unwrap();
 
     let path = tmp.path().join("results.json");
     assert!(path.exists());
@@ -207,7 +257,13 @@ fn json_output_contains_valid_json_for_multiple_items() {
         make_content("https://c.com", "C", "Content C"),
     ];
 
-    save_results(&results, tmp.path(), &OutputFormat::Json, &ObsidianOptions::default()).unwrap();
+    save_results(
+        &results,
+        tmp.path(),
+        &OutputFormat::Json,
+        &ObsidianOptions::default(),
+    )
+    .unwrap();
 
     let content = fs::read_to_string(tmp.path().join("results.json")).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&content).unwrap();
@@ -219,9 +275,19 @@ fn json_output_contains_valid_json_for_multiple_items() {
 #[test]
 fn text_output_creates_txt_file() {
     let tmp = TempDir::new().unwrap();
-    let results = vec![make_content("https://example.com/p", "Text Test", "Plain text.")];
+    let results = vec![make_content(
+        "https://example.com/p",
+        "Text Test",
+        "Plain text.",
+    )];
 
-    save_results(&results, tmp.path(), &OutputFormat::Text, &ObsidianOptions::default()).unwrap();
+    save_results(
+        &results,
+        tmp.path(),
+        &OutputFormat::Text,
+        &ObsidianOptions::default(),
+    )
+    .unwrap();
 
     let files = read_all_files(tmp.path());
     assert_eq!(files.len(), 1);
@@ -240,7 +306,13 @@ fn multiple_items_create_separate_files() {
         make_content("https://b.com/p2", "Article 2", "Content 2"),
     ];
 
-    save_results(&results, tmp.path(), &OutputFormat::Markdown, &ObsidianOptions::default()).unwrap();
+    save_results(
+        &results,
+        tmp.path(),
+        &OutputFormat::Markdown,
+        &ObsidianOptions::default(),
+    )
+    .unwrap();
 
     assert_eq!(count_files(tmp.path()), 2);
 }

@@ -6,8 +6,8 @@
 use rust_scraper::infrastructure::network::session_pool::{
     DomainSessionPool, SessionId, SessionManager, SessionPoolConfig,
 };
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 
 // ── Acquire / release cycle ───────────────────────────────────────────────
 
