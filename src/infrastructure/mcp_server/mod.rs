@@ -1038,15 +1038,26 @@ impl McpHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
 
-        match url::Url::parse(&params.url) {
-            Ok(mut u) => {
-                u.set_fragment(None);
-                if u.path().ends_with('/') && u.path() != "/" {
-                    let path = u.path().trim_end_matches('/').to_string();
-                    u.set_path(&path);
-                }
-                Ok(CallToolResult::success(vec![Content::text(u.to_string())]))
-            },
+        use url_normalize::{normalize_url as normalize, Options, RemoveQueryParameters};
+
+        if !params.url.contains("://") {
+            return Ok(CallToolResult::error(vec![Content::text(
+                "Invalid URL: no scheme found".to_string(),
+            )]));
+        }
+
+        let opts = Options {
+            strip_hash: true,
+            remove_trailing_slash: true,
+            remove_query_parameters: RemoveQueryParameters::All,
+            sort_query_parameters: true,
+            strip_www: false,
+            force_https: false,
+            ..Options::default()
+        };
+
+        match normalize(&params.url, &opts) {
+            Ok(normalized) => Ok(CallToolResult::success(vec![Content::text(normalized)])),
             Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
         }
     }

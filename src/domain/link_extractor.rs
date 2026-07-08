@@ -45,23 +45,23 @@ impl LinkProcessor {
     ///
     /// Pure function for URL normalization.
     pub fn normalize_url(url: &str) -> String {
-        // Remove fragment
-        let without_fragment = url.split('#').next().unwrap_or(url);
+        use url_normalize::{normalize_url as normalize, Options, RemoveQueryParameters};
 
-        // Parse and rebuild URL for consistent normalization
-        if let Ok(parsed) = url::Url::parse(without_fragment) {
-            // Keep trailing slash if present, remove query params for deduplication
-            let mut normalized = parsed[..url::Position::AfterPath].to_string();
-
-            // Preserve trailing slash
-            if without_fragment.ends_with('/') && !normalized.ends_with('/') {
-                normalized.push('/');
-            }
-
-            normalized
-        } else {
-            without_fragment.to_string()
+        if !url.contains("://") {
+            return url.to_string();
         }
+
+        let opts = Options {
+            strip_hash: true,
+            remove_trailing_slash: false,
+            remove_query_parameters: RemoveQueryParameters::All,
+            sort_query_parameters: true,
+            strip_www: false,
+            force_https: false,
+            ..Options::default()
+        };
+
+        normalize(url, &opts).unwrap_or_else(|_| url.to_string())
     }
 
     /// Extract domain from URL

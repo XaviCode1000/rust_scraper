@@ -134,26 +134,27 @@ pub fn is_internal_link(url: &str, domain: &str) -> bool {
 #[inline]
 #[must_use]
 pub fn normalize_url(url: &str) -> String {
-    // Remove fragment
-    let without_fragment = url.split('#').next().unwrap_or(url);
+    use url_normalize::{normalize_url as normalize, Options, RemoveQueryParameters};
 
-    // Parse and rebuild URL for consistent normalization
-    if let Ok(parsed) = Url::parse(without_fragment) {
-        // Keep trailing slash if present, remove query params for deduplication
-        let mut normalized = parsed[..url::Position::AfterPath].to_string();
-
-        // Preserve trailing slash
-        if without_fragment.ends_with('/') && !normalized.ends_with('/') {
-            normalized.push('/');
-        }
-
-        // Trim trailing whitespace — the url crate preserves path whitespace on
-        // first parse but strips it on re-parse, breaking idempotency.
-        // Caught by cargo-fuzz fuzz_url_normalization target.
-        normalized.trim().to_string()
-    } else {
-        without_fragment.to_string()
+    // Non-URLs (no scheme) should not be normalized — return as-is.
+    // This prevents "not-a-valid-url" → "http://not-a-valid-url" conversion.
+    if !url.contains("://") {
+        return url.to_string();
     }
+
+    let opts = Options {
+        strip_hash: true,
+        remove_trailing_slash: false,
+        remove_query_parameters: RemoveQueryParameters::All,
+        sort_query_parameters: true,
+        strip_www: false,
+        force_https: false,
+        ..Options::default()
+    };
+
+    // url-normalize handles WHATWG preprocessing (control chars, backslashes,
+    // trailing whitespace) and produces idempotent output.
+    normalize(url, &opts).unwrap_or_else(|_| url.to_string())
 }
 
 /// Extract domain from URL
@@ -359,8 +360,8 @@ mod tests {
         "#;
 
         let links = extract_links(html, "https://example.com").unwrap();
-        // Empty href resolves to the base URL itself
-        assert!(links.contains(&"https://example.com/".to_string()));
+        // Empty href resolves to the base URL itself (no trailing slash added)
+        assert!(links.contains(&"https://example.com".to_string()));
         assert!(links.contains(&"https://example.com/page".to_string()));
     }
 

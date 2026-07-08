@@ -4388,6 +4388,7 @@ dependencies = [
  "tract-onnx",
  "unicode-segmentation",
  "url",
+ "url-normalize",
  "uuid",
  "walkdir",
  "whatlang",
@@ -6014,6 +6015,15 @@ dependencies = [
  "percent-encoding",
  "serde",
  "serde_derive",
+]
+
+[[package]]
+name = "url-normalize"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1db355d41377ce831ea473e279ee3214fd6cce3e4e512567e9f6834ce85d5a3"
+dependencies = [
+ "idna",
 ]
 
 [[package]]
