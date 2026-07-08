@@ -408,6 +408,16 @@ impl CollapsibleConfig {
             .and_then(|v| v.as_str())
             .map(String::from)
     }
+
+    /// Get the index of the currently focused section.
+    pub fn focused_section_index(&self) -> usize {
+        self.cursor
+    }
+
+    /// Check if a section is expanded.
+    pub fn is_section_expanded(&self, index: usize) -> bool {
+        self.sections.get(index).is_some_and(|s| s.expanded)
+    }
 }
 
 // ============================================================================
