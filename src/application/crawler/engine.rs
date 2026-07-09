@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize};
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use tracing::{debug, info, instrument, span, warn, Level};
+use tracing::{debug, info, instrument, span, warn, Instrument, Level};
 use url::Url;
 
 use super::collector::{CrawlMessage, ResultsCollector};
@@ -314,7 +314,9 @@ impl Engine {
 
             // Save on blocking thread to avoid blocking the event loop
             let path = path.clone();
-            let _ = tokio::task::spawn_blocking(move || new_cp.save(&path)).await;
+            let _ = tokio::task::spawn_blocking(move || new_cp.save(&path))
+                .in_current_span()
+                .await;
 
             #[cfg(feature = "otel-metrics")]
             ENGINE_CHECKPOINT_SAVES.add(1, &[]);

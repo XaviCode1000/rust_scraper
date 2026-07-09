@@ -68,13 +68,13 @@ pub fn should_emit_emoji() -> bool {
 /// Initialize logging with configurable level, routing ALL output to stderr.
 #[cfg(not(feature = "otel"))]
 pub fn init_logging(level: &str) {
-    init_logging_dual(level, false, is_no_color());
+    init_logging_dual(level, false, is_no_color(), None);
 }
 
 /// Initialize logging with configurable level (otel-enabled variant).
 #[cfg(feature = "otel")]
 pub fn init_logging(level: &str) {
-    init_logging_dual(level, false, is_no_color(), None);
+    init_logging_dual(level, false, is_no_color(), None, None);
 }
 
 /// Dual-mode logging: forces stderr, supports quiet mode and NO_COLOR.
@@ -84,8 +84,14 @@ pub fn init_logging(level: &str) {
 /// * `level` - Log level: "error", "warn", "info", "debug", "trace"
 /// * `quiet` - If true, only warn+level output is shown
 /// * `no_color` - If true, ANSI colors are disabled
+/// * `file_trace_layer` - Optional file trace layer for JSONL output
 #[cfg(not(feature = "otel"))]
-pub fn init_logging_dual(level: &str, quiet: bool, no_color: bool) {
+pub fn init_logging_dual(
+    level: &str,
+    quiet: bool,
+    no_color: bool,
+    file_trace_layer: Option<crate::infrastructure::observability::FileTraceLayer>,
+) {
     use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 
     let filter = if quiet {
@@ -101,17 +107,20 @@ pub fn init_logging_dual(level: &str, quiet: bool, no_color: bool) {
         .pretty();
 
     tracing_subscriber::registry()
+        .with(file_trace_layer)
         .with(fmt_layer)
         .with(filter)
         .try_init()
         .ok();
 }
-/// Dual-mode logging with optional OTel layer.
+
+/// Dual-mode logging with optional file trace layer and optional OTel layer.
 #[cfg(feature = "otel")]
 pub fn init_logging_dual(
     level: &str,
     quiet: bool,
     no_color: bool,
+    file_trace_layer: Option<crate::infrastructure::observability::FileTraceLayer>,
     otel_layer: Option<
         tracing_opentelemetry::OpenTelemetryLayer<
             tracing_subscriber::Registry,
@@ -140,6 +149,7 @@ pub fn init_logging_dual(
         tracing_subscriber::registry()
             .with(otel_layer)
             .with(trace_correlation_layer())
+            .with(file_trace_layer)
             .with(filter)
             .with(fmt_layer)
             .try_init()
@@ -149,6 +159,7 @@ pub fn init_logging_dual(
     {
         tracing_subscriber::registry()
             .with(otel_layer)
+            .with(file_trace_layer)
             .with(filter)
             .with(fmt_layer)
             .try_init()
@@ -203,16 +214,16 @@ max_pages = 20
         use super::*;
 
         #[test]
-        fn test_init_logging_dual_accepts_none_layer() {
-            init_logging_dual("info", false, false, None);
+        fn test_init_logging_dual_accepts_none_layers() {
+            init_logging_dual("info", false, false, None, None);
         }
 
         #[test]
-        fn test_init_logging_dual_accepts_some_layer() {
+        fn test_init_logging_dual_accepts_some_otel_layer() {
             let config = crate::infrastructure::observability::otel::OtelConfig::from_env();
             let (_guard, layer) =
                 crate::infrastructure::observability::otel::init_otel_tracing(config).unwrap();
-            init_logging_dual("info", false, false, Some(layer));
+            init_logging_dual("info", false, false, None, Some(layer));
         }
     }
 }

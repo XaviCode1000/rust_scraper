@@ -8,7 +8,7 @@ use std::process::Command;
 use std::time::Duration;
 
 use tokio::time::timeout;
-use tracing::{debug, instrument};
+use tracing::{debug, instrument, Instrument};
 use url::Url;
 
 use super::{DownloadError, Downloader, FetchedPage};
@@ -59,7 +59,8 @@ impl Downloader for ObscuraDownloader {
                 Command::new("obscura")
                     .args(["fetch", "--dump", "markdown", &url_string])
                     .output()
-            }),
+            })
+            .in_current_span(),
         )
         .await;
 

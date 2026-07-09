@@ -9,7 +9,7 @@ use crate::ScraperConfig;
 use futures::stream::{self, StreamExt};
 use scraper;
 use std::path::{Path, PathBuf};
-use tracing::warn;
+use tracing::{warn, Instrument};
 
 /// Concurrency limit for asset downloads
 const DOWNLOAD_CONCURRENCY: usize = 3;
@@ -174,6 +174,7 @@ async fn download_single_asset(
         std::fs::write(&local_path, &bytes)?;
         Ok(local_path)
     })
+    .in_current_span()
     .await
     .map_err(|e| io::Error::other(format!("spawn_blocking failed: {e}")))??;
 

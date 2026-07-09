@@ -271,6 +271,7 @@ robotstxt = "0.3"           # robots.txt parsing and compliance
 # MCP Server (Model Context Protocol) — expose scraper tools to AI agents
 rmcp = { version = "1.7", features = ["server", "macros", "schemars", "transport-streamable-http-server"] }
 axum = "0.8"
+tower-http = { version = "0.6", features = ["trace"] }
 schemars = "1.0"
 
 # Secrets protection (Phase 2: zeroize/secrecy)

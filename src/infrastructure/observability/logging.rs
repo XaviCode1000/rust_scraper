@@ -246,17 +246,6 @@ pub fn init_json_logging_dual(
     }
 }
 
-/// Initialize OpenTelemetry tracing (stub for future implementation).
-///
-/// Currently returns Ok(()) - full OpenTelemetry integration deferred per proposal scope.
-pub fn init_otel_tracing() -> anyhow::Result<()> {
-    // TODO: Implement OpenTelemetry exporter
-    // For now, this is a stub that allows the code to compile
-    // Full distributed tracing with W3C TraceContext is deferred
-    tracing::debug!("OpenTelemetry tracing initialized (stub)");
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,12 +288,6 @@ mod tests {
         // Clean up log file if created
         let log_file = temp_dir.join("test-app.log");
         let _ = std::fs::remove_file(log_file);
-    }
-
-    #[test]
-    fn test_init_otel_tracing() {
-        let result = init_otel_tracing();
-        assert!(result.is_ok());
     }
 
     #[cfg(feature = "otel")]
