@@ -4380,6 +4380,7 @@ dependencies = [
  "tokenizers",
  "tokio",
  "toml",
+ "tower-http",
  "tracing",
  "tracing-appender",
  "tracing-opentelemetry",
@@ -5599,6 +5600,7 @@ dependencies = [
  "tower 0.5.3",
  "tower-layer",
  "tower-service",
+ "tracing",
  "url",
 ]
 

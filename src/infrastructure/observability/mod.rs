@@ -25,9 +25,7 @@
 //! rust_scraper::infrastructure::observability::init_console();
 //! ```
 
-pub mod async_logging;
-#[cfg(feature = "otel")]
-pub mod file_trace_exporter;
+pub mod file_trace_layer;
 pub mod logging;
 #[cfg(feature = "otel")]
 pub mod otel;
@@ -58,13 +56,9 @@ pub fn init_console() {
     // No-op - console not enabled
 }
 
-pub use async_logging::{init_async_logging, AsyncLogWriter, WriterConfig};
-pub use logging::{
-    init_json_logging, init_json_logging_dual, init_otel_tracing, LogFormat, LogGuard,
-};
+pub use file_trace_layer::FileTraceLayer;
+pub use logging::{init_json_logging, init_json_logging_dual, LogFormat, LogGuard};
 
-#[cfg(feature = "otel")]
-pub use file_trace_exporter::FileTraceExporter;
 #[cfg(feature = "otel")]
 pub use otel::{OtelConfig, OtelGuard};
 

@@ -9,6 +9,7 @@ use axum::Router;
 use rmcp::transport::streamable_http_server::{
     session::local::LocalSessionManager, tower::StreamableHttpService,
 };
+use tower_http::trace::TraceLayer;
 use tracing::info;
 
 use super::state::McpState;
@@ -25,7 +26,9 @@ pub fn build_mcp_router(state: McpState) -> Router {
         Default::default(),
     );
 
-    Router::new().nest_service("/mcp", service)
+    Router::new()
+        .nest_service("/mcp", service)
+        .layer(TraceLayer::new_for_http())
 }
 
 /// Start the MCP server on the given address.

@@ -36,7 +36,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use tracing::debug;
+use tracing::{debug, Instrument};
 use tract_onnx::prelude::*;
 
 use crate::error::SemanticError;
@@ -363,6 +363,7 @@ impl InferenceEngine {
 
             Ok(embedding)
         })
+        .in_current_span()
         .await
         .map_err(|e| SemanticError::Inference(format!("Task join error: {}", e)))?;
 

@@ -294,7 +294,6 @@ async fn __main() -> CliExit {
     // =========================================================================
     // 6. Extract trace_file before args is moved into CrawlOptions
     // =========================================================================
-    #[cfg(feature = "otel")]
     let trace_file = args.trace_file.take();
 
     // =========================================================================
@@ -313,46 +312,75 @@ async fn __main() -> CliExit {
         _ => "trace",
     };
 
+    // Create FileTraceLayer when --trace-file is present (always available, no feature gate)
+    let file_trace_layer = trace_file.and_then(|path| {
+        match rust_scraper::infrastructure::observability::FileTraceLayer::new(path) {
+            Ok(layer) => Some(layer),
+            Err(e) => {
+                eprintln!("Error: no se pudo crear archivo de trazas: {e}");
+                None
+            },
+        }
+    });
+
     // OpenTelemetry tracing + metrics (feature-gated)
     #[cfg(feature = "otel-metrics")]
     let _otel_guard = {
-        let mut config = rust_scraper::infrastructure::observability::otel::OtelConfig::from_env();
-        if let Some(path) = trace_file {
-            config = config.with_trace_file(path);
-        }
+        let config = rust_scraper::infrastructure::observability::otel::OtelConfig::from_env();
         match rust_scraper::infrastructure::observability::otel::init_otel_metrics(config) {
             Ok((_meter, guard, layer)) => {
-                init_logging_dual(log_level, opts.export.quiet, no_color, Some(layer));
+                init_logging_dual(
+                    log_level,
+                    opts.export.quiet,
+                    no_color,
+                    file_trace_layer,
+                    Some(layer),
+                );
                 Some(guard)
             },
             Err(e) => {
                 eprintln!("Warning: OTel metrics init failed: {e}");
-                init_logging_dual(log_level, opts.export.quiet, no_color, None);
+                init_logging_dual(
+                    log_level,
+                    opts.export.quiet,
+                    no_color,
+                    file_trace_layer,
+                    None,
+                );
                 None
             },
         }
     };
     #[cfg(all(feature = "otel", not(feature = "otel-metrics")))]
     let _otel_guard = {
-        let mut config = rust_scraper::infrastructure::observability::otel::OtelConfig::from_env();
-        if let Some(path) = trace_file {
-            config = config.with_trace_file(path);
-        }
+        let config = rust_scraper::infrastructure::observability::otel::OtelConfig::from_env();
         match rust_scraper::infrastructure::observability::otel::init_otel_tracing(config) {
             Ok((guard, layer)) => {
-                init_logging_dual(log_level, opts.export.quiet, no_color, Some(layer));
+                init_logging_dual(
+                    log_level,
+                    opts.export.quiet,
+                    no_color,
+                    file_trace_layer,
+                    Some(layer),
+                );
                 Some(guard)
             },
             Err(e) => {
                 eprintln!("Warning: OTel tracing init failed: {e}");
-                init_logging_dual(log_level, opts.export.quiet, no_color, None);
+                init_logging_dual(
+                    log_level,
+                    opts.export.quiet,
+                    no_color,
+                    file_trace_layer,
+                    None,
+                );
                 None
             },
         }
     };
     #[cfg(not(feature = "otel"))]
     #[allow(clippy::let_unit_value)]
-    let _guard = init_logging_dual(log_level, opts.export.quiet, no_color);
+    let _guard = init_logging_dual(log_level, opts.export.quiet, no_color, file_trace_layer);
 
     // =========================================================================
     // 8. Delegate to orchestrator

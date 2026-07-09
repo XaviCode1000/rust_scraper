@@ -28,7 +28,7 @@ use std::time::{Duration, SystemTime};
 use sha2::{Digest, Sha256};
 use tokio::fs::{self, File};
 use tokio::io::{AsyncReadExt, BufReader};
-use tracing::{debug, info};
+use tracing::{debug, info, Instrument};
 
 use crate::error::SemanticError;
 
@@ -76,6 +76,7 @@ impl ModelCache {
         let model_file = model_file.to_string();
 
         tokio::task::spawn_blocking(move || cache_dir.join(model_file).exists())
+            .in_current_span()
             .await
             .map_err(|e| {
                 SemanticError::ModelLoad(std::io::Error::other(format!(
@@ -97,6 +98,7 @@ impl ModelCache {
 
         // Check existence via spawn_blocking
         let exists = tokio::task::spawn_blocking(move || model_path_for_check.exists())
+            .in_current_span()
             .await
             .map_err(|e| {
                 SemanticError::ModelLoad(std::io::Error::other(format!(
@@ -168,6 +170,7 @@ impl ModelCache {
 
         // Check existence via spawn_blocking
         let exists = tokio::task::spawn_blocking(move || model_path_for_check.exists())
+            .in_current_span()
             .await
             .map_err(|e| {
                 SemanticError::ModelLoad(std::io::Error::other(format!(
