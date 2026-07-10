@@ -1,6 +1,6 @@
 # CI/CD Pipeline for rust_scraper — Tiered Feedback
 #
-# Strategy: 4-tier pipeline with needs gates.
+# Strategy: Tiered pipeline with needs gates.
 # Each tier only runs if the previous tier PASSED.
 # Developer gets feedback in <30s (toolchain), <60s (fmt), <3min (clippy), <8min (full).
 #
@@ -46,19 +46,18 @@ jobs:
   # Runs first — catches version drift before any compilation.
   # ============================================================================
   toolchain:
-    name: Verify rust-version
+    name: Toolchain Check
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - name: Check rust-version >= Cargo.toml minimum
+      - name: Verify rust-version >= Cargo.toml minimum
         run: |
           REQUIRED=$(grep '^rust-version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
           INSTALLED=$(rustc --version | grep -oP '\d+\.\d+\.\d+')
           echo "Minimum required: $REQUIRED"
           echo "Installed: $INSTALLED"
-          # Compare major.minor — installed must be >= required
           REQUIRED_M=$(echo "$REQUIRED" | cut -d. -f1)
           REQUIRED_m=$(echo "$REQUIRED" | cut -d. -f2)
           INSTALLED_M=$(echo "$INSTALLED" | cut -d. -f1)
@@ -71,48 +70,15 @@ jobs:
           fi
 
   # ============================================================================
-  # AUTOFIX: Auto-format and auto-fix clippy before gates run.
-  # Only on PRs — pushes to main/develop are trusted.
-  # If fixes are made, commits and pushes them, which re-triggers CI.
-  # ============================================================================
-  autofix:
-    name: Auto-fix fmt + clippy
-    needs: [toolchain]
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-      - name: Auto-format
-        run: cargo fmt --all
-      - name: Auto-fix clippy
-        run: cargo clippy --all-targets --all-features --fix --allow-dirty --allow-staged -- -D warnings
-      - name: Commit fixes if any
-        run: |
-          git diff --quiet && exit 0
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "style: auto-fix fmt + clippy"
-          git push
-
-  # ============================================================================
   # TIER 1: FORMAT GATE (30-60 seconds)
   # No compilation needed — instant feedback on style.
-  # If this fails, NOTHING else runs.
   # ============================================================================
   fmt:
-    name: Check formatting
-    needs: [autofix]
+    name: Check Formatting
+    needs: [toolchain]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
-      # Free ~30GB: remove pre-installed Android SDK, .NET, Haskell, CodeQL, Docker images
       - name: Free disk space
         run: |
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc
@@ -129,12 +95,12 @@ jobs:
   # ============================================================================
   # TIER 2: CLIPPY GATE (2-3 minutes)
   # Compiles once + lints. If this fails, tests don't run.
-  # Uses sccache for artifact caching across runs.
   # ============================================================================
   clippy:
     name: Clippy (strict)
-    needs: [autofix, fmt]
+    needs: [fmt]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -144,14 +110,13 @@ jobs:
       - run: cargo clippy --all-targets --all-features -- -D warnings
 
   # ============================================================================
-  # TIER 3: TEST CORE — Split by category for targeted feedback.
-  # Unit tests first (fast), then integration + behavioral (heavier).
-  # Gate: must pass before full suite.
+  # TIER 3: TEST CORE — Unit + Integration (parallelizable)
   # ============================================================================
   test-core:
-    name: Tests (unit + integration + behavioral)
+    name: Test Core (unit + integration)
     needs: [clippy]
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -163,13 +128,13 @@ jobs:
         run: cargo nextest run --test '*' --test-threads 4 --retries 2
 
   # ============================================================================
-  # TIER 3: TEST FULL (4-6 minutes)
-  # All features enabled. Gate: must pass before MCP + release.
+  # TIER 4: TEST FULL — All features enabled
   # ============================================================================
   test-full:
-    name: Tests (all features)
+    name: Test Full (all features)
     needs: [test-core]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -178,23 +143,19 @@ jobs:
       - run: cargo nextest run --all-features --test-threads 4 --retries 2
 
   # ============================================================================
-  # SECURITY: No Rust compile — runs in PARALLEL with tests
-  # Only needs fmt gate (doesn't depend on compilation).
-  # cargo-deny covers advisories via RustSec + licenses + bans + sources.
-  # cargo-audit is a redundant second opinion on advisories (belt + suspenders).
+  # SECURITY: Parallel with tests (no compilation needed)
   # ============================================================================
   security:
     name: Security Audit
-    needs: [fmt]
+    needs: [fmt]  # Only needs fmt gate, runs in parallel with tests
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: taiki-e/install-action@cargo-deny
       - uses: taiki-e/install-action@cargo-audit
       - name: Advisories + licenses + bans + sources
         run: cargo deny check
-      # --ignore flags mirror deny.toml [advisories] ignore list.
       - name: Audit (RustSec, redundant with cargo-deny)
         run: |
           cargo audit \
@@ -211,12 +172,12 @@ jobs:
 
   # ============================================================================
   # MCP SMOKE: After full tests pass
-  # Separate job so MCP failure doesn't block test results.
   # ============================================================================
   mcp:
-    name: MCP handshake
+    name: MCP Handshake
     needs: [test-full]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -274,20 +235,6 @@ jobs:
 
   # ============================================================================
   # SCHEDULED: Miri (UB detection on nightly)
-  #
-  # Design (three-layer defence):
-  #   1. Code level: tests that depend on boring-sys2 FFI (boring2/wreq) or
-  #      onig-sys (syntect) use #[cfg_attr(miri, ignore)] or live in
-  #      #[cfg(not(miri))] modules. Miri cannot execute C FFI nor inline
-  #      assembly (raw-cpuid via quanta/governor).
-  #   2. CI safety net: --skip downloader catches any missed FFI tests.
-  #   3. Matrix: tests split into parallel groups so ALL failures surface
-  #      in ONE run instead of blocking on the first UB.
-  #   4. Sysroot cache: cargo miri setup drops from ~15min to ~2s warm.
-  #   5. Tree Borrows: aliasing model that tolerates sound-en-practice patterns
-  #      (ahash, dashmap, smallvec) while still detecting real UB.
-  #      If a specific test fails under Tree Borrows, isolate it with
-  #      #[cfg(not(miri))] — never disable aliasing detection globally.
   # ============================================================================
   miri:
     name: Miri (${{ matrix.group }})
@@ -319,10 +266,6 @@ jobs:
             miri-sysroot-${{ runner.os }}-
       - name: Setup & Run Miri (${{ matrix.group }})
         env:
-          # Tree Borrows: aliasing model more permissive than Stacked Borrows.
-          # Tolerates sound-in-practice patterns from ahash/dashmap/smallvec/wide,
-          # but still detects real aliasing UB (unlike -Zmiri-disable-stacked-borrows).
-          # If a third-party crate fails, isolate that test with #[cfg(not(miri))].
           MIRIFLAGS: -Zmiri-tree-borrows -Zmiri-disable-isolation -Zmiri-ignore-leaks -Zmiri-seed=42 -Zmiri-permissive-provenance
         run: |
           cargo miri setup
