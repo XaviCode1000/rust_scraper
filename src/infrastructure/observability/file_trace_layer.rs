@@ -18,7 +18,7 @@
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::{BufWriter, Write};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::path::PathBuf;
 use std::sync::Mutex;
 use std::time::SystemTime;
 
@@ -34,33 +34,6 @@ use tracing_subscriber::Layer;
 // span exits.
 thread_local! {
     static SPAN_STACK: RefCell<Vec<tracing::Id>> = const { RefCell::new(Vec::new()) };
-}
-
-// Global atomic counter for assigning stable, platform-independent thread IDs.
-// ThreadId::as_u64() is unstable (tracking #67939) and its Debug format is
-// platform-dependent. This counter guarantees unique, sequential IDs regardless
-// of OS.
-static NEXT_THREAD_ID: AtomicU64 = AtomicU64::new(1);
-
-// Thread-local mapping from OS ThreadId to our stable internal ID.
-// Each thread gets assigned a unique u64 on first encounter.
-thread_local! {
-    static THREAD_INTERNAL_ID: RefCell<Option<u64>> = const { RefCell::new(None) };
-}
-
-/// Get or assign a stable, platform-independent ID for the current thread.
-/// Returns the same u64 for the same thread across calls, and different u64s
-/// for different threads. No string parsing, no platform-specific formatting.
-fn current_thread_id() -> u64 {
-    THREAD_INTERNAL_ID.with(|cell| {
-        let mut id = cell.borrow_mut();
-        if let Some(id) = *id {
-            return id;
-        }
-        let new_id = NEXT_THREAD_ID.fetch_add(1, Ordering::Relaxed);
-        *id = Some(new_id);
-        new_id
-    })
 }
 
 /// A `tracing_subscriber::Layer` that writes JSONL trace files.
@@ -81,7 +54,7 @@ impl FileTraceLayer {
     /// # Errors
     ///
     /// Returns an error if the file cannot be created or opened.
-    pub fn new(path: std::path::PathBuf) -> std::io::Result<Self> {
+    pub fn new(path: PathBuf) -> std::io::Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -126,8 +99,6 @@ where
             if stack.last() == Some(id) {
                 stack.pop();
             }
-            // If IDs don't match, the span was already exited or exited
-            // out of order — leave the stack unchanged to avoid corruption.
         });
     }
 
@@ -150,11 +121,23 @@ where
             }
         }
 
-        // trace_id: use a stable, platform-independent thread ID.
-        // Previous implementation parsed ThreadId from Debug format which is
-        // platform-dependent (Linux: "ThreadId(42)", macOS/Windows differ).
-        // The atomic counter approach is OS-agnostic and allocation-free.
-        record["trace_id"] = json!(format!("{:016x}", current_thread_id()));
+        // trace_id: use thread ID as a stable per-thread trace identifier.
+        // ThreadId::as_u64() is unstable (tracking #67939), so we extract from
+        // the Debug format. On Linux this is "ThreadId(N)" where N is decimal.
+        // On macOS/Windows the format differs, so we hash the raw Debug output
+        // for a platform-independent u64.
+        let tid_debug = format!("{:?}", std::thread::current().id());
+        let tid: u64 = tid_debug
+            .trim_start_matches("ThreadId(")
+            .trim_end_matches(')')
+            .parse()
+            .unwrap_or_else(|_| {
+                use std::hash::{Hash, Hasher};
+                let mut hasher = std::collections::hash_map::DefaultHasher::new();
+                tid_debug.hash(&mut hasher);
+                hasher.finish()
+            });
+        record["trace_id"] = json!(format!("{tid:016x}"));
 
         // Single-pass field capture: extracts all fields AND the message
         // in one traversal, avoiding the double-visit antipattern.
@@ -180,10 +163,6 @@ where
             if let Err(e) = writer.write_all(&line) {
                 eprintln!("[FileTraceLayer] write error: {e}");
             }
-            // Flush on every event to ensure data reaches disk.
-            // This is intentional for a tracing layer — data loss on crash
-            // is worse than the syscall cost. The BufWriter still batches
-            // within a single lock acquisition.
             if let Err(e) = writer.flush() {
                 eprintln!("[FileTraceLayer] flush error: {e}");
             }
@@ -213,7 +192,6 @@ impl tracing::field::Visit for EventRecorder {
         let formatted = format!("{value:?}");
 
         if name == "message" {
-            // Extract message without surrounding quotes
             let msg =
                 if formatted.starts_with('"') && formatted.ends_with('"') && formatted.len() >= 2 {
                     formatted[1..formatted.len() - 1].to_string()
@@ -222,7 +200,6 @@ impl tracing::field::Visit for EventRecorder {
                 };
             self.message = Some(msg);
         } else {
-            // Strip surrounding quotes from Debug output on strings
             let value =
                 if formatted.starts_with('"') && formatted.ends_with('"') && formatted.len() >= 2 {
                     Value::String(formatted[1..formatted.len() - 1].to_string())
@@ -261,9 +238,6 @@ impl tracing::field::Visit for EventRecorder {
 /// Convert a `SystemTime` to an RFC 3339 string with millisecond precision.
 ///
 /// Format: `2025-07-09T20:41:34.123Z`
-///
-/// Uses Howard Hinnant's algorithm for days-to-ymd conversion.
-/// Pre-epoch times (before 1970) are handled correctly by the algorithm.
 fn system_time_to_rfc3339(t: SystemTime) -> String {
     let duration = t.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default();
     let secs = duration.as_secs();
@@ -297,11 +271,7 @@ mod tests {
     use std::path::Path;
     use tracing_subscriber::layer::SubscriberExt;
 
-    // Each test creates its own Dispatch to avoid cross-test interference
-    // from set_global_default (which only works once per process) or
-    // set_default (which is thread-local and can leak across tests).
-
-    // ── Contract-based tests: each test validates ONE observable behavior ──
+    // Each test creates its own Dispatch to avoid cross-test interference.
 
     #[test]
     fn contract_creates_file_at_path() {
@@ -409,7 +379,6 @@ mod tests {
             .as_str()
             .expect("trace_id must be present");
         assert_eq!(trace_id.len(), 16, "trace_id must be 16 hex chars");
-        // span_id MUST be present when inside a span — no soft assertion
         assert!(
             parsed["span_id"].as_str().is_some(),
             "span_id must be present inside a span, got: {:?}",
@@ -452,9 +421,7 @@ mod tests {
         });
 
         let parsed = parse_single_event(&path);
-        // message at top-level
         assert_eq!(parsed["message"], "unique_msg_12345");
-        // message must NOT also appear in fields (fields may be absent entirely)
         if let Some(fields) = parsed["fields"].as_object() {
             assert!(
                 !fields.contains_key("message"),
@@ -623,13 +590,10 @@ mod tests {
         tracing::dispatcher::with_default(&dispatch, || {
             tracing::info!("buffered event");
         });
-        // dispatch dropped here → FileTraceLayer dropped → flush in Drop
 
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(!content.is_empty(), "Drop must flush buffered data to disk");
     }
-
-    // ── Helpers ──
 
     fn read_jsonl_lines(path: &Path) -> Vec<String> {
         let content = std::fs::read_to_string(path).unwrap();
