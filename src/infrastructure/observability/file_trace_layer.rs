@@ -135,7 +135,7 @@ where
                 Err(e) => {
                     eprintln!("[FileTraceLayer] serialization error: {e}");
                     return;
-                }
+                },
             };
             line.push(b'\n');
             if let Err(e) = writer.write_all(&line) {
@@ -177,9 +177,7 @@ struct AllFieldsRecorder {
 
 impl AllFieldsRecorder {
     fn new() -> Self {
-        Self {
-            fields: Map::new(),
-        }
+        Self { fields: Map::new() }
     }
 }
 
@@ -188,12 +186,12 @@ impl tracing::field::Visit for AllFieldsRecorder {
         let name = field.name().to_string();
         let formatted = format!("{value:?}");
         // Strip surrounding quotes from Debug output on strings
-        let value = if formatted.starts_with('"') && formatted.ends_with('"') && formatted.len() >= 2
-        {
-            Value::String(formatted[1..formatted.len() - 1].to_string())
-        } else {
-            Value::String(formatted)
-        };
+        let value =
+            if formatted.starts_with('"') && formatted.ends_with('"') && formatted.len() >= 2 {
+                Value::String(formatted[1..formatted.len() - 1].to_string())
+            } else {
+                Value::String(formatted)
+            };
         self.fields.insert(name, value);
     }
 
@@ -262,9 +260,7 @@ fn system_time_to_rfc3339(t: SystemTime) -> String {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let yr = if m <= 2 { y + 1 } else { y };
 
-    format!(
-        "{yr:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}.{millis:03}Z"
-    )
+    format!("{yr:04}-{m:02}-{d:02}T{hours:02}:{minutes:02}:{seconds:02}.{millis:03}Z")
 }
 
 #[cfg(test)]
@@ -284,7 +280,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("trace.jsonl");
         let _layer = FileTraceLayer::new(path.clone()).unwrap();
-        assert!(path.exists(), "trace file must be created at the given path");
+        assert!(
+            path.exists(),
+            "trace file must be created at the given path"
+        );
     }
 
     #[test]
@@ -326,11 +325,19 @@ mod tests {
         });
 
         let parsed = parse_single_event(&path);
-        let ts = parsed["timestamp"].as_str().expect("timestamp must be a string");
+        let ts = parsed["timestamp"]
+            .as_str()
+            .expect("timestamp must be a string");
         // RFC3339: 2025-07-09T20:41:34.123Z
         assert!(ts.ends_with('Z'), "timestamp must end with Z, got: {ts}");
-        assert!(ts.contains('T'), "timestamp must contain T separator, got: {ts}");
-        assert!(ts.len() >= 20, "timestamp must be full ISO format, got: {ts}");
+        assert!(
+            ts.contains('T'),
+            "timestamp must contain T separator, got: {ts}"
+        );
+        assert!(
+            ts.len() >= 20,
+            "timestamp must be full ISO format, got: {ts}"
+        );
         let parts: Vec<&str> = ts.split('T').collect();
         assert_eq!(parts.len(), 2, "must have date and time separated by T");
         let date_parts: Vec<&str> = parts[0].split('-').collect();

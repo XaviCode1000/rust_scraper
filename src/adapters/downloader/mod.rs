@@ -197,7 +197,8 @@ impl Downloader {
         }
 
         // Unreachable: loop always returns on last attempt, but required for type inference
-        Err(last_err.unwrap_or_else(|| ScraperError::download("exhausted retries with no error captured")))
+        Err(last_err
+            .unwrap_or_else(|| ScraperError::download("exhausted retries with no error captured")))
     }
 
     /// Single download attempt (no retry).
@@ -216,8 +217,7 @@ impl Downloader {
         if status.is_client_error() {
             return Err(ScraperError::Download(format!(
                 "HTTP {} al descargar {}",
-                status,
-                url
+                status, url
             )));
         }
         if status.is_server_error() {
@@ -471,7 +471,10 @@ fn compute_backoff_delay(attempt: u32, base_ms: u64, max_ms: u64) -> Duration {
     // Add jitter: 75%-125% of delay, then clamp final result to max_ms
     let jitter = delay_ms / 4;
     let offset = rand::rng().random_range(0..=jitter.saturating_mul(2));
-    let final_ms = min(delay_ms.saturating_sub(jitter).saturating_add(offset), max_ms);
+    let final_ms = min(
+        delay_ms.saturating_sub(jitter).saturating_add(offset),
+        max_ms,
+    );
     Duration::from_millis(final_ms)
 }
 
