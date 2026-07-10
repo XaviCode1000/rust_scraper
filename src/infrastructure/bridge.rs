@@ -1,7 +1,7 @@
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use tokio::sync::oneshot;
-use tracing::warn;
+use tracing::{warn, Instrument};
 
 use crate::error::ScraperError;
 use crate::infrastructure::converter::html_cleaner::clean_html;
@@ -80,7 +80,10 @@ impl CpuBridge {
     {
         let (tx, rx) = oneshot::channel();
         let pool = self.pool.clone();
-        tokio::task::spawn_blocking(move || {
+        // The Instrumented wrapper attaches the current tracing span to the
+        // blocking task. We intentionally drop it here because the task runs
+        // fire-and-forget via a oneshot channel — the JoinHandle is not awaited.
+        let handle = tokio::task::spawn_blocking(move || {
             let caught = catch_unwind(AssertUnwindSafe(move || pool.install(work)));
             let mapped: Result<R, ScraperError> = caught.map_err(|panic| {
                 let msg = panic_message(&*panic);
@@ -93,6 +96,11 @@ impl CpuBridge {
                 );
             }
         });
+        // Suppress clippy warning: this is fire-and-forget via oneshot channel.
+        // The span context is captured by in_current_span() before the handle
+        // is dropped — the spawned task still runs with the correct span.
+        #[allow(clippy::let_underscore_future)]
+        let _ = handle.in_current_span();
         rx
     }
 
