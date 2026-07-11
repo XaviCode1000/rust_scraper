@@ -1,3 +1,5 @@
+#![cfg(feature = "persistence")]
+
 //! End-to-end integration test for the elastic ingestion pipeline (PR5, Issue #51).
 //!
 //! Spins up a `wiremock` HTTP server, runs the full 7-layer pipeline

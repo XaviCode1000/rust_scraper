@@ -125,6 +125,7 @@ fn test_args_has_required_fields() {
         cpu_cores: None,
         db_path: None,
         elastic: false,
+        output_vectors: None,
         // Competitive Features Phase 1
         checkpoint_interval: 100,
         no_checkpoint: false,

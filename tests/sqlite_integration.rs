@@ -3,6 +3,8 @@
 //! Exercises CRUD operations, deduplication, vector storage, and schema
 //! initialization per R-INT-01 and R-INT-03.
 
+#![cfg(feature = "persistence")]
+
 use rust_scraper::domain::VectorRepository;
 use rust_scraper::infrastructure::persistence::sqlite::{
     create_memory_pool, create_pool, setup_schema, SqliteVectorRepository,

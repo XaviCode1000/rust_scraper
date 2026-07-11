@@ -270,6 +270,8 @@ mod tests {
     use crate::infrastructure::cpu_pool::RayonCpuPool;
     use crate::infrastructure::crawler::resource_downloader::DownloadConfig;
     use std::collections::HashMap;
+    use std::future::Future;
+    use std::pin::Pin;
     use std::sync::{Arc, Mutex};
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -293,61 +295,72 @@ mod tests {
     }
 
     impl VectorRepository for InMemoryRepo {
-        async fn save_resource(
-            &self,
-            url: &str,
-            title: &str,
-            content_hash: &str,
+        fn save_resource<'a>(
+            &'a self,
+            url: &'a str,
+            title: &'a str,
+            content_hash: &'a str,
             size_bytes: u64,
-        ) -> Result<String, ScraperError> {
-            let mut res = self.state.lock().expect("repo mutex poisoned");
-            if let Some((existing_url, _, _)) = res.resources.get(content_hash) {
-                return Ok(existing_url.clone());
-            }
-            res.resources.insert(
-                content_hash.to_string(),
-                (url.to_string(), title.to_string(), size_bytes),
-            );
-            Ok(url.to_string())
+        ) -> Pin<Box<dyn Future<Output = Result<String, ScraperError>> + Send + 'a>> {
+            Box::pin(async move {
+                let mut res = self.state.lock().expect("repo mutex poisoned");
+                if let Some((existing_url, _, _)) = res.resources.get(content_hash) {
+                    return Ok(existing_url.clone());
+                }
+                res.resources.insert(
+                    content_hash.to_string(),
+                    (url.to_string(), title.to_string(), size_bytes),
+                );
+                Ok(url.to_string())
+            })
         }
 
-        async fn save_chunk(
-            &self,
-            id: &str,
-            resource_url: &str,
+        fn save_chunk<'a>(
+            &'a self,
+            id: &'a str,
+            resource_url: &'a str,
             chunk_index: i64,
-            content: &str,
-            embedding: Option<&[f32]>,
-        ) -> Result<(), ScraperError> {
-            self.state
-                .lock()
-                .expect("repo mutex poisoned")
-                .chunks
-                .push((
-                    id.to_string(),
-                    resource_url.to_string(),
-                    chunk_index,
-                    content.to_string(),
-                    embedding.map(|e| e.to_vec()),
-                ));
-            Ok(())
+            content: &'a str,
+            embedding: Option<&'a [f32]>,
+        ) -> Pin<Box<dyn Future<Output = Result<(), ScraperError>> + Send + 'a>> {
+            Box::pin(async move {
+                self.state
+                    .lock()
+                    .expect("repo mutex poisoned")
+                    .chunks
+                    .push((
+                        id.to_string(),
+                        resource_url.to_string(),
+                        chunk_index,
+                        content.to_string(),
+                        embedding.map(|e| e.to_vec()),
+                    ));
+                Ok(())
+            })
         }
 
-        async fn resource_exists_by_hash(
-            &self,
-            content_hash: &str,
-        ) -> Result<Option<String>, ScraperError> {
-            Ok(self
-                .state
-                .lock()
-                .expect("repo mutex poisoned")
-                .resources
-                .get(content_hash)
-                .map(|(u, _, _)| u.clone()))
+        fn resource_exists_by_hash<'a>(
+            &'a self,
+            content_hash: &'a str,
+        ) -> Pin<Box<dyn Future<Output = Result<Option<String>, ScraperError>> + Send + 'a>>
+        {
+            Box::pin(async move {
+                Ok(self
+                    .state
+                    .lock()
+                    .expect("repo mutex poisoned")
+                    .resources
+                    .get(content_hash)
+                    .map(|(u, _, _)| u.clone()))
+            })
         }
 
-        async fn get_vector(&self, _chunk_id: &str) -> Result<Option<Vec<f32>>, ScraperError> {
-            Ok(None)
+        fn get_vector<'a>(
+            &'a self,
+            _chunk_id: &'a str,
+        ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<f32>>, ScraperError>> + Send + 'a>>
+        {
+            Box::pin(async move { Ok(None) })
         }
     }
 
@@ -490,5 +503,37 @@ mod tests {
     fn test_elastic_ingestion_is_send_and_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<ElasticIngestion<InMemoryRepo>>();
+    }
+
+    /// Integrity: the content-hash producer emits lowercase hex (no uppercase),
+    /// and matches a known SHA-256 vector. This is the value upstream feeds into
+    /// `StreamRepository`'s `{hash}-{index}` chunk id, so it must stay lowercase.
+    #[test]
+    fn contract_sha256_hex_producer_is_lowercase() {
+        // SHA-256 of the empty input (well-known vector), all lowercase hex.
+        let empty = sha256_hex(&[]);
+        assert_eq!(
+            empty, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "must match the known empty-input SHA-256 digest"
+        );
+
+        let is_lowercase_hex = empty
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+            && empty.len() == 64;
+        assert!(
+            is_lowercase_hex,
+            "producer output must be 64 lowercase-hex chars, got: {empty}"
+        );
+
+        // Non-empty input also stays lowercase hex and is 64 chars.
+        let sample = sha256_hex(b"rust_scraper");
+        assert_eq!(sample.len(), 64, "SHA-256 digest is always 64 hex chars");
+        assert!(
+            sample
+                .chars()
+                .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)),
+            "non-empty digest must also be lowercase hex, got: {sample}"
+        );
     }
 }

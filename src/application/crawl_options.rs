@@ -177,6 +177,10 @@ pub struct IngestionTuning {
     pub db_path: Option<PathBuf>,
     /// Per-resource byte ceiling override.
     pub max_resource_bytes: Option<u64>,
+    /// Write extracted vectors to a JSONL file (`<path>`) or stdout (`-`) for
+    /// RAG pipelines. Backed by the dependency-free `StreamRepository` (no
+    /// SQLite needed). Available in every build, including the core binary.
+    pub output_vectors: Option<String>,
 }
 
 // ============================================================================
@@ -290,6 +294,7 @@ impl From<ElasticOverrides> for IngestionTuning {
             ram_budget_bytes: overrides.ram_budget_bytes,
             db_path: overrides.db_path,
             max_resource_bytes: overrides.max_resource_bytes,
+            output_vectors: None,
         }
     }
 }

@@ -389,6 +389,12 @@ pub struct Args {
     #[clap(next_help_heading = "Elastic Ingestion")]
     pub elastic: bool,
 
+    /// Write extracted vectors to a JSONL file for RAG pipelines. Use `-` for
+    /// stdout. No SQLite dependency — available in every build (core binary too).
+    #[arg(long, env = "RUST_SCRAPER_OUTPUT_VECTORS")]
+    #[clap(next_help_heading = "Elastic Ingestion")]
+    pub output_vectors: Option<String>,
+
     // ========== Competitive Features Phase 1 ==========
     /// Pages between automatic checkpoint saves (0 = disabled)
     #[arg(long, default_value = "100", env = "RUST_SCRAPER_CHECKPOINT_INTERVAL")]
@@ -613,6 +619,7 @@ impl From<Args> for crate::application::crawl_options::CrawlOptions {
                 ram_budget_bytes: overrides.ram_budget_bytes,
                 db_path: overrides.db_path,
                 max_resource_bytes: overrides.max_resource_bytes,
+                output_vectors: args.output_vectors.clone(),
             },
             pipeline_enabled: args.pipeline,
             pipeline_output_format: args.pipeline_output,
