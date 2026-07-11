@@ -37,7 +37,10 @@ pub mod collapsible_config;
 mod config_form;
 mod error_log_widget;
 pub mod modal;
-mod progress_types;
+pub mod progress_types {
+    //! Path-compat shim — canonical home is now `crate::application::progress_types`.
+    pub use crate::application::progress_types::*;
+}
 mod progress_view;
 mod progress_widget;
 mod url_selector;
