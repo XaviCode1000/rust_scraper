@@ -360,10 +360,11 @@ required-features = ["mcp"]
 # Full binary: includes the `ai` feature (ONNX semantic cleaning + SHA256
 # validated model). Build with:  cargo build --release --features ai
 #
-# Lightweight binary: default features ONLY (NO `ai`) for restricted/edge
-# environments. Built with the size-optimized `core` profile (opt-level="z",
-# lto=true) to stay under ~10 MB. Build with:
-#   cargo build --profile core --bin rust_scraper_core
+# Lightweight binary: default features ONLY (NO `ui`/`persistence`/`ai`) for
+# restricted/edge environments. Built with the size-optimized `core` profile
+# (opt-level="z", lto=true). Verified size after core-slimming (PR1 #155 + PR2
+# #156): ~11.1 MB (baseline 12.47 MB). Re-scoped acceptance target: <12 MB.
+# Build with:  cargo build --profile core --bin rust_scraper_core
 [[bin]]
 name = "rust_scraper"
 path = "src/main.rs"
@@ -440,7 +441,8 @@ unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("ui", "pe
 
 # Size-optimized profile for the lightweight `rust_scraper_core` binary.
 # Inherits release settings but trades speed for minimum size
-# (opt-level="z" + full LTO) so the core artifact stays under ~10 MB.
+# (opt-level="z" + full LTO). Verified artifact: ~11.1 MB (baseline 12.47 MB,
+# before the `ui`/`persistence` feature gates). Re-scoped acceptance: <12 MB.
 [profile.core]
 inherits = "release"
 opt-level = "z"
