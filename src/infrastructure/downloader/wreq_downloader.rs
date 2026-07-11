@@ -142,13 +142,11 @@ fn parse_set_cookie(header: &str, url: &Url) -> Option<Cookie> {
     }
 
     let name_value = parts[0].trim();
-    let (name, value) = match name_value.find('=') {
-        Some(pos) => (
-            name_value[..pos].trim().to_string(),
-            name_value[pos + 1..].trim().to_string(),
-        ),
-        None => return None,
-    };
+    let pos = name_value.find('=')?;
+    let (name, value) = (
+        name_value[..pos].trim().to_string(),
+        name_value[pos + 1..].trim().to_string(),
+    );
 
     if name.is_empty() {
         return None;
