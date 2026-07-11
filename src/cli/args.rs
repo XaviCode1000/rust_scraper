@@ -6,6 +6,22 @@ use crate::domain::JsStrategy;
 use crate::{ConcurrencyConfig, ExportFormat, OutputFormat};
 use clap::Parser;
 
+/// Validate `--download-concurrency`: must be >= 1. A value of 0 would make
+/// `buffer_unordered(0)` hang forever (deadlock, D1). Rejecting here satisfies
+/// the "Zero Silent Loss" philosophy with a clear CLI error instead of a hang.
+fn parse_download_concurrency(s: &str) -> Result<usize, String> {
+    let v: usize = s
+        .parse()
+        .map_err(|_| format!("'{s}' no es un número válido para --download-concurrency"))?;
+    if v == 0 {
+        return Err(
+            "--download-concurrency debe ser >= 1 (0 causa un deadlock / hang infinito)"
+                .to_string(),
+        );
+    }
+    Ok(v)
+}
+
 /// CLI Arguments for the rust_scraper binary.
 ///
 /// # Examples
@@ -266,7 +282,13 @@ pub struct Args {
     pub asset_naming: String,
 
     /// Maximum concurrent asset downloads per page (default: 3)
-    #[arg(long, default_value = "3", env = "RUST_SCRAPER_DOWNLOAD_CONCURRENCY")]
+    #[arg(
+        long,
+        default_value = "3",
+        env = "RUST_SCRAPER_DOWNLOAD_CONCURRENCY",
+        value_parser = parse_download_concurrency,
+        help = "Máximo de descargas de assets concurrentes por página (mínimo 1)"
+    )]
     pub download_concurrency: usize,
 
     // ========== HTTP Client Settings ==========

@@ -226,8 +226,7 @@ mod tests {
             output_dir: tmp.path().to_path_buf(),
             ..Default::default()
         };
-        let downloader =
-            Arc::new(crate::adapters::downloader::Downloader::new(dl_config).unwrap());
+        let downloader = Arc::new(crate::adapters::downloader::Downloader::new(dl_config).unwrap());
         let downloader_clone = downloader.clone();
 
         let state = McpState::new(container).with_downloader(downloader);
@@ -242,7 +241,10 @@ mod tests {
 
         // Clone preserves the shared pool
         let state2 = state.clone();
-        assert!(state2.downloader.is_some(), "clone must preserve downloader");
+        assert!(
+            state2.downloader.is_some(),
+            "clone must preserve downloader"
+        );
         assert!(
             Arc::ptr_eq(
                 state.downloader.as_ref().unwrap(),

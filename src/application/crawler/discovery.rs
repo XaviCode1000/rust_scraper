@@ -510,7 +510,7 @@ pub async fn scrape_single_url_for_tui(
         .get(url.as_str())
         .send()
         .await
-        .map_err(|e| ScraperError::Network(e.to_string()))?;
+        .map_err(|e| ScraperError::Network(Box::new(e)))?;
 
     let status = response.status();
     if !status.is_success() {
@@ -604,7 +604,7 @@ pub async fn scrape_single_url_for_tui(
     let html = response
         .text()
         .await
-        .map_err(|e| ScraperError::Network(e.to_string()))?;
+        .map_err(|e| ScraperError::Network(Box::new(e)))?;
 
     #[cfg(feature = "otel-metrics")]
     {

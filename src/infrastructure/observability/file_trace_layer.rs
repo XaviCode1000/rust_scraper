@@ -6,9 +6,12 @@
 //!
 //! The file is **truncated** on creation — each run produces a clean trace file.
 //! Structured fields from `tracing::info!(key = value, ...)` are captured in the
-//! `fields` object. `trace_id` uses the thread ID (stable within a thread); when
-//! OTel is also active, the OTel trace/span IDs take precedence in downstream
-//! consumers.
+//! `fields` object. `trace_id` is a **logical** identifier: when the `otel`
+//! feature is active it uses the real W3C trace ID from the OpenTelemetry span
+//! context; otherwise it falls back to the root span's ID (stable across worker
+//! threads) and finally to a stable per-invocation seed. This replaces the old
+//! thread-ID-based `trace_id`, which fragmented across threads. `parent_id` is
+//! also emitted so the logical trace tree is reconstructable from the JSONL.
 //!
 //! **Thread-safety note:** This layer uses thread-local span tracking
 //! (`SPAN_STACK`). It assumes `on_enter`/`on_exit`/`on_event` are called from
@@ -43,6 +46,9 @@ thread_local! {
 /// and `fields` (all structured key-value pairs from the event).
 pub struct FileTraceLayer {
     writer: Mutex<BufWriter<File>>,
+    /// Stable per-invocation seed used as the fallback `trace_id` when no
+    /// logical span context is available (e.g. events outside any span).
+    trace_id_seed: u64,
 }
 
 impl FileTraceLayer {
@@ -62,6 +68,7 @@ impl FileTraceLayer {
         let writer = BufWriter::new(file);
         Ok(Self {
             writer: Mutex::new(writer),
+            trace_id_seed: make_trace_seed(),
         })
     }
 }
@@ -121,23 +128,25 @@ where
             }
         }
 
-        // trace_id: use thread ID as a stable per-thread trace identifier.
-        // ThreadId::as_u64() is unstable (tracking #67939), so we extract from
-        // the Debug format. On Linux this is "ThreadId(N)" where N is decimal.
-        // On macOS/Windows the format differs, so we hash the raw Debug output
-        // for a platform-independent u64.
-        let tid_debug = format!("{:?}", std::thread::current().id());
-        let tid: u64 = tid_debug
-            .trim_start_matches("ThreadId(")
-            .trim_end_matches(')')
-            .parse()
-            .unwrap_or_else(|_| {
-                use std::hash::{Hash, Hasher};
-                let mut hasher = std::collections::hash_map::DefaultHasher::new();
-                tid_debug.hash(&mut hasher);
-                hasher.finish()
-            });
-        record["trace_id"] = json!(format!("{tid:016x}"));
+        // parent_id: reconstruct the logical trace tree. The current span's
+        // parent (enclosing span) is serialized so the tree is recoverable from
+        // the JSONL. Previously absent -> correlation was impossible (D2).
+        if let Some(current) = ctx.lookup_current() {
+            if let Some(parent) = current.parent() {
+                record["parent_id"] = json!(format!("{:016x}", parent.id().into_u64()));
+            }
+        }
+
+        // trace_id: logical identifier that survives thread hops (D3).
+        // 1) OTel W3C trace ID when `otel` is active and a valid OTel context
+        //    exists; 2) the root span's ID (stable for the whole run, survives
+        //    worker-thread hops); 3) a stable per-invocation seed fallback.
+        #[cfg(feature = "otel")]
+        let trace_id =
+            otel_trace_id().unwrap_or_else(|| logical_trace_id(self.trace_id_seed, &ctx));
+        #[cfg(not(feature = "otel"))]
+        let trace_id = logical_trace_id(self.trace_id_seed, &ctx);
+        record["trace_id"] = json!(trace_id);
 
         // Single-pass field capture: extracts all fields AND the message
         // in one traversal, avoiding the double-visit antipattern.
@@ -168,6 +177,50 @@ where
             }
         }
     }
+}
+
+/// Resolve a logical `trace_id` independent of the OS thread, so it stays
+/// stable when a task hops between worker threads (D3). Prefers the root
+/// span's ID; falls back to a per-invocation seed when no span is current.
+fn logical_trace_id<S>(seed: u64, ctx: &Context<'_, S>) -> String
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    if let Some(current) = ctx.lookup_current() {
+        if let Some(root) = current.scope().last() {
+            return format!("{:016x}", root.id().into_u64());
+        }
+    }
+    format!("{:016x}", seed)
+}
+
+/// Build a stable per-invocation seed used as the fallback `trace_id` when no
+/// logical span context is available.
+fn make_trace_seed() -> u64 {
+    use std::hash::{Hash, Hasher};
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    nanos.hash(&mut hasher);
+    std::process::id().hash(&mut hasher);
+    hasher.finish()
+}
+
+/// Extract the real W3C trace ID from the OpenTelemetry span context, if the
+/// `otel` feature is active and a valid OTel context is present.
+#[cfg(feature = "otel")]
+fn otel_trace_id() -> Option<String> {
+    use opentelemetry::trace::TraceContextExt;
+    use tracing_opentelemetry::OpenTelemetrySpanExt;
+    let cx = tracing::Span::current().context();
+    let span_ref = cx.span();
+    let sc = span_ref.span_context();
+    if sc.is_valid() {
+        return Some(format!("{:032x}", sc.trace_id()));
+    }
+    None
 }
 
 /// Single-pass event recorder. Captures ALL fields (including `message`) in one

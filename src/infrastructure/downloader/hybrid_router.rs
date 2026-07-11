@@ -323,7 +323,9 @@ mod tests {
 
     impl Downloader for FailingDownloader {
         async fn fetch(&self, _url: &Url) -> Result<FetchedPage, DownloadError> {
-            Err(DownloadError::Network(self.message.clone()))
+            Err(DownloadError::Network(Box::new(std::io::Error::other(
+                self.message.clone(),
+            ))))
         }
 
         fn supports_interactions(&self) -> bool {

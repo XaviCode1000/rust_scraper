@@ -98,7 +98,10 @@ pub async fn scrape_urls(
     opts: &CrawlOptions,
     progress_tx: Option<mpsc::Sender<ScrapeProgress>>,
     downloader: Option<&crate::adapters::downloader::Downloader>,
-) -> (Vec<ScrapedContent>, Vec<(String, String)>) {
+) -> (
+    Vec<ScrapedContent>,
+    Vec<(String, crate::error::ScraperError)>,
+) {
     // Early return if --force-js-render is requested (Phase 2 feature)
     if opts.network.force_js_render {
         warn!("--force-js-render no está implementado (Fase 2)");
@@ -108,8 +111,7 @@ pub async fn scrape_urls(
                 "force_js_render".into(),
                 crate::error::ScraperError::FeatureGated(
                     "JavaScript rendering no está implementado. Fase 2 planificada.".into(),
-                )
-                .to_string(),
+                ),
             )],
         );
     }
@@ -119,7 +121,13 @@ pub async fn scrape_urls(
         Ok(c) => c,
         Err(e) => {
             warn!("Failed to create HTTP client: {}", e);
-            return (Vec::new(), vec![("http_client".into(), e.to_string())]);
+            return (
+                Vec::new(),
+                vec![(
+                    "http_client".into(),
+                    crate::error::ScraperError::Config(e.to_string()),
+                )],
+            );
         },
     };
 
@@ -146,7 +154,7 @@ pub async fn scrape_urls(
 
     let processing_count = urls_to_process.len();
     let mut results = Vec::with_capacity(processing_count);
-    let mut failures: Vec<(String, String)> = Vec::new();
+    let mut failures: Vec<(String, crate::error::ScraperError)> = Vec::new();
 
     for url in urls_to_process {
         let url_str = url.as_str();
@@ -190,7 +198,10 @@ pub async fn scrape_urls(
                             .await;
                     }
                 }
-                failures.push((url_str.to_string(), "blocked by robots.txt".into()));
+                failures.push((
+                    url_str.to_string(),
+                    crate::error::ScraperError::Validation("blocked by robots.txt".into()),
+                ));
                 continue;
             }
         }
@@ -215,10 +226,8 @@ pub async fn scrape_urls(
             },
             Err(e) => {
                 let url_str = url.as_str().to_string();
-                let err_msg = e.to_string();
-                warn!("Failed to scrape {}: {}", url_str, err_msg);
-                failures.push((url_str.clone(), err_msg));
-                // Emit progress event: Failed
+                warn!("Failed to scrape {}: {}", url_str, e);
+                // Emit progress event: Failed (borrows `e` before it is moved)
                 if !opts.export.quiet {
                     if let Some(ref tx) = progress_tx {
                         let _ = tx
@@ -229,6 +238,7 @@ pub async fn scrape_urls(
                             .await;
                     }
                 }
+                failures.push((url_str.clone(), e));
             },
         }
     }
