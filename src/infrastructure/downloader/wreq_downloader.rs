@@ -142,13 +142,11 @@ fn parse_set_cookie(header: &str, url: &Url) -> Option<Cookie> {
     }
 
     let name_value = parts[0].trim();
-    let (name, value) = match name_value.find('=') {
-        Some(pos) => (
-            name_value[..pos].trim().to_string(),
-            name_value[pos + 1..].trim().to_string(),
-        ),
-        None => return None,
-    };
+    let pos = name_value.find('=')?;
+    let (name, value) = (
+        name_value[..pos].trim().to_string(),
+        name_value[pos + 1..].trim().to_string(),
+    );
 
     if name.is_empty() {
         return None;
@@ -183,7 +181,16 @@ fn parse_set_cookie(header: &str, url: &Url) -> Option<Cookie> {
 }
 
 impl Downloader for WreqDownloader {
-    #[instrument(skip(self), fields(url = %url))]
+    #[instrument(
+        skip(self),
+        fields(
+            url = %url,
+            // D5: stable identity of the shared pooled `Client` (Arc inner ptr).
+            // Constant across fetches => observable proof of connection-pool reuse
+            // (no silent re-handshake per request). See MAPA item 7.
+            client_id = %format!("{:p}", Arc::as_ptr(&self.client))
+        )
+    )]
     async fn fetch(&self, url: &Url) -> Result<FetchedPage, DownloadError> {
         debug!("Fetching URL: {}", url);
 
@@ -193,10 +200,8 @@ impl Downloader for WreqDownloader {
         let response = self.client.get(url.as_str()).send().await.map_err(|e| {
             if e.is_timeout() {
                 DownloadError::Timeout(self.timeout_secs)
-            } else if e.is_connect() {
-                DownloadError::Network(format!("connection failed: {e}"))
             } else {
-                DownloadError::Network(e.to_string())
+                DownloadError::Network(Box::new(e))
             }
         })?;
 
@@ -218,7 +223,7 @@ impl Downloader for WreqDownloader {
         let html = response
             .text()
             .await
-            .map_err(|e| DownloadError::Network(format!("failed to read response body: {e}")))?;
+            .map_err(|e| DownloadError::Network(Box::new(e)))?;
 
         debug!(
             "Fetched {} ({} bytes, {} cookies)",

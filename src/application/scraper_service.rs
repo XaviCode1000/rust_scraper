@@ -26,12 +26,14 @@ fn scraper_error_from_http(err: HttpError, url: &str) -> ScraperError {
             ScraperError::http(code, url)
         },
         HttpError::Forbidden => ScraperError::http(403, url),
-        HttpError::RateLimited(retry_after) => {
-            ScraperError::Network(format!("rate limited, retry after {retry_after}s"))
+        HttpError::RateLimited(retry_after) => ScraperError::Network(Box::new(
+            std::io::Error::other(format!("rate limited, retry after {retry_after}s")),
+        )),
+        HttpError::Timeout => {
+            ScraperError::Network(Box::new(std::io::Error::other("request timeout")))
         },
-        HttpError::Timeout => ScraperError::Network("request timeout".into()),
-        HttpError::Connection(msg) => ScraperError::Network(msg),
-        HttpError::Request(msg) => ScraperError::Network(msg),
+        HttpError::Connection(msg) => ScraperError::Network(Box::new(std::io::Error::other(msg))),
+        HttpError::Request(msg) => ScraperError::Network(Box::new(std::io::Error::other(msg))),
         HttpError::WafChallenge(provider) => ScraperError::WafBlocked {
             url: url.to_string(),
             provider,
@@ -430,9 +432,8 @@ pub(crate) async fn download_assets_if_enabled(
         let downloader = match shared_downloader {
             Some(dl) => dl,
             None => {
-                owned_downloader = crate::adapters::downloader::Downloader::new(
-                    _config.to_download_config(),
-                )?;
+                owned_downloader =
+                    crate::adapters::downloader::Downloader::new(_config.to_download_config())?;
                 &owned_downloader
             },
         };

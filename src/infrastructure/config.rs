@@ -106,7 +106,7 @@ impl Default for ScraperConfig {
             output_dir: std::path::PathBuf::from("output"),
             max_file_size: Some(50 * 1024 * 1024), // 50MB default
             download_timeout_secs: 30,
-            scraper_concurrency: 3, // HDD-aware: nproc - 1 for 4C CPU
+            scraper_concurrency: 3,  // HDD-aware: nproc - 1 for 4C CPU
             download_concurrency: 3, // Asset downloads: bandwidth + disk I/O
             max_pages: None,
             selector: "body".to_owned(),
@@ -171,7 +171,10 @@ impl ScraperConfig {
     /// Set download concurrency limit (assets per page).
     #[must_use]
     pub fn with_download_concurrency(mut self, concurrency: usize) -> Self {
-        self.download_concurrency = concurrency;
+        // A value of 0 would make `buffer_unordered(0)` hang forever (deadlock,
+        // D1). Clamp defensively to a minimum of 1 so a programmatic `0` (e.g.
+        // from a test or a non-CLI caller) can never reach the downloader.
+        self.download_concurrency = concurrency.clamp(1, usize::MAX);
         self
     }
 

@@ -3,7 +3,7 @@
 //! Orchestrates URL discovery, scraping, and export phases.
 
 use tokio::task::JoinSet;
-use tracing::{info, warn};
+use tracing::{info, instrument, warn};
 
 use crate::application::crawl_options::CrawlOptions;
 use crate::cli::completions::generate_completions;
@@ -39,6 +39,7 @@ pub fn handle_completions(shell: Shell) -> CliExit {
 /// 1. URL discovery
 /// 2. Scraping with progress
 /// 3. Export results
+#[instrument(level = "info", skip_all)]
 pub async fn run(opts: CrawlOptions) -> CliExit {
     // Dry-run mode: list planned URLs without any network requests
     if opts.export.dry_run {
@@ -101,8 +102,7 @@ pub async fn run(opts: CrawlOptions) -> CliExit {
     scraper_config =
         scraper_config.with_asset_exclude_patterns(opts.crawl.exclude_patterns.clone());
     scraper_config = scraper_config.with_asset_naming(parse_asset_naming(&opts.asset_naming));
-    scraper_config =
-        scraper_config.with_download_concurrency(opts.download_concurrency);
+    scraper_config = scraper_config.with_download_concurrency(opts.download_concurrency);
 
     // Create shared Downloader once for connection pooling across all page scrapes.
     // Propagates error on failure — the user must know if asset downloads can't start.
@@ -110,9 +110,7 @@ pub async fn run(opts: CrawlOptions) -> CliExit {
         match crate::adapters::downloader::Downloader::new(scraper_config.to_download_config()) {
             Ok(dl) => Some(std::sync::Arc::new(dl)),
             Err(e) => {
-                return CliExit::IoError(format!(
-                    "No se pudo crear el descargador de assets: {e}"
-                ));
+                return CliExit::IoError(format!("No se pudo crear el descargador de assets: {e}"));
             },
         }
     } else {
@@ -165,7 +163,10 @@ pub async fn run(opts: CrawlOptions) -> CliExit {
     };
 
     // Scraping phase
-    let (results, failures): (Vec<domain::ScrapedContent>, Vec<(String, String)>) = scrape_urls(
+    let (results, failures): (
+        Vec<domain::ScrapedContent>,
+        Vec<(String, crate::error::ScraperError)>,
+    ) = scrape_urls(
         &urls_to_scrape,
         &scraper_config,
         &opts,
@@ -179,9 +180,16 @@ pub async fn run(opts: CrawlOptions) -> CliExit {
         run_elastic_ingestion(ingestion, &results).await;
     }
 
-    // Report failures
+    // Report failures — preserve the full root-cause chain via `Error::source()`
+    // so the cause (e.g. wreq::Error → I/O → timeout) is not flattened (D4).
     for (url, error) in &failures {
-        eprintln!("Failed to scrape {url}: {error}");
+        let mut chain = error.to_string();
+        let mut src = std::error::Error::source(error);
+        while let Some(cause) = src {
+            chain.push_str(&format!("  ← {cause}"));
+            src = cause.source();
+        }
+        eprintln!("Failed to scrape {url}: {chain}");
     }
 
     if results.is_empty() {

@@ -205,32 +205,44 @@ impl Downloader {
         }
 
         // Unreachable: loop always returns on last attempt, but required for type inference
-        Err(last_err
-            .unwrap_or_else(|| ScraperError::download("exhausted retries with no error captured")))
+        Err(last_err.unwrap_or_else(|| {
+            ScraperError::download(Box::new(std::io::Error::other(
+                "exhausted retries with no error captured",
+            )))
+        }))
     }
 
     /// Single download attempt (no retry).
+    #[tracing::instrument(
+        skip(self),
+        fields(
+            url = %url,
+            // D5: stable identity of the shared pooled `Client`. Constant across
+            // all asset downloads within a run => observable proof of connection-pool
+            // reuse (no silent per-request handshake). See MAPA item 7.
+            client_id = %format!("{:p}", &self.client)
+        )
+    )]
     async fn download_once(&self, url: &str) -> Result<DownloadedAsset> {
-        let response = self.client.get(url).send().await.map_err(|e| {
-            let transient = e.is_timeout() || e.is_connect() || e.is_connection_reset();
-            ScraperError::Network(format!(
-                "{}{}",
-                if transient { "TRANSIENT:" } else { "" },
-                e
-            ))
-        })?;
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| ScraperError::Network(Box::new(e)))?;
 
         // Fail-fast on 4xx (client errors). 5xx (server errors) are transient and will be retried.
         let status = response.status();
         if status.is_client_error() {
-            return Err(ScraperError::Download(format!(
-                "HTTP {} al descargar {}",
-                status, url
-            )));
+            return Err(ScraperError::Download(Box::new(std::io::Error::other(
+                format!("HTTP {} al descargar {}", status, url),
+            ))));
         }
         if status.is_server_error() {
             // Mark as transient so retry logic will retry on 5xx
-            return Err(ScraperError::Network(format!("TRANSIENT:HTTP {}", status)));
+            return Err(ScraperError::Network(Box::new(std::io::Error::other(
+                format!("TRANSIENT:HTTP {}", status),
+            ))));
         }
 
         let mime_type = response
@@ -267,31 +279,28 @@ impl Downloader {
         let mut hasher = Sha256::new();
 
         while let Some(chunk_result) = stream.next().await {
-            let chunk = chunk_result.map_err(|e| {
-                let transient = e.is_timeout() || e.is_connect() || e.is_connection_reset();
-                ScraperError::Network(format!(
-                    "{}{}",
-                    if transient { "TRANSIENT:" } else { "" },
-                    e
-                ))
-            })?;
+            let chunk = chunk_result.map_err(|e| ScraperError::Network(Box::new(e)))?;
             if chunk.is_empty() {
                 continue;
             }
 
             let chunk_len = chunk.len() as u64;
-            downloaded = downloaded
-                .checked_add(chunk_len)
-                .ok_or_else(|| ScraperError::download("integer overflow in download size"))?;
+            downloaded = downloaded.checked_add(chunk_len).ok_or_else(|| {
+                ScraperError::download(Box::new(std::io::Error::other(
+                    "integer overflow in download size",
+                )))
+            })?;
 
             // Check limit in real-time
             if downloaded > self.config.max_file_size {
                 // Cleanup temp file on failure
                 let _ = fs::remove_file(&temp_path).await;
-                return Err(ScraperError::download(format!(
-                    "file too large: {} bytes (max: {} bytes)",
-                    downloaded, self.config.max_file_size
-                )));
+                return Err(ScraperError::download(Box::new(std::io::Error::other(
+                    format!(
+                        "file too large: {} bytes (max: {} bytes)",
+                        downloaded, self.config.max_file_size
+                    ),
+                ))));
             }
 
             // Write chunk to disk IMMEDIATELY (true streaming)
@@ -337,7 +346,12 @@ impl Downloader {
             .await
             .map_err(ScraperError::Io)?;
 
-        tracing::info!("downloaded: {} -> {:?}", url, final_path);
+        tracing::info!(
+            client_id = %format!("{:p}", &self.client),
+            "downloaded: {} -> {:?}",
+            url,
+            final_path
+        );
 
         Ok(DownloadedAsset {
             url: url.to_string(),
@@ -473,15 +487,18 @@ fn pattern_matches_asset(url: &str, pattern: &str) -> bool {
 
 /// Check if an error is transient (worth retrying).
 fn is_transient_error(err: &ScraperError) -> bool {
-    if let ScraperError::Network(msg) = err {
-        msg.starts_with("TRANSIENT:")
-            || msg.to_ascii_lowercase().contains("timeout")
+    if let ScraperError::Network(e) = err {
+        // `e` is a boxed source; inspect its Display text (lowercased).
+        let msg = e.to_string().to_ascii_lowercase();
+        msg.contains("transient:")
+            || msg.contains("timeout")
             || msg.contains("timed out")
-            || msg.contains("connection reset")
-            || msg.contains("connection refused")
+            || msg.contains("connect")
+            || msg.contains("connection")
+            || msg.contains("refused")
+            || msg.contains("reset")
             || msg.contains("broken pipe")
-            || msg.contains("connection closed")
-            || msg.contains("connection aborted")
+            || msg.contains("aborted")
             || msg.contains("reset by peer")
     } else {
         false

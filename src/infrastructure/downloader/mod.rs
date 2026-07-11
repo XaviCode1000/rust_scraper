@@ -101,8 +101,11 @@ pub struct Cookie {
 #[non_exhaustive]
 pub enum DownloadError {
     /// Network-level failure (DNS, connection, timeout).
+    ///
+    /// Carries the underlying error as `#[source]` (erased) so the root-cause
+    /// chain survives into `CrawlError`/`ScraperError` (D4).
     #[error("network error: {0}")]
-    Network(String),
+    Network(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     /// HTTP error response (non-2xx status).
     #[error("HTTP {status}: {message}")]
@@ -131,7 +134,7 @@ pub enum DownloadError {
 
 impl From<DownloadError> for crate::domain::CrawlError {
     fn from(err: DownloadError) -> Self {
-        crate::domain::CrawlError::Download(err.to_string())
+        crate::domain::CrawlError::Download(Box::new(err))
     }
 }
 
@@ -168,7 +171,7 @@ mod tests {
 
     #[test]
     fn test_download_error_display() {
-        let err = DownloadError::Network("connection refused".into());
+        let err = DownloadError::Network(Box::new(std::io::Error::other("connection refused")));
         assert!(err.to_string().contains("connection refused"));
 
         let err = DownloadError::Http {
@@ -189,7 +192,7 @@ mod tests {
 
     #[test]
     fn test_download_error_into_crawl_error() {
-        let err = DownloadError::Network("reset".into());
+        let err = DownloadError::Network(Box::new(std::io::Error::other("reset")));
         let crawl_err: crate::domain::CrawlError = err.into();
         assert!(crawl_err.to_string().contains("download error"));
         assert!(crawl_err.to_string().contains("reset"));

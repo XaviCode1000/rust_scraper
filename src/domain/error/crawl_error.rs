@@ -101,8 +101,11 @@ pub enum CrawlError {
     Discovery(String),
 
     /// Download error (fetch failed, SPA detected, or WAF blocked during download)
+    ///
+    /// Carries the underlying error as `#[source]` so the cause chain is
+    /// preserved through `Error::source()` (D4).
     #[error("download error: {0}")]
-    Download(String),
+    Download(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 #[cfg(test)]
@@ -213,7 +216,10 @@ mod tests {
 
     #[test]
     fn test_crawl_error_download() {
-        let error = CrawlError::Download("connection reset".to_string());
+        let error = CrawlError::Download(Box::new(std::io::Error::new(
+            std::io::ErrorKind::ConnectionReset,
+            "connection reset",
+        )));
         assert!(error.to_string().contains("download error"));
         assert!(error.to_string().contains("connection reset"));
     }

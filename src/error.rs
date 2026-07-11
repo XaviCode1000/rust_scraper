@@ -36,8 +36,12 @@ pub enum ScraperError {
     Io(#[from] std::io::Error),
 
     /// Network error (connection failed, timeout, etc.)
+    ///
+    /// Carries the underlying error as `#[source]` so the root-cause chain
+    /// (e.g. `wreq::Error` → I/O → timeout) is preserved for `Error::source()`
+    /// traversal instead of being flattened to a `String` (D4).
     #[error("error de red: {0}")]
-    Network(String),
+    Network(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     /// Middleware error (from reqwest-middleware, e.g., retry failures)
     #[error("error de middleware: {0}")]
@@ -60,8 +64,11 @@ pub enum ScraperError {
     Extraction(String),
 
     /// Asset download failed
+    ///
+    /// Carries the underlying error as `#[source]` to preserve the root-cause
+    /// chain (D4). Previously flattened to a `String`.
     #[error("Error de descarga: {0}")]
-    Download(String),
+    Download(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     /// Configuration error
     #[error("Error de configuración: {0}")]
@@ -306,10 +313,11 @@ impl ScraperError {
         Self::Extraction(msg.into())
     }
 
-    /// Create a Download error
+    /// Create a Download error, preserving the underlying error as the cause
+    /// chain (`#[source]`) so `Error::source()` traversal works (D4).
     #[must_use]
-    pub fn download(msg: impl Into<String>) -> Self {
-        Self::Download(msg.into())
+    pub fn download(e: Box<dyn std::error::Error + Send + Sync>) -> Self {
+        Self::Download(e)
     }
 
     /// Create a Conversion error
