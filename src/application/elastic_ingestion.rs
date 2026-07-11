@@ -504,4 +504,36 @@ mod tests {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<ElasticIngestion<InMemoryRepo>>();
     }
+
+    /// Integrity: the content-hash producer emits lowercase hex (no uppercase),
+    /// and matches a known SHA-256 vector. This is the value upstream feeds into
+    /// `StreamRepository`'s `{hash}-{index}` chunk id, so it must stay lowercase.
+    #[test]
+    fn contract_sha256_hex_producer_is_lowercase() {
+        // SHA-256 of the empty input (well-known vector), all lowercase hex.
+        let empty = sha256_hex(&[]);
+        assert_eq!(
+            empty, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "must match the known empty-input SHA-256 digest"
+        );
+
+        let is_lowercase_hex = empty
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+            && empty.len() == 64;
+        assert!(
+            is_lowercase_hex,
+            "producer output must be 64 lowercase-hex chars, got: {empty}"
+        );
+
+        // Non-empty input also stays lowercase hex and is 64 chars.
+        let sample = sha256_hex(b"rust_scraper");
+        assert_eq!(sample.len(), 64, "SHA-256 digest is always 64 hex chars");
+        assert!(
+            sample
+                .chars()
+                .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)),
+            "non-empty digest must also be lowercase hex, got: {sample}"
+        );
+    }
 }

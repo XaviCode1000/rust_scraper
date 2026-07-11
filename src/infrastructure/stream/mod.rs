@@ -107,6 +107,19 @@ impl StreamRepository {
             titles: Mutex::new(HashMap::new()),
         })
     }
+
+    /// Build a sink over an arbitrary writer.
+    ///
+    /// Used by tests to inject deterministic, failure-simulating writers
+    /// (e.g. a broken-pipe stub) without touching the filesystem or stdout.
+    /// The wrapping matches [`StreamRepository::new`] exactly.
+    #[cfg(test)]
+    pub(crate) fn from_writer(w: Box<dyn Write + Send>) -> Self {
+        Self {
+            writer: Mutex::new(std::io::BufWriter::new(w)),
+            titles: Mutex::new(HashMap::new()),
+        }
+    }
 }
 
 impl VectorRepository for StreamRepository {
@@ -251,5 +264,148 @@ mod tests {
         assert_eq!(record.embedding.len(), 384, "explicit 384-dim embedding");
         assert_eq!(record.title.as_deref(), Some("Page Title"));
         assert_eq!(record.chunk_text, "cleaned chunk text");
+    }
+
+    // Collecting writer that buffers everything in memory so tests can inspect
+    // the exact JSONL bytes that `StreamRepository` emits.
+    /// D2 — a broken-pipe write error must surface as `Err(ScraperError::Io)`,
+    /// never as a panic. Uses a deterministic in-memory writer stub (no OS pipes).
+    #[test]
+    fn contract_broken_pipe_returns_err_not_panic() {
+        struct BrokenPipeWriter;
+
+        impl Write for BrokenPipeWriter {
+            fn write(&mut self, _buf: &[u8]) -> std::io::Result<usize> {
+                Err(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "simulated broken pipe",
+                ))
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+
+        let repo = StreamRepository::from_writer(Box::new(BrokenPipeWriter));
+        let embedding: Vec<f32> = (0..384).map(|i| i as f32 * 0.001).collect();
+
+        let result = futures::executor::block_on(async {
+            repo.save_chunk(
+                "deadbeefcafe-0",
+                "https://example.com/p",
+                0,
+                "cleaned chunk text",
+                Some(&embedding),
+            )
+            .await
+        });
+
+        assert!(
+            result.is_err(),
+            "broken pipe must return Err, not panic/panic"
+        );
+        let err = result.expect_err("broken pipe error");
+        assert!(
+            matches!(err, ScraperError::Io(_)),
+            "broken pipe must map to ScraperError::Io, got: {err:?}"
+        );
+    }
+
+    /// 384-dim embedding integrity: round-trips exactly (same values + length)
+    /// and the raw JSON line carries a 384-length array.
+    #[test]
+    fn contract_embedding_384_dim_roundtrip() {
+        let tmp = tempfile::NamedTempFile::new().expect("temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let repo = StreamRepository::new(&path).expect("open stream");
+
+        let embedding: Vec<f32> = (0..384).map(|i| i as f32 * 0.001).collect();
+        futures::executor::block_on(async {
+            repo.save_resource("https://example.com/p", "Title", "deadbeefcafe", 42)
+                .await
+                .expect("save_resource");
+            repo.save_chunk(
+                "deadbeefcafe-0",
+                "https://example.com/p",
+                0,
+                "cleaned chunk text",
+                Some(&embedding),
+            )
+            .await
+            .expect("save_chunk");
+        });
+
+        let contents = std::fs::read_to_string(&path).expect("read stream");
+        let line = contents.lines().next().expect("one JSONL line");
+        let record: VectorRecord = serde_json::from_str(line).expect("valid JSONL");
+
+        assert_eq!(record.embedding.len(), 384, "embedding must be 384 floats");
+        assert_eq!(
+            record.embedding, embedding,
+            "deserialized embedding must equal the original values"
+        );
+
+        // Raw JSON line carries a 384-length array in the "embedding" field.
+        let value: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
+        let arr = value
+            .get("embedding")
+            .expect("embedding field present")
+            .as_array()
+            .expect("embedding is a JSON array");
+        assert_eq!(
+            arr.len(),
+            384,
+            "raw JSON embedding array must be length 384"
+        );
+    }
+
+    /// Lowercase-hex SHA-256 integrity: what upstream provides (a 32-char
+    /// lowercase hex id) is written verbatim and stays lowercase.
+    #[test]
+    fn contract_sha256_hex_is_lowercase_and_preserved() {
+        let tmp = tempfile::NamedTempFile::new().expect("temp file");
+        let path = tmp.path().to_string_lossy().to_string();
+        let repo = StreamRepository::new(&path).expect("open stream");
+
+        let id = "abcdef0123456789abcdef0123456789-0";
+        futures::executor::block_on(async {
+            repo.save_resource(
+                "https://example.com/p",
+                "T",
+                "abcdef0123456789abcdef0123456789",
+                1,
+            )
+            .await
+            .expect("save_resource");
+            repo.save_chunk(
+                id,
+                "https://example.com/p",
+                0,
+                "cleaned chunk text",
+                Some(&vec![0.0f32; 384]),
+            )
+            .await
+            .expect("save_chunk");
+        });
+
+        let contents = std::fs::read_to_string(&path).expect("read stream");
+        let line = contents.lines().next().expect("one JSONL line");
+        let record: VectorRecord = serde_json::from_str(line).expect("valid JSONL");
+
+        assert_eq!(
+            record.sha256_hex, "abcdef0123456789abcdef0123456789",
+            "sha256_hex must be preserved verbatim from the id"
+        );
+
+        let is_lowercase_hex = record
+            .sha256_hex
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+            && record.sha256_hex.len() == 32;
+        assert!(
+            is_lowercase_hex,
+            "sha256_hex must be 32 lowercase hex chars (no uppercase), got: {}",
+            record.sha256_hex
+        );
     }
 }
