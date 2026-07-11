@@ -63,7 +63,7 @@ mcp = ["dep:rmcp", "dep:axum", "dep:tower-http", "dep:schemars"]
 # SQLite persistence (resources/chunks + WAL pool + RAM autotuning).
 # Optional — OFF by default so the lightweight `rust_scraper_core` binary ships
 # without any SQLite/bundled-libsqlite3 dependency (spec R2 / S2.1). When OFF,
-# vector output is provided by the dependency-free `StreamRepository` JSONL sink.
+# vector output can be emitted via the dependency-free `StreamRepository` JSONL sink (flag `--output-vectors`).
 persistence = ["dep:rusqlite", "dep:deadpool-sqlite", "dep:sys-info"]
 
 [dependencies]
