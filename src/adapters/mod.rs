@@ -11,6 +11,7 @@
 pub mod detector;
 pub mod downloader;
 pub mod extractor;
+#[cfg(feature = "ui")]
 pub mod tui;
 pub mod url_path;
 

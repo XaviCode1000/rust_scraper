@@ -6,6 +6,9 @@
 //! Only exercises public API: `Component::handle_key_event`, `to_json()`,
 //! `url()`, public fields, and free functions.
 
+// TUI integration tests require the `ui` feature (ratatui + crossterm).
+#![cfg(feature = "ui")]
+
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use rust_scraper::adapters::tui::collapsible_config::CollapsibleConfig;
 use rust_scraper::adapters::tui::component::Component;

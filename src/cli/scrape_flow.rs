@@ -5,10 +5,10 @@ use tokio::sync::mpsc;
 use tracing::{info, warn};
 use url::Url;
 
-use crate::adapters::tui::{ScrapeError, ScrapeProgress, ScrapeStatus};
 use crate::application::crawl_options::CrawlOptions;
 use crate::application::crawler::discovery::{is_allowed_by_robots, new_robots_cache};
 use crate::application::export_factory;
+use crate::application::progress_types::{ScrapeError, ScrapeProgress, ScrapeStatus};
 use crate::application::scrape_single_url_for_tui;
 use crate::domain::ScrapedContent;
 use crate::infrastructure::export::state_store::StateStore;

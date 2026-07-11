@@ -27,8 +27,11 @@ use std::io::{self, IsTerminal};
 use std::panic;
 
 use clap::Parser;
+#[cfg(feature = "ui")]
 use inquire::Text;
+#[cfg(feature = "ui")]
 use rust_scraper::adapters::tui::modal::HelpModal;
+#[cfg(feature = "ui")]
 use rust_scraper::adapters::tui::{App, AppMode, AppResult, CollapsibleConfig, Header, StatusBar};
 use rust_scraper::application::crawl_options::CrawlOptions;
 use rust_scraper::cli::config::ConfigDefaults;
@@ -53,6 +56,7 @@ fn stdin_is_tty() -> bool {
 ///
 /// Returns `Ok(Some(values))` if both phases completed,
 /// `Ok(None)` if cancelled at any point, or `Err` if TTY not available.
+#[cfg(feature = "ui")]
 async fn run_unified_tui() -> Result<Option<serde_json::Value>, CliExit> {
     // Check if stdout is a TTY
     if !io::stdout().is_terminal() {
@@ -124,6 +128,7 @@ async fn run_unified_tui() -> Result<Option<serde_json::Value>, CliExit> {
 }
 
 /// Prompt for URL using inquire (interactive mode).
+#[cfg(feature = "ui")]
 fn prompt_for_url() -> Result<String, CliExit> {
     use inquire::validator::Validation;
 
@@ -198,45 +203,54 @@ async fn __main() -> CliExit {
     // =========================================================================
     // 3. Unified TUI mode (if --tui flag is set)
     // =========================================================================
-    if args.tui {
-        // Run unified TUI: config form → URL selector → scraping
-        let tui_result = run_unified_tui().await;
-        match tui_result {
-            Ok(Some(config_values)) => {
-                // Apply TUI config values to args (overrides CLI values)
-                args = preflight::apply_tui_config_args(args, &config_values);
-                println!("Config applied from TUI.");
-            },
-            Ok(None) => {
-                println!("TUI cancelled.");
-                return CliExit::Success;
-            },
-            Err(e) => {
-                return e;
-            },
+    #[cfg(feature = "ui")]
+    {
+        if args.tui {
+            // Run unified TUI: config form → URL selector → scraping
+            let tui_result = run_unified_tui().await;
+            match tui_result {
+                Ok(Some(config_values)) => {
+                    // Apply TUI config values to args (overrides CLI values)
+                    args = preflight::apply_tui_config_args(args, &config_values);
+                    println!("Config applied from TUI.");
+                },
+                Ok(None) => {
+                    println!("TUI cancelled.");
+                    return CliExit::Success;
+                },
+                Err(e) => {
+                    return e;
+                },
+            }
+        } else if args.config_tui {
+            // [DEPRECATED] Legacy config TUI — redirects to unified TUI
+            eprintln!("Warning: --config-tui is deprecated, use --tui instead");
+            let tui_result = run_unified_tui().await;
+            match tui_result {
+                Ok(Some(config_values)) => {
+                    args = preflight::apply_tui_config_args(args, &config_values);
+                },
+                Ok(None) => return CliExit::Success,
+                Err(e) => return e,
+            }
+        } else if args.interactive {
+            // [DEPRECATED] Legacy interactive — redirects to unified TUI
+            eprintln!("Warning: --interactive is deprecated, use --tui instead");
+            let tui_result = run_unified_tui().await;
+            match tui_result {
+                Ok(Some(config_values)) => {
+                    args = preflight::apply_tui_config_args(args, &config_values);
+                },
+                Ok(None) => return CliExit::Success,
+                Err(e) => return e,
+            }
         }
-    } else if args.config_tui {
-        // [DEPRECATED] Legacy config TUI — redirects to unified TUI
-        eprintln!("Warning: --config-tui is deprecated, use --tui instead");
-        let tui_result = run_unified_tui().await;
-        match tui_result {
-            Ok(Some(config_values)) => {
-                args = preflight::apply_tui_config_args(args, &config_values);
-            },
-            Ok(None) => return CliExit::Success,
-            Err(e) => return e,
-        }
-    } else if args.interactive {
-        // [DEPRECATED] Legacy interactive — redirects to unified TUI
-        eprintln!("Warning: --interactive is deprecated, use --tui instead");
-        let tui_result = run_unified_tui().await;
-        match tui_result {
-            Ok(Some(config_values)) => {
-                args = preflight::apply_tui_config_args(args, &config_values);
-            },
-            Ok(None) => return CliExit::Success,
-            Err(e) => return e,
-        }
+    }
+    // When `ui` is OFF, any TUI flag triggers a graceful Spanish error (spec S2.2).
+    #[cfg(not(feature = "ui"))]
+    if args.tui || args.config_tui || args.interactive {
+        eprintln!("TUI no disponible: compilar con --features ui");
+        return CliExit::UsageError("TUI no disponible: compilar con --features ui".into());
     }
 
     // =========================================================================
@@ -256,15 +270,26 @@ async fn __main() -> CliExit {
 
         // Try interactive prompt only if stdin is a TTY
         if stdin_is_tty() {
-            match prompt_for_url() {
-                Ok(url) => {
-                    args.url = Some(url);
-                },
-                Err(_e) => {
-                    // Prompt failed (e.g., non-interactive), fall through to error
-                    eprintln!("Error: --url is required for scraping");
-                    return CliExit::UsageError("--url is required".into());
-                },
+            #[cfg(feature = "ui")]
+            {
+                match prompt_for_url() {
+                    Ok(url) => {
+                        args.url = Some(url);
+                    },
+                    Err(_e) => {
+                        // Prompt failed (e.g., non-interactive), fall through to error
+                        eprintln!("Error: --url is required for scraping");
+                        return CliExit::UsageError("--url is required".into());
+                    },
+                }
+            }
+            #[cfg(not(feature = "ui"))]
+            {
+                // No inquire prompt available in headless builds — require --url explicitly.
+                eprintln!(
+                    "Error: --url is required for scraping (interactive prompt requires --features ui)"
+                );
+                return CliExit::UsageError("--url is required".into());
             }
         } else {
             // Not a TTY and no URL provided
