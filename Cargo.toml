@@ -329,6 +329,15 @@ harness = false
 name = "link_extraction"
 harness = false
 
+# MCP examples require the `mcp` feature (axum + mcp_server module).
+[[example]]
+name = "mcp_server"
+required-features = ["mcp"]
+
+[[example]]
+name = "mcp_server_stdio"
+required-features = ["mcp"]
+
 # ============================================================================
 # Dual build targets
 # ============================================================================
