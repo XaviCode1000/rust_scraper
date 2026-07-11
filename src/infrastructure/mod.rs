@@ -30,6 +30,9 @@ pub mod user_agent;
 pub mod autotuning;
 pub mod bridge;
 pub mod cpu_pool;
+// SQLite persistence layer — gated behind `persistence` so the lightweight core
+// binary ships without any bundled-libsqlite3 dependency (spec R2 / S2.1).
+#[cfg(feature = "persistence")]
 pub mod persistence;
 
 // Competitive Features Phase 1 — checkpoint + session pool

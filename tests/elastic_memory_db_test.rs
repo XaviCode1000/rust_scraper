@@ -3,6 +3,8 @@
 //! Validates that an in-memory SQLite database can be created, schema
 //! initialised, and data round-tripped without touching disk.
 
+#![cfg(feature = "persistence")]
+
 mod common;
 
 use rust_scraper::domain::VectorRepository;

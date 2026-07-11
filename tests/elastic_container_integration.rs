@@ -3,6 +3,8 @@
 //! Verifies that the Container correctly activates the elastic pipeline
 //! when `--elastic` is set, and gracefully skips it otherwise.
 
+#![cfg(feature = "persistence")]
+
 use rust_scraper::application::container::Container;
 use rust_scraper::domain::CrawlerConfig;
 use rust_scraper::infrastructure::autotuning::ElasticOverrides;

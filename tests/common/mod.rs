@@ -16,6 +16,9 @@
 use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
+// `deadpool_sqlite` is only linked under the `persistence` feature (gated SQLite
+// tests). The `MemoryDb` helper below also depends on it.
+#[cfg(feature = "persistence")]
 use deadpool_sqlite::Pool;
 
 /// TestHttpServer - RAII wrapper for wiremock MockServer
@@ -284,11 +287,15 @@ impl MockVault {
 ///     // ... use pool for testing
 /// }
 /// ```
+// `MemoryDb` wraps the `persistence`-gated SQLite pool; gate it so the default
+// (core) test build stays free of any SQLite dependency.
+#[cfg(feature = "persistence")]
 #[allow(dead_code)]
 pub struct MemoryDb {
     pool: Pool,
 }
 
+#[cfg(feature = "persistence")]
 #[allow(dead_code)]
 impl MemoryDb {
     /// Create a new in-memory SQLite database with a single-connection pool.

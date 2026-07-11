@@ -4,6 +4,8 @@
 //! through the 3-level chain (CLI flag > ENV var > Auto-detect) and that
 //! MemoryDb works end-to-end with the real SqliteVectorRepository.
 
+#![cfg(feature = "persistence")]
+
 mod common;
 
 use rust_scraper::domain::VectorRepository;

@@ -6,16 +6,20 @@
 
 use std::sync::Arc;
 
+use crate::application::crawl_options::CrawlOptions;
 use crate::application::crawl_result_repository::CrawlResultRepositoryImpl;
 use crate::application::elastic_ingestion::ElasticIngestion;
 use crate::application::http_client::{HttpClient, HttpClientConfig};
+use crate::domain::repository::DynVectorRepository;
 use crate::domain::{repositories::CrawlResultRepository, CrawlerConfig};
 use crate::infrastructure::autotuning::ElasticConfig;
 use crate::infrastructure::bridge::CpuBridge;
 use crate::infrastructure::config::ScraperConfig;
 use crate::infrastructure::cpu_pool::RayonCpuPool;
-use crate::infrastructure::crawler::resource_downloader::ResourceDownloader;
+use crate::infrastructure::crawler::resource_downloader::{DownloadConfig, ResourceDownloader};
 use crate::infrastructure::export::state_store::StateStore;
+// SQLite persistence layer — only compiled under the `persistence` feature.
+#[cfg(feature = "persistence")]
 use crate::infrastructure::persistence::sqlite::{
     self as sqlite_persistence, SqliteVectorRepository,
 };
@@ -31,8 +35,11 @@ pub struct Container {
     pub http_client: Arc<HttpClient>,
     pub state_store: Option<Arc<StateStore>>,
     pub crawl_result_repo: Option<Arc<dyn CrawlResultRepository>>,
-    /// Elastic ingestion pipeline (optional, activated via `--elastic`).
-    pub elastic_ingestion: Option<Arc<ElasticIngestion<SqliteVectorRepository>>>,
+    /// Elastic ingestion pipeline (optional, activated via `--elastic` or
+    /// `--output-vectors`). Erased to `DynVectorRepository` so it can hold either
+    /// the SQLite repo (`persistence` feature) or the headless `StreamRepository`
+    /// JSONL sink.
+    pub elastic_ingestion: Option<Arc<ElasticIngestion<DynVectorRepository>>>,
 }
 
 impl Container {
@@ -87,58 +94,84 @@ impl Container {
         self.crawl_result_repo.clone()
     }
 
-    /// Activate the elastic ingestion pipeline with the given config.
+    /// Build the elastic ingestion pipeline around an arbitrary repository.
     ///
-    /// Resolves `ElasticConfig` from the provided overrides, then wires
-    /// `RayonCpuPool` → `CpuBridge` → `SqliteVectorRepository` →
-    /// `ResourceDownloader` → `ElasticIngestion`.
+    /// Shared by the SQLite path (`persistence` feature) and the headless
+    /// `StreamRepository` JSONL sink. Wires `RayonCpuPool` → `CpuBridge` →
+    /// `ResourceDownloader` (byte-weighted semaphore) → `ElasticIngestion`.
     ///
     /// # Errors
     ///
-    /// Returns an error if the Rayon pool or SQLite pool fails to initialize.
-    pub async fn with_elastic(
-        mut self,
-        overrides: &crate::infrastructure::autotuning::ElasticOverrides,
-    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        let config = ElasticConfig::resolve(overrides);
-
+    /// Returns an error if the Rayon pool or HTTP client fails to initialize.
+    fn build_elastic(
+        repository: DynVectorRepository,
+        config: &ElasticConfig,
+    ) -> Result<ElasticIngestion<DynVectorRepository>, Box<dyn std::error::Error + Send + Sync>>
+    {
         // 1. Rayon CPU pool for lol_html processing
         let cpu_pool = RayonCpuPool::new(config.cpu_cores)?;
 
         // 2. CpuBridge wraps the Rayon pool with catch_unwind safety
         let bridge = CpuBridge::new(cpu_pool);
 
-        // 3. SQLite pool → repository (WAL mode, auto-creates parent dir)
-        let pool = sqlite_persistence::create_pool(&config.db_path, config.db_pool_size)?;
-        sqlite_persistence::setup_schema(&pool).await?;
-        let repository = SqliteVectorRepository::new(pool);
-
-        // 4. HTTP client for resource downloads (separate from scraping client)
+        // 3. HTTP client for resource downloads (separate from scraping client)
         let client = crate::application::http_client::create_http_client()?;
         let max_concurrent = (config.ram_budget_bytes / config.max_resource_bytes).max(1) as usize;
         let semaphore = Arc::new(tokio::sync::Semaphore::new(max_concurrent));
 
-        // 5. Resource downloader with elastic semaphore (byte-weighted backpressure)
+        // 4. Resource downloader with elastic semaphore (byte-weighted backpressure)
         let downloader = ResourceDownloader::with_config(
             semaphore,
             client,
-            crate::infrastructure::crawler::resource_downloader::DownloadConfig {
+            DownloadConfig {
                 max_size_bytes: config.max_resource_bytes,
                 ..Default::default()
             },
         );
 
-        // 6. Assemble pipeline — ElasticIngestion monomorphized for SqliteVectorRepository
-        let autotune = crate::infrastructure::config::AutotuningConfig::from_elastic(&config);
-        let ingestion = ElasticIngestion::new(downloader, bridge, repository, autotune);
+        // 5. Assemble pipeline — ElasticIngestion erased to DynVectorRepository
+        let autotune = crate::infrastructure::config::AutotuningConfig::from_elastic(config);
+        Ok(ElasticIngestion::new(
+            downloader, bridge, repository, autotune,
+        ))
+    }
 
+    /// Activate the elastic ingestion pipeline with SQLite persistence.
+    ///
+    /// Resolves `ElasticConfig` from the provided options, then wires
+    /// `RayonCpuPool` → `CpuBridge` → `SqliteVectorRepository` →
+    /// `ResourceDownloader` → `ElasticIngestion`. Only available under the
+    /// `persistence` feature.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the Rayon pool or SQLite pool fails to initialize.
+    #[cfg(feature = "persistence")]
+    pub async fn with_elastic(
+        mut self,
+        opts: &CrawlOptions,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let overrides = crate::infrastructure::autotuning::ElasticOverrides {
+            cpu_cores: opts.elastic.cpu_cores,
+            ram_budget_bytes: opts.elastic.ram_budget_bytes,
+            max_resource_bytes: opts.elastic.max_resource_bytes,
+            db_path: opts.elastic.db_path.clone(),
+        };
+        let config = ElasticConfig::resolve(&overrides);
+
+        // 3. SQLite pool → repository (WAL mode, auto-creates parent dir)
+        let pool = sqlite_persistence::create_pool(&config.db_path, config.db_pool_size)?;
+        sqlite_persistence::setup_schema(&pool).await?;
+        let repository: DynVectorRepository = Arc::new(SqliteVectorRepository::new(pool));
+
+        let ingestion = Self::build_elastic(repository, &config)?;
         self.elastic_ingestion = Some(Arc::new(ingestion));
         Ok(self)
     }
 
     /// Access the elastic ingestion pipeline, if activated.
     #[must_use]
-    pub fn elastic_ingestion(&self) -> Option<&ElasticIngestion<SqliteVectorRepository>> {
+    pub fn elastic_ingestion(&self) -> Option<&ElasticIngestion<DynVectorRepository>> {
         self.elastic_ingestion.as_deref()
     }
 }

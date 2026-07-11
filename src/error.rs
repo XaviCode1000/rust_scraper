@@ -399,7 +399,9 @@ mod tests {
         assert_eq!(err.to_string(), "Error de ingestión: pipeline abortó");
     }
 
-    #[cfg_attr(miri, ignore)]
+    // `rusqlite` is only linked under the `persistence` feature; this triangulation
+    // test must be gated to keep the default (core) build dependency-free.
+    #[cfg(all(feature = "persistence", not(miri)))]
     #[test]
     fn test_persistence_error_from_rusqlite() {
         // Triangulation: the Display-based helper must carry the real rusqlite

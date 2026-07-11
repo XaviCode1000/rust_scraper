@@ -87,9 +87,21 @@ pub fn ram_budget_from(total_kib: Option<u64>) -> u64 {
 }
 
 /// Detect the RAM budget via [`sys_info::mem_info()`], falling back to 2 GiB.
+///
+/// The `sys_info` syscall is only available under the `persistence` feature
+/// (the SQLite path). When `persistence` is OFF the lightweight core binary
+/// has no `sys_info` dependency, so detection simply returns the 2 GiB
+/// fallback — `ram_budget_from(None)` is already unit-tested.
 #[must_use]
 pub fn detect_ram_budget() -> u64 {
-    ram_budget_from(sys_info::mem_info().ok().map(|m| m.total))
+    #[cfg(feature = "persistence")]
+    {
+        ram_budget_from(sys_info::mem_info().ok().map(|m| m.total))
+    }
+    #[cfg(not(feature = "persistence"))]
+    {
+        FALLBACK_RAM_BUDGET_BYTES
+    }
 }
 
 /// Default SQLite database path: `~/.rust_scraper/crawl.db`.

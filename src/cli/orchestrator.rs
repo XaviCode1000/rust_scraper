@@ -11,6 +11,8 @@ use crate::cli::error::CliExit;
 use crate::cli::export_flow::{run_export, save_files, ExportConfig};
 use crate::cli::scrape_flow::scrape_urls;
 use crate::cli::url_discovery::discover_urls;
+use crate::domain::repository::DynVectorRepository;
+use crate::error::ScraperError;
 use crate::Args;
 use crate::CrawlerConfig;
 use crate::ScraperConfig;
@@ -117,50 +119,10 @@ pub async fn run(opts: CrawlOptions) -> CliExit {
         None
     };
 
-    // Initialize elastic ingestion if requested
-    let elastic_ingestion: Option<
-        std::sync::Arc<
-            crate::application::elastic_ingestion::ElasticIngestion<
-                crate::infrastructure::persistence::sqlite::SqliteVectorRepository,
-            >,
-        >,
-    > = if opts.elastic.enabled {
-        let overrides = crate::infrastructure::autotuning::ElasticOverrides {
-            cpu_cores: opts.elastic.cpu_cores,
-            ram_budget_bytes: opts.elastic.ram_budget_bytes,
-            max_resource_bytes: opts.elastic.max_resource_bytes,
-            db_path: opts.elastic.db_path.clone(),
-        };
-
-        let db_display = opts
-            .elastic
-            .db_path
-            .as_deref()
-            .unwrap_or(std::path::Path::new("elastic.db"))
-            .display();
-
-        match async {
-            let container = crate::application::container::Container::new(
-                CrawlerConfig::new(opts.url.clone()),
-                ScraperConfig::default(),
-            )
-            .await?;
-            container.with_elastic(&overrides).await
-        }
-        .await
-        {
-            Ok(container) => {
-                info!("pipeline elástico activado: db={db_display}");
-                container.elastic_ingestion
-            },
-            Err(e) => {
-                warn!("no se pudo inicializar el pipeline elástico: {e}");
-                None
-            },
-        }
-    } else {
-        None
-    };
+    // Initialize elastic ingestion if requested (`--elastic` → SQLite, or
+    // `--output-vectors` → headless JSONL stream). Both are erased to
+    // `DynVectorRepository` so the field type is feature-independent.
+    let elastic_ingestion = build_elastic_ingestion(&opts).await;
 
     // Scraping phase
     let (results, failures): (
@@ -175,9 +137,12 @@ pub async fn run(opts: CrawlOptions) -> CliExit {
     )
     .await;
 
-    // Post-scrape: elastic ingestion (best-effort, no abort on failure)
+    // Post-scrape: elastic ingestion. Fail-fast — a broken pipe / write error
+    // (D2) propagates as a fatal `IoError` and aborts the crawl.
     if let Some(ref ingestion) = elastic_ingestion {
-        run_elastic_ingestion(ingestion, &results).await;
+        if let Err(e) = run_elastic_ingestion(ingestion, &results).await {
+            return CliExit::IoError(format!("Falló la ingesta de vectores: {e}"));
+        }
     }
 
     // Report failures — preserve the full root-cause chain via `Error::source()`
@@ -266,18 +231,18 @@ pub async fn run(opts: CrawlOptions) -> CliExit {
 ///
 /// Each URL is processed concurrently via a bounded `JoinSet` with
 /// concurrency limited by the elastic config's CPU core count.
-/// Ingestion failures are logged but do NOT abort the export phase
-/// (best-effort semantics).
+///
+/// Fail-fast (frozen Decision 3 + D2): the first ingestion error — including a
+/// broken pipe / `WriteZero` while streaming JSONL — propagates immediately and
+/// aborts the crawl, rather than being swallowed as a warning.
 async fn run_elastic_ingestion(
     ingestion: &std::sync::Arc<
-        crate::application::elastic_ingestion::ElasticIngestion<
-            crate::infrastructure::persistence::sqlite::SqliteVectorRepository,
-        >,
+        crate::application::elastic_ingestion::ElasticIngestion<DynVectorRepository>,
     >,
     results: &[crate::domain::ScrapedContent],
-) {
+) -> Result<(), ScraperError> {
     if results.is_empty() {
-        return;
+        return Ok(());
     }
 
     let mut join_set = JoinSet::new();
@@ -289,9 +254,14 @@ async fn run_elastic_ingestion(
 
         while join_set.len() >= concurrency {
             match join_set.join_next().await {
-                Some(Ok(Ok(()))) => {}, // success
-                Some(Ok(Err(e))) => warn!("error en tarea de ingesta elástica: {e}"),
-                Some(Err(e)) => warn!("error en tarea de ingesta elástica: {e}"),
+                // `T` is `Result<(), ScraperError>` (the spawned task's output).
+                Some(Ok(Ok(()))) => {},            // success
+                Some(Ok(Err(e))) => return Err(e), // ingestion error (D2 fail-fast)
+                Some(Err(_join_err)) => {
+                    return Err(ScraperError::ingestion(
+                        "tarea de ingesta elástica cancelada",
+                    ));
+                },
                 None => break,
             }
         }
@@ -302,13 +272,56 @@ async fn run_elastic_ingestion(
         });
     }
 
-    // Await remaining tasks (all result variants, not just panics)
+    // Await remaining tasks (propagate the first error — D2 fail-fast).
     while let Some(result) = join_set.join_next().await {
-        match result {
-            Ok(Ok(())) => {}, // success
-            Ok(Err(e)) => warn!("error en tarea de ingesta elástica: {e}"),
-            Err(e) => warn!("error en tarea de ingesta elástica: {e}"),
+        if let Ok(Err(e)) = result {
+            return Err(e);
         }
+    }
+    Ok(())
+}
+
+/// Build the elastic ingestion pipeline for the run.
+///
+/// Under the `persistence` feature with `--elastic` enabled, wires the
+/// SQLite-backed `SqliteVectorRepository`. Otherwise returns `None` (no
+/// ingestion). The headless `StreamRepository` JSONL sink (`--output-vectors`)
+/// is added in a follow-up commit.
+async fn build_elastic_ingestion(
+    opts: &CrawlOptions,
+) -> Option<
+    std::sync::Arc<crate::application::elastic_ingestion::ElasticIngestion<DynVectorRepository>>,
+> {
+    let container = match crate::application::container::Container::new(
+        CrawlerConfig::new(opts.url.clone()),
+        ScraperConfig::default(),
+    )
+    .await
+    {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("no se pudo crear el contenedor para ingesta elástica: {e}");
+            return None;
+        },
+    };
+
+    #[cfg(feature = "persistence")]
+    {
+        if !opts.elastic.enabled {
+            return None;
+        }
+        match container.with_elastic(opts).await {
+            Ok(c) => c.elastic_ingestion,
+            Err(e) => {
+                warn!("no se pudo inicializar el pipeline elástico: {e}");
+                None
+            },
+        }
+    }
+    #[cfg(not(feature = "persistence"))]
+    {
+        let _ = opts;
+        None
     }
 }
 

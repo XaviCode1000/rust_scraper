@@ -60,6 +60,12 @@ otel-metrics = [
 # `rust_scraper_core` build to keep it small; enabled for the full binary.
 mcp = ["dep:rmcp", "dep:axum", "dep:tower-http", "dep:schemars"]
 
+# SQLite persistence (resources/chunks + WAL pool + RAM autotuning).
+# Optional — OFF by default so the lightweight `rust_scraper_core` binary ships
+# without any SQLite/bundled-libsqlite3 dependency (spec R2 / S2.1). When OFF,
+# vector output is provided by the dependency-free `StreamRepository` JSONL sink.
+persistence = ["dep:rusqlite", "dep:deadpool-sqlite", "dep:sys-info"]
+
 [dependencies]
 # CLI - Argument parsing obligatorio
 clap = { version = "4", features = ["derive", "env"] }
@@ -197,17 +203,20 @@ num_cpus = "1"
 # ============================================================================
 # Elastic Ingestion (Issue #51) — autotuning + SQLite persistence + CPU pool
 # ============================================================================
-# SQLite embedded persistence (bundled libsqlite3; chrono/uuid feature gates)
-rusqlite = { version = "0.31", features = ["bundled", "chrono", "uuid"] }
+# SQLite embedded persistence (bundled libsqlite3; chrono/uuid feature gates).
+# Gated behind the `persistence` feature so the core binary has zero SQLite deps.
+rusqlite = { version = "0.31", features = ["bundled", "chrono", "uuid"], optional = true }
 # Async SQLite connection pool (WAL-friendly, pooled blocking calls off Tokio)
 # NOTE: task pinned "0.15" (nonexistent); 0.13 needs rusqlite 0.38 (conflicts
 # with proposal-pinned rusqlite 0.31). Frozen design.md pins no version.
 # Resolver-selected max version compatible with rusqlite 0.31 is 0.8.1.
-deadpool-sqlite = "0.8"
+# Gated behind `persistence`.
+deadpool-sqlite = { version = "0.8", optional = true }
 # Total RAM detection for hardware autotuning (CPU uses num_cpus above)
 # NOTE: task pinned "0.10" but that version does not exist on crates.io
 # (candidates: 0.9.1, 0.9.0). proposal.md specifies "0.9" — using that.
-sys-info = "0.9"
+# Gated behind `persistence` (only used by the SQLite path's RAM detection).
+sys-info = { version = "0.9", optional = true }
 # Promoted from transitive to direct: explicit isolated Rayon thread pool (PR3)
 rayon = "1.10"
 

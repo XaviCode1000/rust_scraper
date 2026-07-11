@@ -93,6 +93,7 @@ pub trait VectorRepository: Send + Sync {
     ///
     /// Returns [`ScraperError::Persistence`] on a corrupt BLOB or database
     /// failure.
+    #[allow(clippy::type_complexity)]
     fn get_vector<'a>(
         &'a self,
         chunk_id: &'a str,
@@ -144,3 +145,12 @@ impl<T: VectorRepository + ?Sized> VectorRepository for std::sync::Arc<T> {
         (**self).get_vector(chunk_id)
     }
 }
+
+/// Erased vector repository for runtime dispatch.
+///
+/// Lets the Container hold either the SQLite-backed [`crate::infrastructure::persistence::sqlite::SqliteVectorRepository`]
+/// (under the `persistence` feature) or the dependency-free `StreamRepository`
+/// JSONL sink behind a single type, enabling `Arc<dyn VectorRepository + Send + Sync>`
+/// to satisfy the `R: VectorRepository + Send + Sync` bound on
+/// [`crate::application::elastic_ingestion::ElasticIngestion`].
+pub type DynVectorRepository = std::sync::Arc<dyn VectorRepository + Send + Sync>;
