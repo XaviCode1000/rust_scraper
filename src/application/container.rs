@@ -169,6 +169,33 @@ impl Container {
         Ok(self)
     }
 
+    /// Activate the elastic ingestion pipeline with the dependency-free
+    /// `StreamRepository` JSONL sink (no SQLite). Available in every build; use
+    /// this for RAG vector export via `--output-vectors`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the output path cannot be opened for writing.
+    pub fn with_stream(
+        mut self,
+        opts: &CrawlOptions,
+        path: &str,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        let overrides = crate::infrastructure::autotuning::ElasticOverrides {
+            cpu_cores: opts.elastic.cpu_cores,
+            ram_budget_bytes: opts.elastic.ram_budget_bytes,
+            max_resource_bytes: opts.elastic.max_resource_bytes,
+            db_path: None,
+        };
+        let config = ElasticConfig::resolve(&overrides);
+        let repository: DynVectorRepository =
+            Arc::new(crate::infrastructure::stream::StreamRepository::new(path)?);
+
+        let ingestion = Self::build_elastic(repository, &config)?;
+        self.elastic_ingestion = Some(Arc::new(ingestion));
+        Ok(self)
+    }
+
     /// Access the elastic ingestion pipeline, if activated.
     #[must_use]
     pub fn elastic_ingestion(&self) -> Option<&ElasticIngestion<DynVectorRepository>> {

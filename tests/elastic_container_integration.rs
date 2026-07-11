@@ -27,11 +27,15 @@ async fn container_with_elastic_builds_pipeline() {
         db_path: Some(dir.path().join("elastic.db")),
         ..Default::default()
     };
+    let opts = rust_scraper::application::crawl_options::CrawlOptions {
+        elastic: rust_scraper::application::crawl_options::IngestionTuning::from(overrides),
+        ..Default::default()
+    };
 
     let container = Container::new(crawler_config, scraper_config)
         .await
         .expect("container base")
-        .with_elastic(&overrides)
+        .with_elastic(&opts)
         .await
         .expect("container con pipeline elástico");
 

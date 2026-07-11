@@ -283,10 +283,10 @@ async fn run_elastic_ingestion(
 
 /// Build the elastic ingestion pipeline for the run.
 ///
-/// Under the `persistence` feature with `--elastic` enabled, wires the
-/// SQLite-backed `SqliteVectorRepository`. Otherwise returns `None` (no
-/// ingestion). The headless `StreamRepository` JSONL sink (`--output-vectors`)
-/// is added in a follow-up commit.
+/// - `persistence` ON + `--elastic` → SQLite-backed `SqliteVectorRepository`.
+/// - `--output-vectors <path|->` → dependency-free `StreamRepository` JSONL sink
+///   (available in every build, including the lightweight core binary).
+/// - otherwise → `None` (no ingestion).
 async fn build_elastic_ingestion(
     opts: &CrawlOptions,
 ) -> Option<
@@ -305,23 +305,33 @@ async fn build_elastic_ingestion(
         },
     };
 
-    #[cfg(feature = "persistence")]
-    {
-        if !opts.elastic.enabled {
-            return None;
+    let built = {
+        #[cfg(feature = "persistence")]
+        {
+            if opts.elastic.enabled {
+                container.with_elastic(opts).await
+            } else if let Some(ref path) = opts.elastic.output_vectors {
+                container.with_stream(opts, path)
+            } else {
+                Ok(container)
+            }
         }
-        match container.with_elastic(opts).await {
-            Ok(c) => c.elastic_ingestion,
-            Err(e) => {
-                warn!("no se pudo inicializar el pipeline elástico: {e}");
-                None
-            },
+        #[cfg(not(feature = "persistence"))]
+        {
+            if let Some(ref path) = opts.elastic.output_vectors {
+                container.with_stream(opts, path)
+            } else {
+                Ok(container)
+            }
         }
-    }
-    #[cfg(not(feature = "persistence"))]
-    {
-        let _ = opts;
-        None
+    };
+
+    match built {
+        Ok(c) => c.elastic_ingestion,
+        Err(e) => {
+            warn!("no se pudo inicializar el pipeline elástico: {e}");
+            None
+        },
     }
 }
 
