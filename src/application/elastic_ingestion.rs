@@ -342,7 +342,8 @@ mod tests {
         fn resource_exists_by_hash<'a>(
             &'a self,
             content_hash: &'a str,
-        ) -> Pin<Box<dyn Future<Output = Result<Option<String>, ScraperError>> + Send + 'a>> {
+        ) -> Pin<Box<dyn Future<Output = Result<Option<String>, ScraperError>> + Send + 'a>>
+        {
             Box::pin(async move {
                 Ok(self
                     .state
@@ -357,7 +358,8 @@ mod tests {
         fn get_vector<'a>(
             &'a self,
             _chunk_id: &'a str,
-        ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<f32>>, ScraperError>> + Send + 'a>> {
+        ) -> Pin<Box<dyn Future<Output = Result<Option<Vec<f32>>, ScraperError>> + Send + 'a>>
+        {
             Box::pin(async move { Ok(None) })
         }
     }

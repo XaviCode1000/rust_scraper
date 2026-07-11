@@ -1332,5 +1332,3 @@ async fn test_sitemap_url_scrapes_listed_urls() {
         "output should contain content from sitemap page B"
     );
 }
-
-
