@@ -3,6 +3,9 @@
 //! These tests exercise pure state machines and widget initialization
 //! without requiring a terminal backend, keeping them fast and CI-friendly.
 
+// TUI smoke tests require the `ui` feature (ratatui types).
+#![cfg(feature = "ui")]
+
 use rust_scraper::adapters::tui::action::Action;
 use rust_scraper::adapters::tui::component::Component;
 use rust_scraper::adapters::tui::modal::HelpModal;

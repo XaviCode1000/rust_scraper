@@ -24,7 +24,12 @@ ignore = ["rustls-webpki"]
 default = ["images", "documents"]
 images = ["dep:mimetype-detector"]
 documents = ["dep:mimetype-detector"]
-full = ["images", "documents"]
+# Full-featured build: all optional layers (TUI + future persistence).
+full = ["images", "documents", "ui"]
+# TUI (ratatui + crossterm + ratatui-form + inquire) — optional.
+# When OFF, `rust_scraper_core` builds without any TUI deps, producing a
+# lightweight headless binary (< 10 MB). Spec R2 / S2.1.
+ui = ["dep:ratatui", "dep:crossterm", "dep:ratatui-form", "dep:inquire"]
 # AI-powered semantic cleaning (Module 3 + 4 + 5 + 7)
 ai = [
     "dep:tokenizers",
@@ -181,10 +186,11 @@ dashmap = "6"
 # only transitive under the `ai` feature. Default `std` feature for hash_one().
 ahash = { version = "0.8", features = ["std"] }
 
-# TUI (preparar para Fase 2) - FASE 1 Web Crawler
-ratatui = { version = "0.29", features = ["palette", "serde"] }
-ratatui-form = "0.1.1"
-crossterm = { version = "0.28", features = ["event-stream"] }
+# TUI (optional, gated behind `ui` feature) - FASE 1 Web Crawler
+# When `ui` is OFF, the core binary excludes ratatui/crossterm entirely (spec R2).
+ratatui = { version = "0.29", features = ["palette", "serde"], optional = true }
+ratatui-form = { version = "0.1.1", optional = true }
+crossterm = { version = "0.28", features = ["event-stream"], optional = true }
 
 # XML parsing (preparar para Fase 3) - FASE 1 Web Crawler
 # NOTE: quick-xml 0.41 fixes RUSTSEC-2026-0194/0195 (quadratic + OOM).
@@ -215,7 +221,8 @@ rayon = "1.10"
 indicatif = { version = "0.17", features = ["improved_unicode"] }
 
 # Interactive wizard for guided prompting (Phase 1)
-inquire = "0.9"
+# Gated behind `ui` — only used by --interactive TUI prompt (design A5 / Q2).
+inquire = { version = "0.9", optional = true }
 
 # Shell completions
 clap_complete = "4"
@@ -351,7 +358,7 @@ required-features = ["mcp"]
 [[bin]]
 name = "rust_scraper"
 path = "src/main.rs"
-required-features = ["ai", "mcp"]
+required-features = ["ai", "mcp", "ui"]
 
 [[bin]]
 name = "rust_scraper_core"
@@ -416,6 +423,11 @@ needless_pass_by_value = "allow"
 return_self_not_must_use = "allow"
 single_match_else = "allow"
 trivially_copy_pass_by_ref = "allow"
+
+# Silence `unexpected_cfgs` for the new optional feature flags so CI stays clean.
+# `persistence` is declared here preemptively (PR2 will define the feature).
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(feature, values("ui", "persistence"))'] }
 
 # Size-optimized profile for the lightweight `rust_scraper_core` binary.
 # Inherits release settings but trades speed for minimum size

@@ -419,7 +419,7 @@ pub(crate) async fn download_assets_if_enabled(
     _html: &str,
     _base_url: &url::Url,
     _config: &crate::ScraperConfig,
-    shared_downloader: Option<&crate::adapters::downloader::Downloader>,
+    _shared_downloader: Option<&crate::adapters::downloader::Downloader>,
 ) -> Result<Vec<DownloadedAsset>> {
     if !_config.has_downloads() {
         return Ok(Vec::new());
@@ -429,7 +429,7 @@ pub(crate) async fn download_assets_if_enabled(
     {
         // Use shared downloader when provided; create a fallback one otherwise
         let owned_downloader;
-        let downloader = match shared_downloader {
+        let downloader = match _shared_downloader {
             Some(dl) => dl,
             None => {
                 owned_downloader =

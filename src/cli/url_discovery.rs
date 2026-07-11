@@ -4,11 +4,14 @@ use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use tracing::{info, warn};
 use url::Url;
 
+#[cfg(feature = "ui")]
 use crate::adapters;
 use crate::application::crawl_options::CrawlOptions;
 use crate::application::discover_urls_for_tui;
+#[cfg(feature = "ui")]
 use crate::cli::preflight;
 use crate::cli::SelectedUrls;
+#[cfg(feature = "ui")]
 use crate::CliExit;
 use crate::CrawlerConfig;
 
@@ -53,27 +56,42 @@ pub async fn select_urls(
     opts: &CrawlOptions,
     vault_path: &Option<std::path::PathBuf>,
 ) -> SelectedUrls {
+    #[cfg(feature = "ui")]
     let ok = preflight::icon("✅", "OK");
 
     if opts.export.quick_save && vault_path.is_some() {
         info!("Quick-save mode: bypassing TUI, will save to vault _inbox");
         SelectedUrls::Urls(discovered_urls.to_vec())
     } else if opts.crawl.interactive {
-        info!("Starting interactive TUI selector...");
-        match adapters::tui::run_selector(discovered_urls).await {
-            Ok(selected) => {
-                info!("{} User selected {} URLs", ok, selected.len());
-                if selected.is_empty() {
-                    info!("No URLs selected, exiting");
-                    SelectedUrls::None
-                } else {
-                    SelectedUrls::Urls(selected)
-                }
-            },
-            Err(e) => {
-                warn!("Error en selector TUI: {}", e);
-                SelectedUrls::Error(CliExit::ProtocolError(e.to_string()))
-            },
+        // When `ui` is ON, launch the interactive TUI selector.
+        #[cfg(feature = "ui")]
+        {
+            info!("Starting interactive TUI selector...");
+            match adapters::tui::run_selector(discovered_urls).await {
+                Ok(selected) => {
+                    info!("{} User selected {} URLs", ok, selected.len());
+                    if selected.is_empty() {
+                        info!("No URLs selected, exiting");
+                        SelectedUrls::None
+                    } else {
+                        SelectedUrls::Urls(selected)
+                    }
+                },
+                Err(e) => {
+                    warn!("Error en selector TUI: {}", e);
+                    SelectedUrls::Error(CliExit::ProtocolError(e.to_string()))
+                },
+            }
+        }
+        // When `ui` is OFF, interactive mode falls back to batch (all URLs).
+        // Spec S2.3 — no run_selector call without the TUI feature.
+        #[cfg(not(feature = "ui"))]
+        {
+            info!(
+                "Interactive mode requested but TUI is unavailable (ui feature off) — using all {} discovered URLs",
+                discovered_urls.len()
+            );
+            SelectedUrls::Urls(discovered_urls.to_vec())
         }
     } else {
         info!(
