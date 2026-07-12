@@ -15,7 +15,6 @@ use url::Url;
 
 use super::collector::{CrawlMessage, ResultsCollector};
 use super::concurrency_level::{ConcurrencyLevel, SharedConcurrencyLevel};
-use super::discovery::{is_allowed_by_robots, new_robots_cache, RobotsCache};
 use crate::application::deduplicator::UrlDeduplicator;
 use crate::application::pipeline::{OutputStage, PipelineExecutor, ScrapedItem, StageOutcome};
 use crate::application::rate_limiter::{RateLimiterConfig, SharedRateLimiter};
@@ -23,6 +22,9 @@ use crate::application::url_filter::is_allowed;
 use crate::domain::{CrawlError, CrawlResult, CrawlerConfig, DiscoveredUrl, JsStrategy};
 use crate::infrastructure::checkpoint::store::BannedDomain;
 use crate::infrastructure::checkpoint::BincodeCheckpoint;
+use crate::infrastructure::crawler::robots_utils::{
+    is_allowed_by_robots, new_robots_cache, RobotsCache,
+};
 use crate::infrastructure::crawler::{
     extract_links, fetch_url, is_internal_link, UrlQueue, UrlSource,
 };
