@@ -516,6 +516,56 @@ pub fn get_random_user_agent_from_pool(pool: &[String]) -> String {
     pool[index].clone()
 }
 
+// ============================================================================
+// HttpClientPort implementation for HttpClient
+// ============================================================================
+
+impl super::port::HttpClientPort for HttpClient {
+    fn get(
+        &self,
+        url: &str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = super::HttpResult<super::port::HttpResponse>>
+                + Send
+                + '_,
+        >,
+    > {
+        let url = url.to_owned();
+        Box::pin(async move {
+            // Use the inner wreq client for the raw request, then build
+            // a full HttpResponse (status + body + headers).
+            let resp = self.client.get(url.as_str()).send().await.map_err(|e| {
+                if e.is_timeout() {
+                    super::error::HttpError::Timeout
+                } else if e.is_connect() {
+                    super::error::HttpError::Connection(e.to_string())
+                } else {
+                    super::error::HttpError::Request(e.to_string())
+                }
+            })?;
+
+            let status = resp.status().as_u16();
+            let mut headers = std::collections::HashMap::new();
+            for (key, value) in resp.headers() {
+                if let Ok(v) = value.to_str() {
+                    headers.insert(key.as_str().to_lowercase(), v.to_string());
+                }
+            }
+            let body = resp
+                .text()
+                .await
+                .map_err(|e| super::error::HttpError::Request(e.to_string()))?;
+
+            Ok(super::port::HttpResponse {
+                status,
+                body,
+                headers,
+            })
+        })
+    }
+}
+
 #[cfg(test)]
 #[cfg(not(miri))] // all tests create wreq::Client with boring-sys2 FFI (unsupported by Miri)
 mod tests {

@@ -1,50 +1,32 @@
-//! Dependency Injection Container
+//! Dependency Injection Container (legacy re-export)
 //!
-//! Provides centralized dependency injection for the application.
-//! Following Clean Architecture: container lives in application layer.
+//! The canonical Container lives in `application::container`. This module
+//! provides a `Config`-based convenience constructor for callers that still
+//! hold a `Config` struct (e.g., MCP server tests).
+//!
+//! New code should use `crate::application::container::Container` directly.
 
-use crate::application::http_client::HttpClient;
 use crate::config::Config;
-use crate::infrastructure::config::ScraperConfig;
-use std::sync::Arc;
 
-/// Dependency Injection Container
+/// Legacy Container re-export — delegates to application container.
 ///
-/// Holds all application services and their dependencies.
-/// Services are created once and reused throughout the application lifetime.
-#[derive(Clone)]
-pub struct Container {
-    config: Arc<Config>,
-    http_client: Arc<HttpClient>,
+/// For new code, use `crate::application::container::Container::new()` directly.
+pub type Container = crate::application::container::Container;
+
+/// Extension trait for creating a Container from the unified `Config`.
+pub trait ContainerExt: Sized {
+    /// Create a Container from the unified `Config` struct.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if HTTP client creation fails.
+    fn from_config(
+        config: Config,
+    ) -> impl std::future::Future<Output = Result<Self, Box<dyn std::error::Error + Send + Sync>>> + Send;
 }
 
-impl Container {
-    /// Create a new container with the given configuration
-    pub async fn new(config: Config) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
-        // Validate config
-        config.validate()?;
-
-        // Create HTTP client
-        let http_client = Arc::new(HttpClient::new(config.http.clone())?);
-
-        Ok(Self {
-            config: Arc::new(config),
-            http_client,
-        })
-    }
-
-    /// Get the application configuration
-    pub fn config(&self) -> &Config {
-        &self.config
-    }
-
-    /// Get the HTTP client
-    pub fn http_client(&self) -> &HttpClient {
-        &self.http_client
-    }
-
-    /// Get the scraper configuration
-    pub fn scraper_config(&self) -> &ScraperConfig {
-        &self.config.scraper
+impl ContainerExt for Container {
+    async fn from_config(config: Config) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+        Self::new(config.crawler, config.scraper).await
     }
 }

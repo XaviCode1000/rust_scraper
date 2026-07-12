@@ -91,7 +91,7 @@ impl McpHandler {
             )
         })?;
 
-        let client = self.state.container.http_client().client();
+        let client = self.state.container.http_client().as_ref();
         match crate::application::scraper_service::scrape_with_readability(client, &url).await {
             Ok(results) => {
                 let content = serde_json::to_string_pretty(&results)
@@ -137,7 +137,7 @@ impl McpHandler {
             config.download_documents = true;
         }
 
-        let client = self.state.container.http_client().client();
+        let client = self.state.container.http_client().as_ref();
         let dl = self.state.downloader.as_deref();
         match crate::application::scraper_service::scrape_with_config(client, &url, &config, dl)
             .await
@@ -188,7 +188,7 @@ impl McpHandler {
             config.scraper_concurrency = c;
         }
 
-        let client = self.state.container.http_client().client();
+        let client = self.state.container.http_client().as_ref();
         let dl = self.state.downloader.as_deref();
         match crate::application::scraper_service::scrape_multiple_with_limit(
             client, &urls, &config, dl,
@@ -322,7 +322,7 @@ impl McpHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
 
-        let client = self.state.container.http_client().client();
+        let client = self.state.container.wreq_client();
         match client.get(&params.url).send().await {
             Ok(resp) => match resp.text().await {
                 Ok(html) => {
@@ -390,7 +390,7 @@ impl McpHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
 
-        let client = self.state.container.http_client().client();
+        let client = self.state.container.wreq_client();
         match client.get(&params.url).send().await {
             Ok(resp) => match resp.text().await {
                 Ok(html) => {

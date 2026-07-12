@@ -9,7 +9,7 @@ use crate::domain::{CrawlError, ScrapedContent};
 ///
 /// Defines the contract for persisting and retrieving crawl data.
 /// Implementations can use files, databases, or other storage backends.
-pub trait CrawlResultRepository {
+pub trait CrawlResultRepository: Send + Sync {
     /// Save scraped content
     ///
     /// # Arguments

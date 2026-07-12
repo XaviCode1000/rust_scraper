@@ -25,6 +25,7 @@ pub mod js_strategy;
 pub mod link_extractor;
 pub mod pattern_matching;
 pub mod pipeline_item;
+pub mod ports;
 pub mod repositories;
 pub mod repository;
 pub mod result;
