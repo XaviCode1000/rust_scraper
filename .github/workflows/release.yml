@@ -162,7 +162,7 @@ jobs:
             ```bash
             git clone https://github.com/XaviCode1000/rust-scraper
             cd rust-scraper
-            cargo build --release --features ai
+            cargo build --release --features "ai mcp ui"
             ```
 
             ## Verification
