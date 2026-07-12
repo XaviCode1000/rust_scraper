@@ -6,13 +6,13 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 #[derive(Deserialize, JsonSchema, Debug)]
-pub(crate) struct ScrapeUrlParams {
+pub struct ScrapeUrlParams {
     /// URL to scrape (must start with http:// or https://)
     pub url: String,
 }
 
 #[derive(Deserialize, JsonSchema, Debug)]
-pub(crate) struct ScrapeWithOptionsParams {
+pub struct ScrapeWithOptionsParams {
     /// URL to scrape
     pub url: String,
     /// Maximum pages to crawl (default: 1)
@@ -24,7 +24,7 @@ pub(crate) struct ScrapeWithOptionsParams {
 }
 
 #[derive(Deserialize, JsonSchema, Debug)]
-pub(crate) struct ScrapeBatchParams {
+pub struct ScrapeBatchParams {
     /// List of URLs to scrape
     pub urls: Vec<String>,
     /// Concurrency limit (default: 4)
@@ -32,7 +32,7 @@ pub(crate) struct ScrapeBatchParams {
 }
 
 #[derive(Deserialize, JsonSchema, Debug)]
-pub(crate) struct CrawlSiteParams {
+pub struct CrawlSiteParams {
     /// Base URL to crawl
     pub url: String,
     /// Maximum crawl depth (default: 3)
@@ -42,7 +42,7 @@ pub(crate) struct CrawlSiteParams {
 }
 
 #[derive(Deserialize, JsonSchema, Debug)]
-pub(crate) struct CrawlWithSitemapParams {
+pub struct CrawlWithSitemapParams {
     /// Base URL of the website
     pub url: String,
     /// Optional explicit sitemap URL
@@ -50,31 +50,31 @@ pub(crate) struct CrawlWithSitemapParams {
 }
 
 #[derive(Deserialize, JsonSchema, Debug)]
-pub(crate) struct DiscoverUrlsParams {
+pub struct DiscoverUrlsParams {
     /// URL to extract links from
     pub url: String,
 }
 
 #[derive(Deserialize, JsonSchema, Debug)]
-pub(crate) struct DetectSpaParams {
+pub struct DetectSpaParams {
     /// URL to check for SPA content
     pub url: String,
 }
 
 #[derive(Deserialize, JsonSchema, Debug)]
-pub(crate) struct CleanHtmlParams {
+pub struct CleanHtmlParams {
     /// Raw HTML to clean
     pub html: String,
 }
 
 #[derive(Deserialize, JsonSchema, Debug)]
-pub(crate) struct HtmlToMarkdownParams {
+pub struct HtmlToMarkdownParams {
     /// HTML to convert
     pub html: String,
 }
 
 #[derive(Deserialize, JsonSchema, Debug)]
-pub(crate) struct ExtractLinksParams {
+pub struct ExtractLinksParams {
     /// HTML to extract links from
     pub html: String,
     /// Base URL for resolving relative links
@@ -136,7 +136,7 @@ pub(crate) struct DetectWafParams {
 }
 
 #[derive(Deserialize, JsonSchema, Debug)]
-pub(crate) struct ExportFileParams {
+pub struct ExportFileParams {
     /// Output directory path
     pub output_dir: String,
     /// Filename (without extension)
@@ -146,7 +146,7 @@ pub(crate) struct ExportFileParams {
 }
 
 #[derive(Deserialize, JsonSchema, Debug)]
-pub(crate) struct DetectVaultParams {
+pub struct DetectVaultParams {
     /// Explicit vault path (optional)
     pub vault_path: Option<String>,
 }

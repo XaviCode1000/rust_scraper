@@ -110,7 +110,7 @@ impl McpState {
 }
 
 impl CategorySemaphores {
-    fn from_limits(limits: &CategoryLimits) -> Self {
+    pub fn from_limits(limits: &CategoryLimits) -> Self {
         // Clamp to >= 1 to prevent deadlock from zero-permit semaphores
         let clamp = |v: usize| v.max(1);
         Self {
