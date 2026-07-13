@@ -160,3 +160,6 @@ TEST-REFACTORING-PLAN.md
 TEST-COMPARISON-*.md
 REALITY.md
 verify-report-*.md
+
+# CodeDB snapshot
+codedb.snapshot
