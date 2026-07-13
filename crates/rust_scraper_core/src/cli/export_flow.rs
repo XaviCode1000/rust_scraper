@@ -13,6 +13,9 @@ use crate::{
     OutputFormat,
 };
 
+#[cfg(feature = "ai")]
+use crate::domain::semantic_cleaner::SemanticCleaner;
+
 // ============================================================================
 // Export Results (RAG pipeline)
 // ============================================================================
@@ -40,9 +43,18 @@ pub struct ExportConfig<'a> {
 ///
 /// Returns the list of processed URLs on success.
 #[cfg(feature = "ai")]
-pub async fn run_export(config: ExportConfig<'_>) -> Result<Vec<String>, CliExit> {
+pub async fn run_export(
+    config: ExportConfig<'_>,
+    ai_cleaner: Option<std::sync::Arc<dyn SemanticCleaner>>,
+) -> Result<Vec<String>, CliExit> {
     if config.clean_ai {
-        run_ai_export(&config).await
+        match ai_cleaner {
+            Some(cleaner) => run_ai_export(&config, cleaner).await,
+            None => Err(CliExit::UsageError(
+                "AI semantic cleaning requires the 'ai' feature. Recompile with --features ai"
+                    .into(),
+            )),
+        }
     } else {
         run_standard_export(&config)
     }
@@ -81,34 +93,16 @@ fn run_standard_export(config: &ExportConfig<'_>) -> Result<Vec<String>, CliExit
 
 /// AI semantic cleaning export path.
 #[cfg(feature = "ai")]
-async fn run_ai_export(config: &ExportConfig<'_>) -> Result<Vec<String>, CliExit> {
+async fn run_ai_export(
+    config: &ExportConfig<'_>,
+    cleaner: std::sync::Arc<dyn SemanticCleaner>,
+) -> Result<Vec<String>, CliExit> {
     use crate::domain::DocumentChunk;
-    use crate::infrastructure::ai::semantic_cleaner_impl::{ModelConfig, SemanticCleanerImpl};
-    use crate::SemanticCleaner;
-    use std::sync::Arc;
-
-    info!("Initializing AI semantic cleaner...");
-    let ai_config = ModelConfig::default()
-        .with_relevance_threshold(config.ai_threshold)
-        .with_max_tokens(config.ai_max_tokens)
-        .with_offline_mode(config.ai_offline);
-    let cleaner = match SemanticCleanerImpl::new(ai_config).await {
-        Ok(c) => c,
-        Err(e) => {
-            warn!("Failed to initialize semantic cleaner: {}", e);
-            return Err(CliExit::IoError(format!(
-                "Failed to initialize AI semantic cleaner: {}. Ensure ONNX model is available.",
-                e
-            )));
-        },
-    };
 
     info!(
         "Starting AI cleaning for {} pages concurrently...",
         config.results.len()
     );
-
-    let cleaner = Arc::new(cleaner);
 
     let cleaning_tasks: Vec<_> = config
         .results
@@ -119,7 +113,7 @@ async fn run_ai_export(config: &ExportConfig<'_>) -> Result<Vec<String>, CliExit
                 .clone()
                 .unwrap_or_else(|| result.content.clone());
             let url = result.url.clone();
-            let cleaner = Arc::clone(&cleaner);
+            let cleaner = std::sync::Arc::clone(&cleaner);
             async move {
                 let chunks_result = cleaner.clean(&html_content).await;
                 (url, chunks_result, result.clone())

@@ -21,6 +21,9 @@ use crate::domain;
 use crate::infrastructure::output::file_saver::ObsidianOptions;
 use crate::Shell;
 
+#[cfg(feature = "ai")]
+use crate::domain::semantic_cleaner::SemanticCleaner;
+
 /// Handle shell completion generation.
 pub fn handle_completions(shell: Shell) -> CliExit {
     let clap_shell = match shell {
@@ -41,8 +44,11 @@ pub fn handle_completions(shell: Shell) -> CliExit {
 /// 1. URL discovery
 /// 2. Scraping with progress
 /// 3. Export results
-#[instrument(level = "info", skip(opts), fields(url = %opts.url))]
-pub async fn run(opts: CrawlOptions) -> CliExit {
+#[instrument(level = "info", skip(opts, ai_cleaner), fields(url = %opts.url))]
+pub async fn run(
+    opts: CrawlOptions,
+    #[cfg(feature = "ai")] ai_cleaner: Option<std::sync::Arc<dyn SemanticCleaner>>,
+) -> CliExit {
     // Dry-run mode: list planned URLs without any network requests
     if opts.export.dry_run {
         println!("Dry-run: 1 URL(s) would be scraped:");
@@ -218,7 +224,12 @@ pub async fn run(opts: CrawlOptions) -> CliExit {
         &obsidian_options,
     );
 
-    match run_export(export_config).await {
+    #[cfg(feature = "ai")]
+    let export_result = run_export(export_config, ai_cleaner).await;
+    #[cfg(not(feature = "ai"))]
+    let export_result = run_export(export_config).await;
+
+    match export_result {
         Ok(processed_urls) => {
             info!("Export completed for {} URLs", processed_urls.len());
             CliExit::Success

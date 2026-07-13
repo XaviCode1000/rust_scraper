@@ -29,15 +29,21 @@ use std::panic;
 use clap::Parser;
 #[cfg(feature = "ui")]
 use inquire::Text;
+#[cfg(feature = "ai")]
+use rust_scraper_ai::{ModelConfig, SemanticCleanerImpl};
 use rust_scraper_core::application::crawl_options::CrawlOptions;
 use rust_scraper_core::cli::config::ConfigDefaults;
 use rust_scraper_core::cli::error::CliExit;
 use rust_scraper_core::cli::preflight;
+#[cfg(feature = "ai")]
+use rust_scraper_core::domain::semantic_cleaner::SemanticCleaner;
 use rust_scraper_core::{init_logging_dual, is_no_color, Args, Commands};
 #[cfg(feature = "ui")]
 use rust_scraper_tui::tui::modal::HelpModal;
 #[cfg(feature = "ui")]
 use rust_scraper_tui::tui::{App, AppMode, AppResult, CollapsibleConfig, Header, StatusBar};
+#[cfg(feature = "ai")]
+use std::sync::Arc;
 
 /// Check if running in CI environment.
 fn is_ci() -> bool {
@@ -410,6 +416,29 @@ async fn __main() -> CliExit {
     // =========================================================================
     // 8. Delegate to orchestrator
     // =========================================================================
+    #[cfg(feature = "ai")]
+    let result = {
+        let ai_cleaner = if opts.ai {
+            match SemanticCleanerImpl::new(
+                ModelConfig::default()
+                    .with_relevance_threshold(0.3)
+                    .with_max_tokens(512)
+                    .with_offline_mode(false),
+            )
+            .await
+            {
+                Ok(cleaner) => Some(Arc::new(cleaner) as Arc<dyn SemanticCleaner>),
+                Err(e) => {
+                    tracing::warn!("No se pudo inicializar el limpiador semántico AI: {e}");
+                    None
+                },
+            }
+        } else {
+            None
+        };
+        orchestrator::run(opts, ai_cleaner).await
+    };
+    #[cfg(not(feature = "ai"))]
     let result = orchestrator::run(opts).await;
 
     // Flush OpenTelemetry while the Tokio runtime is still alive.
