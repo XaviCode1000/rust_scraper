@@ -2,8 +2,8 @@
 //!
 //! Wraps `wreq::Client` with retry logic, UA rotation, and WAF detection.
 
-use super::error::{HttpError, HttpResult};
-use super::http_config::HttpClientConfig;
+use crate::domain::http_config::HttpClientConfig;
+use crate::domain::http_error::{HttpError, HttpResult};
 use crate::error::ScraperError;
 use crate::infrastructure::http::waf_engine::WafInspector;
 use crate::infrastructure::user_agent::UserAgentCache;
@@ -520,14 +520,17 @@ pub fn get_random_user_agent_from_pool(pool: &[String]) -> String {
 // HttpClientPort implementation for HttpClient
 // ============================================================================
 
-impl super::port::HttpClientPort for HttpClient {
+impl crate::domain::http_port::HttpClientPort for HttpClient {
     fn get(
         &self,
         url: &str,
     ) -> std::pin::Pin<
         Box<
-            dyn std::future::Future<Output = super::HttpResult<super::port::HttpResponse>>
-                + Send
+            dyn std::future::Future<
+                    Output = crate::domain::http_error::HttpResult<
+                        crate::domain::http_port::HttpResponse,
+                    >,
+                > + Send
                 + '_,
         >,
     > {
@@ -537,11 +540,11 @@ impl super::port::HttpClientPort for HttpClient {
             // a full HttpResponse (status + body + headers).
             let resp = self.client.get(url.as_str()).send().await.map_err(|e| {
                 if e.is_timeout() {
-                    super::error::HttpError::Timeout
+                    crate::domain::http_error::HttpError::Timeout
                 } else if e.is_connect() {
-                    super::error::HttpError::Connection(e.to_string())
+                    crate::domain::http_error::HttpError::Connection(e.to_string())
                 } else {
-                    super::error::HttpError::Request(e.to_string())
+                    crate::domain::http_error::HttpError::Request(e.to_string())
                 }
             })?;
 
@@ -555,9 +558,9 @@ impl super::port::HttpClientPort for HttpClient {
             let body = resp
                 .text()
                 .await
-                .map_err(|e| super::error::HttpError::Request(e.to_string()))?;
+                .map_err(|e| crate::domain::http_error::HttpError::Request(e.to_string()))?;
 
-            Ok(super::port::HttpResponse {
+            Ok(crate::domain::http_port::HttpResponse {
                 status,
                 body,
                 headers,
@@ -570,7 +573,7 @@ impl super::port::HttpClientPort for HttpClient {
 #[cfg(not(miri))] // all tests create wreq::Client with boring-sys2 FFI (unsupported by Miri)
 mod tests {
     use super::*;
-    use crate::application::http_client::http_config::HttpClientConfig;
+    use crate::domain::http_config::HttpClientConfig;
 
     #[test]
     fn test_http_client_creation_default() {
@@ -652,7 +655,7 @@ mod tests {
 #[cfg(not(miri))] // all tests create wreq::Client with boring-sys2 FFI (unsupported by Miri)
 mod wiremock_tests {
     use super::*;
-    use crate::application::http_client::http_config::HttpClientConfig;
+    use crate::domain::http_config::HttpClientConfig;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -797,7 +800,7 @@ mod wiremock_tests {
 #[cfg(not(miri))] // all tests create wreq::Client with boring-sys2 FFI (unsupported by Miri)
 mod waf_detection_tests {
     use super::*;
-    use crate::application::http_client::http_config::HttpClientConfig;
+    use crate::domain::http_config::HttpClientConfig;
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 

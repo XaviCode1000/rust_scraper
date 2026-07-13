@@ -2,6 +2,10 @@
 //!
 //! Controls headers, retry behavior, and cookie handling.
 //! Use `Default` for sensible production defaults.
+//!
+//! This type is owned by the **domain** layer. The application HTTP client
+//! consumes it; infrastructure maps domain values (e.g. the TLS profile)
+//! onto a concrete client when building the network stack.
 
 /// Configuration for HTTP client behavior
 ///

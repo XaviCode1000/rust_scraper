@@ -10,6 +10,16 @@
 //! - URL validation
 //! - TLS fingerprint rotation (Chrome 131, 145, Firefox, etc.)
 //!
+//! # Architecture
+//!
+//! The port contract (`HttpClientPort`, `HttpResponse`, `HttpError`,
+//! `HttpResult`, `HttpClientConfig`) is **owned by the domain layer**
+//! (`crate::domain::http_port` / `http_error` / `http_config`). This
+//! module re-exports them for backward compatibility so existing importers
+//! (`crate::application::http_client::*`) keep working. The concrete
+//! `HttpClient` and the `impl HttpClientPort for wreq::Client` live here,
+//! depending inward on the domain port (Clean Architecture direction).
+//!
 //! # Examples
 //!
 //! ```no_run
@@ -27,11 +37,9 @@
 //! ```
 
 mod client;
-mod error;
-mod http_config;
 pub mod port;
 
+pub use crate::domain::http_config::HttpClientConfig;
+pub use crate::domain::http_error::{HttpError, HttpResult};
+pub use crate::domain::http_port::{HttpClientPort, HttpResponse};
 pub use client::{create_http_client, get_random_user_agent_from_pool, HttpClient};
-pub use error::{HttpError, HttpResult};
-pub use http_config::HttpClientConfig;
-pub use port::{HttpClientPort, HttpResponse};

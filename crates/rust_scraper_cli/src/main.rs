@@ -29,17 +29,15 @@ use std::panic;
 use clap::Parser;
 #[cfg(feature = "ui")]
 use inquire::Text;
-#[cfg(feature = "ui")]
-use rust_scraper_core::adapters::tui::modal::HelpModal;
-#[cfg(feature = "ui")]
-use rust_scraper_core::adapters::tui::{
-    App, AppMode, AppResult, CollapsibleConfig, Header, StatusBar,
-};
 use rust_scraper_core::application::crawl_options::CrawlOptions;
 use rust_scraper_core::cli::config::ConfigDefaults;
 use rust_scraper_core::cli::error::CliExit;
 use rust_scraper_core::cli::preflight;
 use rust_scraper_core::{init_logging_dual, is_no_color, Args, Commands};
+#[cfg(feature = "ui")]
+use rust_scraper_tui::tui::modal::HelpModal;
+#[cfg(feature = "ui")]
+use rust_scraper_tui::tui::{App, AppMode, AppResult, CollapsibleConfig, Header, StatusBar};
 
 /// Check if running in CI environment.
 fn is_ci() -> bool {

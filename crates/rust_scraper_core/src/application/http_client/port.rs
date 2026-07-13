@@ -1,47 +1,19 @@
-//! Application-layer HTTP port trait.
+//! Application-layer implementation of the domain HTTP port.
 //!
-//! Defines [`HttpClientPort`] — the abstraction that application services depend
-//! on for HTTP fetching. The real [`HttpClient`](super::HttpClient) and test
-//! doubles both implement this trait, enabling mock-based unit tests without
-//! network I/O.
+//! The port contract (`HttpClientPort`, `HttpResponse`) is defined in the
+//! **domain** layer (`crate::domain::http_port`). This module provides the
+//! production `impl HttpClientPort for wreq::Client` and the mock test
+//! double, depending inward on the domain trait.
 
 use std::collections::HashMap;
 use std::pin::Pin;
 
-use super::error::{HttpError, HttpResult};
+use crate::domain::http_error::{HttpError, HttpResult};
 
-/// Simplified HTTP response for application-layer consumption.
-#[derive(Debug, Clone)]
-pub struct HttpResponse {
-    /// HTTP status code (e.g. 200, 404).
-    pub status: u16,
-    /// Response body as a UTF-8 string.
-    pub body: String,
-    /// Response headers (lowercased keys).
-    pub headers: HashMap<String, String>,
-}
-
-/// Port trait for HTTP requests — application layer depends on this, not `wreq`.
-///
-/// Implementors provide the actual network I/O (production) or canned responses
-/// (tests). This trait is intentionally thin — only `get` is required — so that
-/// mock implementations stay simple and fast to compile.
-///
-/// # Thread safety
-///
-/// Implementations must be `Send + Sync` to work with Tokio's multi-threaded
-/// runtime.
-pub trait HttpClientPort: Send + Sync {
-    /// Fetch a URL and return the response body.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`HttpError`] on network failure, timeout, or non-2xx status.
-    fn get(
-        &self,
-        url: &str,
-    ) -> Pin<Box<dyn std::future::Future<Output = HttpResult<HttpResponse>> + Send + '_>>;
-}
+// Re-export so `crate::application::http_client::port::{HttpClientPort,
+// HttpResponse}` keeps resolving for existing importers (e.g.
+// `application::scraper_service`).
+pub use crate::domain::http_port::{HttpClientPort, HttpResponse};
 
 /// Production implementation of [`HttpClientPort`] backed by `wreq`.
 ///
@@ -91,9 +63,10 @@ impl HttpClientPort for wreq::Client {
 
 #[cfg(test)]
 mod tests {
-    use super::super::error::HttpError;
-    use super::*;
+    use crate::domain::http_error::{HttpError, HttpResult};
+    use crate::domain::http_port::{HttpClientPort, HttpResponse};
     use std::collections::HashMap;
+    use std::pin::Pin;
 
     /// Minimal mock for verifying trait contract.
     struct MockHttpClient {

@@ -57,8 +57,6 @@ pub struct Container {
     // --- Port-trait objects (domain abstractions) ---
     /// HTTP client behind port trait — application code depends on the trait, not wreq
     http_client: Arc<dyn HttpClientPort>,
-    /// Raw wreq::Client for infrastructure code that needs streaming responses
-    wreq_client: wreq::Client,
 
     // --- Application services (concrete, Arc-shared) ---
     /// Rate limiter for crawl operations
@@ -100,8 +98,10 @@ impl Container {
         scraper_config: ScraperConfig,
     ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         // 1. HTTP client — concrete HttpClient behind port trait
+        // The application layer depends on `HttpClientPort`; the production
+        // `HttpClient` impl is stored as the trait object. No concrete
+        // `wreq::Client` is exposed — raw HTTP stays behind the port.
         let http_client_inner = HttpClient::new(HttpClientConfig::default())?;
-        let wreq_client = http_client_inner.client().clone();
         let http_client: Arc<dyn HttpClientPort> = Arc::new(http_client_inner);
 
         // 2. Rate limiter (optional — failure is non-fatal)
@@ -132,7 +132,6 @@ impl Container {
         Ok(Self {
             scraper_config,
             http_client,
-            wreq_client,
             rate_limiter,
             deduplicator,
             credential_store,
@@ -185,21 +184,6 @@ impl Container {
     #[must_use]
     pub fn elastic_ingestion(&self) -> Option<&ElasticIngestion<DynVectorRepository>> {
         self.elastic_ingestion.as_deref()
-    }
-
-    /// Get the underlying `wreq::Client` for raw HTTP operations.
-    ///
-    /// Prefer using the port trait (`http_client()`) for standard GET/POST.
-    /// This accessor exists for infrastructure code that needs streaming
-    /// responses or raw request builders (e.g., MCP server HTML inspection).
-    #[must_use]
-    pub fn wreq_client(&self) -> &wreq::Client {
-        // Safety: HttpClient wraps a wreq::Client and the trait object is
-        // always backed by it in production. The HttpClientPort impl on
-        // HttpClient delegates to this inner client.
-        //
-        // We store the raw client separately to avoid downcasting.
-        &self.wreq_client
     }
 
     // ========================================================================

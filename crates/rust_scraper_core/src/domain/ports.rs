@@ -6,15 +6,17 @@
 //!
 //! # Port Types
 //!
-//! - [`HttpClientPort`] — HTTP fetching abstraction (re-exported from application layer)
+//! - [`HttpClientPort`] — HTTP fetching abstraction (owned by the domain layer)
 //! - [`ScraperPort`] — Content extraction abstraction
 //! - [`PersistencePort`] — Data persistence abstraction
 //!
-//! The `HttpClientPort` trait is defined in `application::http_client::port`
-//! (where it already has a production impl and mock tests). We re-export it
-//! here so downstream code can import from the domain layer.
+//! The `HttpClientPort` trait and its `HttpResponse` DTO are defined in
+//! `domain::http_port` (the domain layer owns the contract). The production
+//! `wreq`-backed impl and mock tests live in `application::http_client`.
+//! We re-export the trait here so downstream code can import from the
+//! domain layer without reaching into the application layer.
 
-pub use crate::application::http_client::HttpClientPort;
+pub use crate::domain::http_port::HttpClientPort;
 
 use std::pin::Pin;
 

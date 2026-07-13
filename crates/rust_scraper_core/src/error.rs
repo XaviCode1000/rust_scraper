@@ -392,9 +392,9 @@ impl From<crate::infrastructure::error::InfraError> for ScraperError {
             crate::infrastructure::error::InfraError::WafBlocked { url, provider } => {
                 ScraperError::WafBlocked { url, provider }
             },
-            crate::infrastructure::error::InfraError::Download(msg) => ScraperError::Network(
-                Box::new(std::io::Error::other(format!("download failed: {msg}"))),
-            ),
+            crate::infrastructure::error::InfraError::Download(msg) => {
+                ScraperError::Download(Box::new(std::io::Error::other(msg)))
+            },
             crate::infrastructure::error::InfraError::GlobalTimeout => ScraperError::GlobalTimeout,
             crate::infrastructure::error::InfraError::SlowlorisTimeout => {
                 ScraperError::SlowlorisTimeout
@@ -661,6 +661,23 @@ mod tests {
         let scraper_err: ScraperError = infra_err.into();
         assert!(scraper_err.to_string().contains("connection refused"));
         assert!(scraper_err.to_string().contains("red"));
+    }
+
+    #[test]
+    fn test_infra_error_download_wraps_to_scraper_download_variant() {
+        // Regression: download failures must reach `ScraperError::Download`,
+        // NOT be silently misrouted into `ScraperError::Network` (arch-remediation).
+        let infra_err =
+            crate::infrastructure::error::InfraError::Download("checksum mismatch".to_string());
+        let scraper_err: ScraperError = infra_err.into();
+        assert!(
+            matches!(scraper_err, ScraperError::Download(_)),
+            "InfraError::Download must map to ScraperError::Download, got: {scraper_err}"
+        );
+        assert!(scraper_err.to_string().contains("descarga"));
+        assert!(scraper_err.to_string().contains("checksum mismatch"));
+        // Must NOT be classified as a Network error.
+        assert!(!matches!(scraper_err, ScraperError::Network(_)));
     }
 
     #[test]

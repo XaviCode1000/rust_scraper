@@ -4,15 +4,9 @@ use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 use tracing::{info, warn};
 use url::Url;
 
-#[cfg(feature = "ui")]
-use crate::adapters;
 use crate::application::crawl_options::CrawlOptions;
 use crate::application::discover_urls_for_tui;
-#[cfg(feature = "ui")]
-use crate::cli::preflight;
 use crate::cli::SelectedUrls;
-#[cfg(feature = "ui")]
-use crate::CliExit;
 use crate::CrawlerConfig;
 
 /// Discover URLs with progress bar.
@@ -56,32 +50,21 @@ pub async fn select_urls(
     opts: &CrawlOptions,
     vault_path: &Option<std::path::PathBuf>,
 ) -> SelectedUrls {
-    #[cfg(feature = "ui")]
-    let ok = preflight::icon("✅", "OK");
-
     if opts.export.quick_save && vault_path.is_some() {
         info!("Quick-save mode: bypassing TUI, will save to vault _inbox");
         SelectedUrls::Urls(discovered_urls.to_vec())
     } else if opts.crawl.interactive {
-        // When `ui` is ON, launch the interactive TUI selector.
+        // Interactive TUI selection lives in the `rust_scraper_tui` crate,
+        // which `rust_scraper_core` cannot depend on (cyclic dependency).
+        // This code path is currently unreachable from core; fall back to
+        // scraping all discovered URLs.
         #[cfg(feature = "ui")]
         {
-            info!("Starting interactive TUI selector...");
-            match adapters::tui::run_selector(discovered_urls).await {
-                Ok(selected) => {
-                    info!("{} User selected {} URLs", ok, selected.len());
-                    if selected.is_empty() {
-                        info!("No URLs selected, exiting");
-                        SelectedUrls::None
-                    } else {
-                        SelectedUrls::Urls(selected)
-                    }
-                },
-                Err(e) => {
-                    warn!("Error en selector TUI: {}", e);
-                    SelectedUrls::Error(CliExit::ProtocolError(e.to_string()))
-                },
-            }
+            warn!(
+                "Interactive TUI selector is unavailable from core; using all {} discovered URLs",
+                discovered_urls.len()
+            );
+            SelectedUrls::Urls(discovered_urls.to_vec())
         }
         // When `ui` is OFF, interactive mode falls back to batch (all URLs).
         // Spec S2.3 — no run_selector call without the TUI feature.

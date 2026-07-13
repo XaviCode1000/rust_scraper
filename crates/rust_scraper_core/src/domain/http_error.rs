@@ -4,6 +4,10 @@
 //! - `Forbidden`: 403 - retry with different UA
 //! - `RateLimited`: 429 - respect Retry-After header
 //! - `ClientError` / `ServerError`: other 4xx/5xx codes
+//!
+//! This type lives in the **domain** layer. The HTTP port contract
+//! (`HttpClientPort`) is owned by the domain so that the application and
+//! infrastructure layers depend inward on it, never the other way around.
 
 /// Result type for HttpClient operations
 pub type HttpResult<T> = Result<T, HttpError>;

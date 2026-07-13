@@ -487,7 +487,16 @@ fn pattern_matches_asset(url: &str, pattern: &str) -> bool {
 
 /// Check if an error is transient (worth retrying).
 fn is_transient_error(err: &ScraperError) -> bool {
-    if let ScraperError::Network(e) = err {
+    // Both network and download failures are typically retryable (timeouts,
+    // connection resets, transient server errors). `InfraError::Download` maps
+    // to `ScraperError::Download` (not `Network`), so both variants must be
+    // inspected here — otherwise a genuine download failure would be wrongly
+    // classified as non-transient and never retried.
+    let source: Option<&dyn std::error::Error> = match err {
+        ScraperError::Network(e) | ScraperError::Download(e) => Some(e.as_ref()),
+        _ => None,
+    };
+    if let Some(e) = source {
         // `e` is a boxed source; inspect its Display text (lowercased).
         let msg = e.to_string().to_ascii_lowercase();
         msg.contains("transient:")

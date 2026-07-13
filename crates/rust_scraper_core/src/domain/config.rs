@@ -6,8 +6,8 @@
 // Re-export ExportFormat from entities (it's defined there with serde derives)
 pub use super::entities::ExportFormat;
 
-// Re-export HttpClientConfig from application layer (single-crate; will be a port trait in Phase 3)
-pub use crate::application::http_client::HttpClientConfig;
+// Re-export HttpClientConfig — owned by the domain layer (see `http_config`).
+pub use crate::domain::http_config::HttpClientConfig;
 
 /// Pipeline output format — determines how pipeline items are written.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum, Default)]

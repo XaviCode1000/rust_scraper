@@ -326,25 +326,19 @@ impl McpHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
 
-        let client = self.state.container.wreq_client();
-        match client.get(&params.url).send().await {
-            Ok(resp) => match resp.text().await {
-                Ok(html) => {
-                    match rust_scraper_core::infrastructure::crawler::extract_links(
-                        &html,
-                        &params.url,
-                    ) {
-                        Ok(links) => {
-                            let content = serde_json::to_string_pretty(&links)
-                                .unwrap_or_else(|_| "failed to serialize".into());
-                            Ok(CallToolResult::success(vec![Content::text(content)]))
-                        },
-                        Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
-                    }
-                },
-                Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                    "failed to read response: {e}"
-                ))])),
+        let port = self.state.container.http_client();
+        match port.get(&params.url).await {
+            Ok(resp) => {
+                let html = resp.body;
+                match rust_scraper_core::infrastructure::crawler::extract_links(&html, &params.url)
+                {
+                    Ok(links) => {
+                        let content = serde_json::to_string_pretty(&links)
+                            .unwrap_or_else(|_| "failed to serialize".into());
+                        Ok(CallToolResult::success(vec![Content::text(content)]))
+                    },
+                    Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
+                }
             },
             Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "HTTP error: {e}"
@@ -397,35 +391,31 @@ impl McpHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
 
-        let client = self.state.container.wreq_client();
-        match client.get(&params.url).send().await {
-            Ok(resp) => match resp.text().await {
-                Ok(html) => {
-                    let text =
-                        rust_scraper_core::infrastructure::scraper::fallback::extract_text(&html);
-                    match rust_scraper_core::application::scraper_service::detect_spa_content(
-                        &params.url,
-                        &text,
-                        &html,
-                    ) {
-                        Some(info) => {
-                            let json = serde_json::json!({
-                                "url": info.url,
-                                "char_count": info.char_count,
-                                "has_spa_markers": info.has_spa_markers,
-                            });
-                            Ok(CallToolResult::success(vec![Content::text(
-                                serde_json::to_string_pretty(&json).unwrap(),
-                            )]))
-                        },
-                        None => Ok(CallToolResult::success(vec![Content::text(
-                            "not an SPA - sufficient content found",
-                        )])),
-                    }
-                },
-                Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
-                    "failed to read response: {e}"
-                ))])),
+        let port = self.state.container.http_client();
+        match port.get(&params.url).await {
+            Ok(resp) => {
+                let html = resp.body;
+                let text =
+                    rust_scraper_core::infrastructure::scraper::fallback::extract_text(&html);
+                match rust_scraper_core::application::scraper_service::detect_spa_content(
+                    &params.url,
+                    &text,
+                    &html,
+                ) {
+                    Some(info) => {
+                        let json = serde_json::json!({
+                            "url": info.url,
+                            "char_count": info.char_count,
+                            "has_spa_markers": info.has_spa_markers,
+                        });
+                        Ok(CallToolResult::success(vec![Content::text(
+                            serde_json::to_string_pretty(&json).unwrap(),
+                        )]))
+                    },
+                    None => Ok(CallToolResult::success(vec![Content::text(
+                        "not an SPA - sufficient content found",
+                    )])),
+                }
             },
             Err(e) => Ok(CallToolResult::error(vec![Content::text(format!(
                 "HTTP error: {e}"
