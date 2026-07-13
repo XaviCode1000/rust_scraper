@@ -304,6 +304,7 @@ mod tests {
         assert_eq!(config.timeout_secs, 30);
     }
 
+    #[cfg_attr(miri, ignore)] // btls/wreq FFI (BoringSSL TLS_method) not supported by Miri
     #[tokio::test]
     async fn robots_cache_allows_public_urls() {
         let cache = new_robots_cache();
