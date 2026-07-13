@@ -150,6 +150,11 @@ mod tests {
         }
     }
 
+    // legible (dom_query/servo_arc) uses atomic reference-counted nodes whose
+    // aliasing is incompatible with Miri's Tree Borrows model. This is a known
+    // third-party limitation (see infrastructure/bridge.rs for the same pattern),
+    // not a bug in our cleaning logic, so skip these under Miri.
+    #[cfg_attr(miri, ignore)] // legible/servo_arc aliasing incompatible with Tree Borrows
     #[tokio::test]
     async fn test_html_stripped_and_text_populated() {
         let html = r#"<html><body><p>Hello world</p></body></html>"#;
@@ -167,6 +172,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc aliasing incompatible with Tree Borrows
     #[tokio::test]
     async fn test_whitespace_normalized() {
         let html = "<p>  hello   world  \n\n  foo  </p>";
@@ -182,6 +188,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc aliasing incompatible with Tree Borrows
     #[tokio::test]
     async fn test_metadata_updated() {
         let html = "<p>Some content here with enough text to pass the minimum length check for clean stage</p>";
@@ -203,6 +210,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc aliasing incompatible with Tree Borrows
     #[tokio::test]
     async fn test_short_content_tags_spa() {
         // Content that legible will likely return as-is, with total cleaned < 50 chars
