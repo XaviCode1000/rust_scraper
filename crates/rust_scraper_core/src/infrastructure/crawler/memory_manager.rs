@@ -204,6 +204,7 @@ mod tests {
         assert!(chunks > 0, "Expected at least one chunk file");
     }
 
+    #[cfg_attr(miri, ignore)] // 525-URL loop hangs under Miri (100x slowdown makes test exceed timeout)
     #[test]
     fn test_handle_disk_swapping_memory_limit_exceeded() {
         let manager = MemoryManager::with_memory_limit(1); // 1MB limit
