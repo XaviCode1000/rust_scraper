@@ -452,6 +452,7 @@ mod tests {
 
     /// Normal small download returns the exact bytes.
     #[tokio::test]
+    #[cfg_attr(miri, ignore)] // tokio::time::timeout hangs under Miri
     async fn test_download_normal() {
         let mock_server = MockServer::start().await;
         let body = b"<html><body>hola</body></html>";
@@ -479,6 +480,7 @@ mod tests {
 
     /// Per-chunk stall beyond `chunk_timeout_seconds` → `SlowlorisTimeout`.
     #[tokio::test]
+    #[cfg_attr(miri, ignore)] // tokio::time::timeout hangs under Miri
     async fn test_download_slowloris_chunk_timeout() {
         let config = DownloadConfig {
             // Generous global budget so the GLOBAL timeout cannot fire first.
@@ -505,6 +507,7 @@ mod tests {
     /// keeps the test fast and memory-light. This exercises the same abort
     /// path as the 25 MB production default.
     #[tokio::test]
+    #[cfg_attr(miri, ignore)] // tokio::time::timeout hangs under Miri
     async fn test_download_payload_too_large() {
         let mock_server = MockServer::start().await;
         // 2 KiB body > 1 KiB configured limit.
@@ -533,6 +536,7 @@ mod tests {
 
     /// Initial response delayed beyond `global_timeout_seconds` → `GlobalTimeout`.
     #[tokio::test]
+    #[cfg_attr(miri, ignore)] // tokio::time::timeout hangs under Miri
     async fn test_download_global_timeout() {
         let mock_server = MockServer::start().await;
         Mock::given(method("GET"))
@@ -570,6 +574,7 @@ mod tests {
     /// budget. This assertion fails on the buggy code (RED) and passes once
     /// per-chunk byte-weighted acquire is implemented (GREEN).
     #[tokio::test]
+    #[cfg_attr(miri, ignore)] // tokio::time::timeout hangs under Miri
     async fn test_no_permit_inflation_after_download() {
         let mock_server = MockServer::start().await;
         // 8 KiB body: large enough to span multiple wreq frames so per-chunk
@@ -700,6 +705,7 @@ mod tests {
     /// whose `Content-Length` exceeds the limit is rejected with
     /// `PayloadTooLarge` BEFORE any permits are acquired.
     #[tokio::test]
+    #[cfg_attr(miri, ignore)] // tokio::time::timeout hangs under Miri
     async fn test_download_rejects_oversized_content_length() {
         let mock_server = MockServer::start().await;
         // 2 KiB body with a 1 KiB limit → Content-Length (2048) > limit (1024).
