@@ -318,19 +318,25 @@ mod tests {
     use crate::infrastructure::config::ScraperConfig;
     use tempfile::TempDir;
 
-    #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
-    #[tokio::test]
-    async fn test_container_wires_crawl_result_repository() {
+    /// Create a Container with default configs backed by a TempDir.
+    /// Returns `(TempDir, Container)` — caller keeps `tmp` alive for the test scope.
+    async fn make_test_container() -> (TempDir, Container) {
         let tmp = TempDir::new().unwrap();
         let crawler_config = CrawlerConfig::new(url::Url::parse("https://example.com").unwrap());
         let scraper_config = ScraperConfig {
             output_dir: tmp.path().to_path_buf(),
             ..Default::default()
         };
-
         let container = Container::new(crawler_config, scraper_config)
             .await
             .unwrap();
+        (tmp, container)
+    }
+
+    #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
+    #[tokio::test]
+    async fn test_container_wires_crawl_result_repository() {
+        let (_tmp, container) = make_test_container().await;
         let repo = container.crawl_result_repository();
         assert!(
             repo.is_some(),
@@ -343,16 +349,7 @@ mod tests {
     #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
     #[tokio::test]
     async fn test_container_provides_all_required_services() {
-        let tmp = TempDir::new().unwrap();
-        let crawler_config = CrawlerConfig::new(url::Url::parse("https://example.com").unwrap());
-        let scraper_config = ScraperConfig {
-            output_dir: tmp.path().to_path_buf(),
-            ..Default::default()
-        };
-
-        let container = Container::new(crawler_config, scraper_config)
-            .await
-            .unwrap();
+        let (_tmp, container) = make_test_container().await;
 
         // Verify all core services are available (non-optional accessors)
         let _ = container.http_client();
@@ -372,16 +369,7 @@ mod tests {
     #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
     #[tokio::test]
     async fn test_container_http_client_implements_port() {
-        let tmp = TempDir::new().unwrap();
-        let crawler_config = CrawlerConfig::new(url::Url::parse("https://example.com").unwrap());
-        let scraper_config = ScraperConfig {
-            output_dir: tmp.path().to_path_buf(),
-            ..Default::default()
-        };
-
-        let container = Container::new(crawler_config, scraper_config)
-            .await
-            .unwrap();
+        let (_tmp, container) = make_test_container().await;
 
         // Verify http_client is usable as a port trait object
         let client = container.http_client();
@@ -392,16 +380,7 @@ mod tests {
     #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
     #[tokio::test]
     async fn test_container_config_accessors() {
-        let tmp = TempDir::new().unwrap();
-        let crawler_config = CrawlerConfig::new(url::Url::parse("https://example.com").unwrap());
-        let scraper_config = ScraperConfig {
-            output_dir: tmp.path().to_path_buf(),
-            ..Default::default()
-        };
-
-        let container = Container::new(crawler_config, scraper_config)
-            .await
-            .unwrap();
+        let (tmp, container) = make_test_container().await;
 
         // Verify config accessors work
         assert_eq!(
@@ -414,16 +393,7 @@ mod tests {
     #[cfg_attr(miri, ignore = "boring-sys2 FFI (wreq Client) not supported by Miri")]
     #[tokio::test]
     async fn test_container_clone_shares_services() {
-        let tmp = TempDir::new().unwrap();
-        let crawler_config = CrawlerConfig::new(url::Url::parse("https://example.com").unwrap());
-        let scraper_config = ScraperConfig {
-            output_dir: tmp.path().to_path_buf(),
-            ..Default::default()
-        };
-
-        let container = Container::new(crawler_config, scraper_config)
-            .await
-            .unwrap();
+        let (_tmp, container) = make_test_container().await;
         let container2 = container.clone();
 
         // Both clones share the same Arc'd services

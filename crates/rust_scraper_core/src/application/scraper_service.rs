@@ -649,6 +649,18 @@ mod tests {
             self.responses.insert(url.to_string(), result);
             self
         }
+
+        /// Shorthand for a 200 OK response with the given HTML body.
+        fn with_ok_response(self, url: &str, body: &str) -> Self {
+            self.with_response(
+                url,
+                Ok(HttpResponse {
+                    status: 200,
+                    body: body.to_string(),
+                    headers: HashMap::new(),
+                }),
+            )
+        }
     }
 
     impl HttpClientPort for MockHttpClient {
@@ -687,14 +699,7 @@ mod tests {
 </html>"#;
 
         let url = url::Url::parse("https://example.com").unwrap();
-        let mock = MockHttpClient::new().with_response(
-            url.as_str(),
-            Ok(HttpResponse {
-                status: 200,
-                body: html.to_string(),
-                headers: HashMap::new(),
-            }),
-        );
+        let mock = MockHttpClient::new().with_ok_response(url.as_str(), html);
 
         let result = scrape_with_readability(&mock, &url).await;
         match &result {
@@ -727,14 +732,7 @@ mod tests {
     #[tokio::test]
     async fn test_mock_empty_body_graceful_handling() {
         let url = url::Url::parse("https://example.com").unwrap();
-        let mock = MockHttpClient::new().with_response(
-            url.as_str(),
-            Ok(HttpResponse {
-                status: 200,
-                body: String::new(),
-                headers: HashMap::new(),
-            }),
-        );
+        let mock = MockHttpClient::new().with_ok_response(url.as_str(), "");
 
         let result = scrape_with_readability(&mock, &url).await;
         // Empty body should not panic — Readability or fallback handles it
@@ -885,22 +883,8 @@ mod tests {
         let url1 = url::Url::parse("https://example.com/page1").unwrap();
         let url2 = url::Url::parse("https://example.com/page2").unwrap();
         let mock = MockHttpClient::new()
-            .with_response(
-                url1.as_str(),
-                Ok(HttpResponse {
-                    status: 200,
-                    body: html.to_string(),
-                    headers: HashMap::new(),
-                }),
-            )
-            .with_response(
-                url2.as_str(),
-                Ok(HttpResponse {
-                    status: 200,
-                    body: html.to_string(),
-                    headers: HashMap::new(),
-                }),
-            );
+            .with_ok_response(url1.as_str(), html)
+            .with_ok_response(url2.as_str(), html);
 
         let config = ScraperConfig::default();
         let result = scrape_multiple_with_limit(&mock, &[url1, url2], &config, None)
@@ -1044,14 +1028,7 @@ mod tests {
         let url_ok = url::Url::parse("https://example.com/ok").unwrap();
         let url_fail = url::Url::parse("https://example.com/fail").unwrap();
         let mock = MockHttpClient::new()
-            .with_response(
-                url_ok.as_str(),
-                Ok(HttpResponse {
-                    status: 200,
-                    body: html.to_string(),
-                    headers: HashMap::new(),
-                }),
-            )
+            .with_ok_response(url_ok.as_str(), html)
             .with_response(url_fail.as_str(), Err(HttpError::ClientError(404)));
 
         let config = ScraperConfig::default();
@@ -1085,14 +1062,7 @@ mod tests {
 </html>"#;
 
         let url = url::Url::parse("https://example.com").unwrap();
-        let mock = MockHttpClient::new().with_response(
-            url.as_str(),
-            Ok(HttpResponse {
-                status: 200,
-                body: html.to_string(),
-                headers: HashMap::new(),
-            }),
-        );
+        let mock = MockHttpClient::new().with_ok_response(url.as_str(), html);
 
         let result = scrape_with_readability(&mock, &url).await.unwrap();
         assert!(!result.is_empty());
@@ -1118,14 +1088,7 @@ mod tests {
 </html>"#;
 
         let url = url::Url::parse("https://example.com").unwrap();
-        let mock = MockHttpClient::new().with_response(
-            url.as_str(),
-            Ok(HttpResponse {
-                status: 200,
-                body: html.to_string(),
-                headers: HashMap::new(),
-            }),
-        );
+        let mock = MockHttpClient::new().with_ok_response(url.as_str(), html);
 
         let result = scrape_with_readability(&mock, &url).await.unwrap();
         assert!(!result.is_empty());
