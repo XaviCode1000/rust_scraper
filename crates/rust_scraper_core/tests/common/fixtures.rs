@@ -4,6 +4,11 @@
 //! avoids network access and external dependencies. They are consumed by
 //! integration tests across all workspace crates.
 
+// Shared fixture module is included as a submodule in multiple integration-test
+// crates. An item used by one test crate is reported as dead_code in the others,
+// so the lint is suppressed here at module scope.
+#![allow(dead_code)]
+
 use std::path::PathBuf;
 use tempfile::TempDir;
 

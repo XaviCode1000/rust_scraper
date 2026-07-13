@@ -9,8 +9,6 @@ use ratatui::Terminal;
 use rust_scraper_tui::tui::{
     AppMode, Component, ErrorLogWidget, Header, ProgressWidget, StatusBar, UrlSelectorState,
 };
-use rust_scraper_tui::tui::{ErrorEntry, ErrorType};
-use std::time::SystemTime;
 use url::Url;
 
 // ---------------------------------------------------------------------------
