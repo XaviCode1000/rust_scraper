@@ -672,6 +672,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc Tree-Borrows UB
     #[tokio::test]
     async fn test_mock_html_returns_title_and_content() {
         let html = r#"<!DOCTYPE html>
@@ -705,6 +706,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc Tree-Borrows UB
     #[tokio::test]
     async fn test_mock_404_returns_http_error() {
         let url = url::Url::parse("https://example.com/notfound").unwrap();
@@ -721,6 +723,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc Tree-Borrows UB
     #[tokio::test]
     async fn test_mock_empty_body_graceful_handling() {
         let url = url::Url::parse("https://example.com").unwrap();
@@ -741,6 +744,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc Tree-Borrows UB
     #[tokio::test]
     async fn test_mock_timeout_error_propagation() {
         let url = url::Url::parse("https://slow.example.com").unwrap();
@@ -757,6 +761,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc Tree-Borrows UB
     #[tokio::test]
     async fn test_mock_connection_error_propagation() {
         let url = url::Url::parse("https://unreachable.example.com").unwrap();
@@ -776,6 +781,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc Tree-Borrows UB
     #[tokio::test]
     async fn test_mock_forbidden_returns_403() {
         let url = url::Url::parse("https://blocked.example.com").unwrap();
@@ -790,6 +796,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc Tree-Borrows UB
     #[tokio::test]
     async fn test_mock_server_error_returns_500() {
         let url = url::Url::parse("https://error.example.com").unwrap();
@@ -805,6 +812,7 @@ mod tests {
         }
     }
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc Tree-Borrows UB
     #[tokio::test]
     async fn test_mock_non_200_status_returns_error() {
         let url = url::Url::parse("https://example.com").unwrap();
@@ -821,6 +829,7 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc Tree-Borrows UB
     #[tokio::test]
     async fn test_mock_rate_limited_error() {
         let url = url::Url::parse("https://api.example.com").unwrap();
@@ -837,6 +846,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc Tree-Borrows UB
     #[tokio::test]
     async fn test_mock_waf_challenge_error() {
         let url = url::Url::parse("https://protected.example.com").unwrap();
@@ -1058,6 +1068,7 @@ mod tests {
     // Title extraction verification
     // =====================================================================
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc Tree-Borrows UB
     #[tokio::test]
     async fn test_mock_extracts_title() {
         let html = r#"<!DOCTYPE html>
@@ -1090,6 +1101,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(miri, ignore)] // legible/servo_arc Tree-Borrows UB
     #[tokio::test]
     async fn test_mock_extracts_non_empty_content() {
         let html = r#"<!DOCTYPE html>
