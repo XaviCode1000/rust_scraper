@@ -7,6 +7,7 @@ mod common;
 
 use common::*;
 
+#[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
 #[test]
 fn test_sample_html_parseable() {
     let html = sample_html();
@@ -18,6 +19,7 @@ fn test_sample_html_parseable() {
     assert!(texts[0].contains("Test Article"));
 }
 
+#[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
 #[test]
 fn test_sample_html_link_extraction() {
     let html = sample_html();
@@ -76,6 +78,7 @@ fn test_temp_dir_helper_lifecycle() {
     assert_eq!(std::fs::read_to_string(&file).unwrap(), "hello");
 }
 
+#[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
 #[test]
 fn test_minimal_html_parseable() {
     let html = sample_minimal_html();
@@ -86,6 +89,7 @@ fn test_minimal_html_parseable() {
     assert!(texts.iter().any(|t| t.contains("Hello world")));
 }
 
+#[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
 #[test]
 fn test_noisy_html_has_main_content() {
     let html = sample_noisy_html();
@@ -96,6 +100,7 @@ fn test_noisy_html_has_main_content() {
     assert!(texts.iter().any(|t| t.contains("Actual Content")));
 }
 
+#[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
 #[test]
 fn test_nested_html_depth() {
     let html = sample_nested_html();

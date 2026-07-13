@@ -945,6 +945,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
     #[test]
     fn test_extract_with_selector_extracts_matching_elements() {
         let html = r#"<html><body>
@@ -966,6 +967,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
     #[test]
     fn test_extract_with_selector_no_matches_falls_back() {
         let html = "<html><body><p>Hello</p></body></html>";
@@ -973,6 +975,7 @@ mod tests {
         assert_eq!(result, html, "no matches should fall back to original HTML");
     }
 
+    #[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
     #[test]
     fn test_extract_with_selector_invalid_syntax_falls_back() {
         let html = "<html><body><p>Hello</p></body></html>";
@@ -983,6 +986,7 @@ mod tests {
         );
     }
 
+    #[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
     #[test]
     fn test_extract_with_selector_multiple_matches_joined() {
         let html = r#"<html><body>
@@ -996,6 +1000,7 @@ mod tests {
         assert!(result.contains("Item 3"));
     }
 
+    #[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
     #[test]
     fn test_extract_with_selector_id_selector() {
         let html = r#"<html><body>

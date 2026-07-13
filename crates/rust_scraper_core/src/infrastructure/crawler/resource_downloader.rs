@@ -622,6 +622,7 @@ mod tests {
     /// the *initial* 4 KB acquire blocked. After the per-chunk fix that test
     /// would pass for the wrong reason (response-delay timeout, not backpressure),
     /// so it is superseded by this streaming-based assertion.
+    #[cfg_attr(miri, ignore)] // tokio::time::sleep hangs under Miri (time-driver does not advance)
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_per_chunk_backpressure_holds_permits_mid_stream() {
         // Two 4 KB chunks with a 500 ms gap between them: after the first chunk

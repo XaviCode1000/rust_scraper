@@ -262,6 +262,7 @@ impl BackgroundWriter {
 }
 
 #[cfg(test)]
+#[cfg_attr(miri, ignore)] // wait_for_index uses tokio::time::sleep which hangs under Miri
 mod tests {
     use super::*;
     use std::io::Write;

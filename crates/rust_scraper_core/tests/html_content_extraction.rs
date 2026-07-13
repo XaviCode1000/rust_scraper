@@ -4,6 +4,7 @@ mod common;
 
 use common::*;
 
+#[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
 #[test]
 fn extract_title_from_sample_html() {
     let html = sample_html();
@@ -16,6 +17,7 @@ fn extract_title_from_sample_html() {
     assert_eq!(title.as_deref(), Some("Test Article - Example Domain"));
 }
 
+#[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
 #[test]
 fn extract_article_content() {
     let html = sample_html();
@@ -29,6 +31,7 @@ fn extract_article_content() {
     assert!(paragraphs[0].contains("main content"));
 }
 
+#[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
 #[test]
 fn extract_links_from_html() {
     let html = sample_html();
@@ -43,6 +46,7 @@ fn extract_links_from_html() {
     assert!(links.iter().any(|l| l.contains("external.com")));
 }
 
+#[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
 #[test]
 fn extract_meta_description() {
     let html = sample_html();
@@ -55,6 +59,7 @@ fn extract_meta_description() {
     assert_eq!(desc, Some("A test article for parsing"));
 }
 
+#[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
 #[test]
 fn noisy_html_main_content_extraction() {
     let html = sample_noisy_html();
@@ -67,6 +72,7 @@ fn noisy_html_main_content_extraction() {
     assert_eq!(heading.as_deref(), Some("Actual Content"));
 }
 
+#[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
 #[test]
 fn nested_html_deep_content() {
     let html = sample_nested_html();
@@ -79,6 +85,7 @@ fn nested_html_deep_content() {
     assert_eq!(text.as_deref(), Some("Deep content"));
 }
 
+#[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
 #[test]
 fn minimal_html_parseable() {
     let html = sample_minimal_html();
