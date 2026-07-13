@@ -348,6 +348,7 @@ mod tests {
 
     // ---- Spec: "dispatch gateway is thread-safe" (concurrent dispatch) ----
 
+    #[cfg_attr(miri, ignore)] // multi_thread + spawn_blocking hangs under Miri
     #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
     async fn test_dispatch_concurrent_under_shared_pool() {
         let bridge = std::sync::Arc::new(make_bridge(4));
