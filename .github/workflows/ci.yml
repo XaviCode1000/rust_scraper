@@ -262,6 +262,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    env:
+      # rust-toolchain.toml pins 1.88.0 and would override the nightly toolchain
+      # for `cargo miri` (miri is nightly-only). RUSTUP_TOOLCHAIN (env var) has
+      # higher precedence than rust-toolchain.toml, so every cargo invocation in
+      # this job uses nightly. `override: true` on dtolnay/rust-toolchain is NOT
+      # enough because rust-toolchain.toml beats rustup directory overrides.
+      RUSTUP_TOOLCHAIN: nightly
     strategy:
       fail-fast: false
       matrix:
