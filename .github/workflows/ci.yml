@@ -279,7 +279,12 @@ jobs:
           - group: domain
             filter: "-- domain::"
           - group: infra
-            filter: "-- infrastructure::"
+            # Skip FFI-heavy and slow modules under Miri (100x slowdown):
+            # - persistence: SQLite FFI (can't execute under Miri)
+            # - wikilinks: 29 regex-heavy tests (compilation 100x slower)
+            # - observability: otel/tracing init overhead, 0 unsafe code
+            # - syntax_highlight: syntect/onig-sys FFI (can't execute under Miri)
+            filter: "-- infrastructure:: --skip persistence --skip wikilinks --skip syntax_highlight --skip observability"
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@nightly
