@@ -7,20 +7,55 @@ mod cli;
 
 use assert_cmd::Command;
 
-/// Returns the binary name to test, based on active features.
-/// The full `webfang` binary requires both `ai` and `mcp`; the
-/// `rust_scraper_core` binary is always built (default features).
-fn cli_bin() -> &'static str {
-    if cfg!(all(feature = "ai", feature = "mcp")) {
-        "webfang"
-    } else {
-        "rust_scraper_core"
+/// Resolve the path to the `webfang` binary.
+///
+/// `webfang` is built by the `rust_scraper_cli` crate (a workspace sibling),
+/// so `assert_cmd::cargo_bin` cannot resolve it — `CARGO_BIN_EXE_webfang`
+/// is only set for the crate that owns the binary.  In CI that variable is
+/// absent even though the binary was built by a prior step; this fallback
+/// searches `target/{debug,release}` and, as a last resort, spawns
+/// `cargo build -p rust_scraper_cli --bin webfang`.
+pub(crate) fn webfang_path() -> std::path::PathBuf {
+    if let Ok(p) = std::env::var("CARGO_BIN_EXE_webfang") {
+        return std::path::PathBuf::from(p);
     }
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("resolve workspace root");
+    for profile in ["debug", "release"] {
+        let mut candidate = workspace_root.join("target").join(profile).join("webfang");
+        if cfg!(windows) {
+            candidate.set_extension("exe");
+        }
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+    let cargo = option_env!("CARGO").unwrap_or("cargo");
+    let status = std::process::Command::new(cargo)
+        .args([
+            "build",
+            "-p",
+            "rust_scraper_cli",
+            "--bin",
+            "webfang",
+            "--quiet",
+        ])
+        .status()
+        .expect("spawn cargo to build webfang");
+    assert!(status.success(), "cargo build --bin webfang failed");
+    let mut built = workspace_root.join("target").join("debug").join("webfang");
+    if cfg!(windows) {
+        built.set_extension("exe");
+    }
+    built
 }
 
 /// Shared binary command builder for tests that don't need a mock server.
 pub(crate) fn cmd() -> Command {
-    Command::cargo_bin(cli_bin()).expect("binary exists")
+    Command::new(webfang_path())
 }
 
 /// Shared test harness: one mock server + one temp output directory.
@@ -41,7 +76,7 @@ impl BehavioralTest {
     /// Build a `Command` for the `webfang` binary with `--url` and
     /// `--output` pre-filled to this harness's server and temp dir.
     pub fn scraper_cmd(&self) -> assert_cmd::Command {
-        let mut cmd = assert_cmd::Command::cargo_bin(cli_bin()).expect("binary exists");
+        let mut cmd = assert_cmd::Command::new(webfang_path());
         cmd.arg("--url")
             .arg(self.server.uri())
             .arg("--output")
