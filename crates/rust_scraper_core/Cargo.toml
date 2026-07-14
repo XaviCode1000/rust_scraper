@@ -156,6 +156,8 @@ tempfile = { workspace = true }
 wiremock = { workspace = true }
 proptest = { workspace = true }
 criterion = { version = "0.5", features = ["html_reports"] }
+insta = { workspace = true }
+regex = { workspace = true }
 
 # ---------------------------------------------------------------------------
 # Wiring for the previously-orphaned root `tests/` suite.

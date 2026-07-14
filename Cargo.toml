@@ -150,6 +150,7 @@ predicates = "3"
 tempfile = "3"
 wiremock = "0.6"
 proptest = "1.6"
+insta = { version = "1", features = ["redactions"] }
 
 [profile.dev]
 opt-level = 0
