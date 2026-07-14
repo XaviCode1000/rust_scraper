@@ -170,6 +170,14 @@ pub async fn run(
         eprintln!("Failed to scrape {url}: {chain}");
     }
 
+    // Partial failure: some succeeded, some failed → exit 69 (H4 fix)
+    if !failures.is_empty() && !results.is_empty() {
+        return CliExit::PartialSuccess {
+            success: results.len(),
+            failed: failures.len(),
+        };
+    }
+
     if results.is_empty() {
         eprintln!("No pages were successfully scraped");
         return CliExit::NetworkError("No pages were successfully scraped".into());
