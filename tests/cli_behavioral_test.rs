@@ -840,7 +840,11 @@ async fn test_obsidian_tags_appear_in_frontmatter() {
     );
 
     let content = std::fs::read_to_string(md_files[0].path()).unwrap();
-    assert_content_snapshot("obsidian_tags_appear_in_frontmatter", output.path(), &content);
+    assert_content_snapshot(
+        "obsidian_tags_appear_in_frontmatter",
+        output.path(),
+        &content,
+    );
 }
 
 /// --obsidian-rich-metadata adds word count, reading time, and language to frontmatter.
@@ -890,7 +894,11 @@ async fn test_obsidian_rich_metadata_in_frontmatter() {
     );
 
     let content = std::fs::read_to_string(md_files[0].path()).unwrap();
-    assert_content_snapshot("obsidian_rich_metadata_in_frontmatter", output.path(), &content);
+    assert_content_snapshot(
+        "obsidian_rich_metadata_in_frontmatter",
+        output.path(),
+        &content,
+    );
 }
 
 /// --obsidian-wiki-links converts same-domain URLs to [[wiki-link]] syntax.

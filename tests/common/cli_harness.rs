@@ -56,7 +56,14 @@ pub(crate) fn webfang_path() -> std::path::PathBuf {
     }
     let cargo = option_env!("CARGO").unwrap_or("cargo");
     let status = std::process::Command::new(cargo)
-        .args(["build", "-p", "rust_scraper_cli", "--bin", "webfang", "--quiet"])
+        .args([
+            "build",
+            "-p",
+            "rust_scraper_cli",
+            "--bin",
+            "webfang",
+            "--quiet",
+        ])
         .status()
         .expect("spawn cargo to build webfang");
     assert!(status.success(), "cargo build --bin webfang failed");
@@ -137,7 +144,8 @@ pub(crate) fn redact_nondeterministic(dir: &Path, text: &str) -> String {
     let text = redact_temp_path(dir, text);
     let ansi = Regex::new(r"\x1b\[[0-9;]*m").unwrap();
     let text = ansi.replace_all(&text, "").into_owned();
-    let ts = Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}:?\d{2}|Z)").unwrap();
+    let ts =
+        Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}:?\d{2}|Z)").unwrap();
     let text = ts.replace_all(&text, "<TIMESTAMP>").into_owned();
     let port = Regex::new(r"127\.0\.0\.1:\d+").unwrap();
     port.replace_all(&text, "127.0.0.1:<PORT>").into_owned()

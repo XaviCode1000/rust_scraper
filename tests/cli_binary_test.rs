@@ -26,7 +26,10 @@ fn test_no_url_shows_error() {
     let output = cmd().output().expect("run binary");
     assert!(!output.status.success(), "expected failure");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    insta::assert_snapshot!("test_no_url_shows_error", redact_nondeterministic(Path::new("__no_temp__"), &stderr));
+    insta::assert_snapshot!(
+        "test_no_url_shows_error",
+        redact_nondeterministic(Path::new("__no_temp__"), &stderr)
+    );
 }
 
 /// Test that an invalid URL shows an error
@@ -40,7 +43,10 @@ fn test_invalid_url_shows_error() {
         .expect("run binary");
     assert!(!output.status.success(), "expected failure");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    insta::assert_snapshot!("test_invalid_url_shows_error", redact_nondeterministic(Path::new("__no_temp__"), &stderr));
+    insta::assert_snapshot!(
+        "test_invalid_url_shows_error",
+        redact_nondeterministic(Path::new("__no_temp__"), &stderr)
+    );
 }
 
 // ============================================================================
@@ -54,7 +60,10 @@ fn test_help_contains_scraper() {
     let output = cmd().arg("--help").output().expect("run binary");
     assert!(output.status.success(), "expected success");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    insta::assert_snapshot!("test_help_contains_scraper", redact_nondeterministic(Path::new("__no_temp__"), &stdout));
+    insta::assert_snapshot!(
+        "test_help_contains_scraper",
+        redact_nondeterministic(Path::new("__no_temp__"), &stdout)
+    );
 }
 
 /// Test that --version outputs version and exits with code 0.
@@ -63,7 +72,10 @@ fn test_version() {
     let output = cmd().arg("--version").output().expect("run binary");
     assert!(output.status.success(), "expected success");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    insta::assert_snapshot!("test_version", redact_nondeterministic(Path::new("__no_temp__"), &stdout));
+    insta::assert_snapshot!(
+        "test_version",
+        redact_nondeterministic(Path::new("__no_temp__"), &stdout)
+    );
 }
 
 // ============================================================================
@@ -93,7 +105,10 @@ fn test_quiet_flag_accepted() {
     let output = cmd().arg("--quiet").output().expect("run binary");
     assert!(!output.status.success(), "expected failure");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    insta::assert_snapshot!("test_quiet_flag_accepted", redact_nondeterministic(Path::new("__no_temp__"), &stderr));
+    insta::assert_snapshot!(
+        "test_quiet_flag_accepted",
+        redact_nondeterministic(Path::new("__no_temp__"), &stderr)
+    );
 }
 
 /// Test that --dry-run flag is accepted
@@ -102,7 +117,10 @@ fn test_dry_run_flag_accepted() {
     let output = cmd().arg("--dry-run").output().expect("run binary");
     assert!(!output.status.success(), "expected failure");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    insta::assert_snapshot!("test_dry_run_flag_accepted", redact_nondeterministic(Path::new("__no_temp__"), &stderr));
+    insta::assert_snapshot!(
+        "test_dry_run_flag_accepted",
+        redact_nondeterministic(Path::new("__no_temp__"), &stderr)
+    );
 }
 
 // ============================================================================
