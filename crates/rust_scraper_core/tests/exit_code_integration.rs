@@ -9,12 +9,57 @@
 
 use assert_cmd::Command;
 use predicates::prelude::*;
+use std::path::PathBuf;
 use std::time::Duration;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+/// Resolve the path to the `webfang` binary.
+///
+/// `webfang` is built by `rust_scraper_cli` (a workspace sibling), so
+/// `assert_cmd::cargo_bin` cannot resolve it — `CARGO_BIN_EXE_webfang`
+/// is only set for the owning crate.  This fallback searches
+/// `target/{debug,release}` and builds the binary on demand.
+fn webfang_path() -> PathBuf {
+    if let Ok(p) = std::env::var("CARGO_BIN_EXE_webfang") {
+        return PathBuf::from(p);
+    }
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("resolve workspace root");
+    for profile in ["debug", "release"] {
+        let mut candidate = workspace_root.join("target").join(profile).join("webfang");
+        if cfg!(windows) {
+            candidate.set_extension("exe");
+        }
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+    let cargo = option_env!("CARGO").unwrap_or("cargo");
+    let status = std::process::Command::new(cargo)
+        .args([
+            "build",
+            "-p",
+            "rust_scraper_cli",
+            "--bin",
+            "webfang",
+            "--quiet",
+        ])
+        .status()
+        .expect("spawn cargo to build webfang");
+    assert!(status.success(), "cargo build --bin webfang failed");
+    let mut built = workspace_root.join("target").join("debug").join("webfang");
+    if cfg!(windows) {
+        built.set_extension("exe");
+    }
+    built
+}
+
 fn cmd() -> Command {
-    Command::cargo_bin("rust_scraper").expect("binary exists")
+    Command::new(webfang_path())
 }
 
 // ============================================================================
