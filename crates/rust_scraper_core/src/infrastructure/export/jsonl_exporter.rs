@@ -112,7 +112,13 @@ impl JsonlExporter {
             .open(&lock_path)
             .map_err(|e| ExporterError::WriteError(format!("{}: {}", lock_path.display(), e)))?;
         use std::io::Write;
-        let _ = writeln!(lock_file, "pid={} op=exclusive_write", std::process::id());
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        let _ = writeln!(
+            lock_file,
+            "pid={} op=exclusive_write timestamp={}",
+            std::process::id(),
+            timestamp
+        );
         // allow: fs2::FileExt::lock_exclusive, clippy misidentifies as std::io::FileExt (1.89+)
         #[allow(clippy::incompatible_msrv)]
         lock_file

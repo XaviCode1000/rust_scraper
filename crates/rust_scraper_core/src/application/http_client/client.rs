@@ -488,16 +488,23 @@ impl HttpClient {
 ///
 /// This function creates a client with basic configuration.
 /// For more control, use `HttpClient::new()` with `HttpClientConfig`.
-pub fn create_http_client() -> Result<Client, ScraperError> {
+///
+/// # Arguments
+/// * `timeout_secs` - Request timeout in seconds (default: 30)
+pub fn create_http_client_with_timeout(timeout_secs: u64) -> Result<Client, ScraperError> {
     let agents = UserAgentCache::fallback_agents();
     let user_agent = get_random_user_agent_from_pool(&agents);
 
-    tracing::debug!("Using user agent: {}", user_agent);
+    tracing::debug!(
+        "Using user agent: {} (timeout: {}s)",
+        user_agent,
+        timeout_secs
+    );
 
     let client = Client::builder()
         .emulation(Emulation::Chrome145)
         .user_agent(user_agent)
-        .timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(timeout_secs))
         .gzip(true)
         .brotli(true)
         .cookie_store(true)
@@ -506,6 +513,11 @@ pub fn create_http_client() -> Result<Client, ScraperError> {
         .map_err(|e| ScraperError::Config(format!("failed to create http client: {e}")))?;
 
     Ok(client)
+}
+
+/// Create configured HTTP client with default 30s timeout
+pub fn create_http_client() -> Result<Client, ScraperError> {
+    create_http_client_with_timeout(30)
 }
 
 /// Get random user agent from pool (legacy function)

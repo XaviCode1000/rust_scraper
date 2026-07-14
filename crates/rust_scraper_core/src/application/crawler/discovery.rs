@@ -92,7 +92,8 @@ pub async fn discover_urls_for_tui(
         Ok(urls)
     } else {
         // DOM scraping - extract links from single page
-        let client = super::super::create_http_client()?;
+        // C2 FIX: Use configured timeout instead of hardcoded 30s
+        let client = super::super::create_http_client_with_timeout(config.timeout_secs)?;
 
         info!("Fetching {} for link extraction", base_url);
         let response = client
@@ -215,7 +216,9 @@ pub async fn scrape_urls_for_tui(
 
     info!("Scraping {} URLs", urls.len());
 
-    let client = super::super::create_http_client()?;
+    // C2 FIX: Use configurable timeout (default 30s)
+    let timeout_secs = config.download_timeout_secs.max(30);
+    let client = super::super::create_http_client_with_timeout(timeout_secs)?;
 
     // Stream processing with concurrency control
     // Following async-no-lock-across-await: buffer_unordered handles concurrency

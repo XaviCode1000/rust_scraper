@@ -128,14 +128,20 @@ impl StateStore {
 
         // Acquire shared lock to prevent reading during concurrent write
         let lock_path = path.with_extension("json.lock");
-        // M1 FIX: Write PID metadata to lock file for debugging
+        // L1 FIX: Write PID + timestamp metadata to lock file for debugging
         let mut lock_file = fs::OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
             .open(&lock_path)
             .map_err(ScraperError::Io)?;
-        let _ = writeln!(lock_file, "pid={} op=shared_read", std::process::id());
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        let _ = writeln!(
+            lock_file,
+            "pid={} op=shared_read timestamp={}",
+            std::process::id(),
+            timestamp
+        );
         fs2::FileExt::lock_shared(&lock_file).map_err(|e| {
             ScraperError::Io(std::io::Error::other(format!(
                 "failed to acquire state read lock: {e}"
@@ -193,14 +199,20 @@ impl StateStore {
 
         // Acquire exclusive file lock to prevent concurrent writes
         let lock_path = path.with_extension("json.lock");
-        // M1 FIX: Write PID metadata to lock file for debugging
+        // L1 FIX: Write PID + timestamp metadata to lock file for debugging
         let mut lock_file = fs::OpenOptions::new()
             .create(true)
             .write(true)
             .truncate(true)
             .open(&lock_path)
             .map_err(ScraperError::Io)?;
-        let _ = writeln!(lock_file, "pid={} op=exclusive_write", std::process::id());
+        let timestamp = chrono::Utc::now().to_rfc3339();
+        let _ = writeln!(
+            lock_file,
+            "pid={} op=exclusive_write timestamp={}",
+            std::process::id(),
+            timestamp
+        );
         lock_file.lock_exclusive().map_err(|e| {
             ScraperError::Io(std::io::Error::other(format!(
                 "failed to acquire state lock: {e}"
