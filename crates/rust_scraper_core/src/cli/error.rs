@@ -163,7 +163,8 @@ mod tests {
             suggestion: "Check syntax".into(),
         };
         let formatted = format_cli_error(&err, false);
-        assert!(formatted.contains("Configuration"));
+        // CliError::ConfigFile renders its category in Spanish (user-facing).
+        assert!(formatted.contains("Configuración"));
         assert!(formatted.contains("invalid TOML"));
         assert!(formatted.contains("Check syntax"));
     }
@@ -188,7 +189,8 @@ mod tests {
             suggestion: "Check your network".into(),
         };
         let formatted = format_cli_error(&err, false);
-        assert!(formatted.contains("Network"));
+        // CliError::NetworkError renders its category in Spanish (user-facing).
+        assert!(formatted.contains("Red"));
         assert!(formatted.contains("connection refused"));
     }
 
