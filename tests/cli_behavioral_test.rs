@@ -20,17 +20,54 @@ use walkdir::WalkDir;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-/// Returns the binary name to test.
+/// Resolve the path to the `webfang` binary.
 ///
-/// The only CLI binary in the workspace is `webfang` (crate: `rust_scraper_cli`).
-/// `rust_scraper_core` is a library-only crate and no longer ships its own
-/// binary, so every test exercises `webfang`.
-fn cli_bin() -> &'static str {
-    "webfang"
+/// `webfang` is built by the `rust_scraper_cli` crate (a workspace sibling),
+/// so `assert_cmd::cargo_bin` cannot resolve it — `CARGO_BIN_EXE_webfang`
+/// is only set for the crate that owns the binary. In CI that variable is
+/// absent even though the binary was built by a prior step; this fallback
+/// searches `target/{debug,release}` and, as a last resort, spawns
+/// `cargo build -p rust_scraper_cli --bin webfang`.
+fn webfang_path() -> std::path::PathBuf {
+    if let Ok(p) = std::env::var("CARGO_BIN_EXE_webfang") {
+        return std::path::PathBuf::from(p);
+    }
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace_root = manifest_dir
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("resolve workspace root");
+    for profile in ["debug", "release"] {
+        let mut candidate = workspace_root.join("target").join(profile).join("webfang");
+        if cfg!(windows) {
+            candidate.set_extension("exe");
+        }
+        if candidate.exists() {
+            return candidate;
+        }
+    }
+    let cargo = option_env!("CARGO").unwrap_or("cargo");
+    let status = std::process::Command::new(cargo)
+        .args([
+            "build",
+            "-p",
+            "rust_scraper_cli",
+            "--bin",
+            "webfang",
+            "--quiet",
+        ])
+        .status()
+        .expect("spawn cargo to build webfang");
+    assert!(status.success(), "cargo build --bin webfang failed");
+    let mut built = workspace_root.join("target").join("debug").join("webfang");
+    if cfg!(windows) {
+        built.set_extension("exe");
+    }
+    built
 }
 
 fn cmd() -> Command {
-    Command::cargo_bin(cli_bin()).expect("binary exists")
+    Command::new(webfang_path())
 }
 
 // ============================================================================
