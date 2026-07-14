@@ -112,7 +112,7 @@ feature and is out of scope for E2E changes.
 ## Known Issues
 
 ### Sitemap Discovery Regression (Pre-existing)
-Six behavioral tests are marked `#[ignore]` due to a pre-existing crawler regression
+Seven behavioral tests are marked `#[ignore]` due to a pre-existing crawler regression
 where auto-discovered sitemaps exit with code 2 on mock-server scenarios.
 This is NOT related to the `insta` snapshot migration and was exposed when the
 root test suite was wired in PR-0 (these tests were previously unwired and never ran).
