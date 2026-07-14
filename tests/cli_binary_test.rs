@@ -6,68 +6,15 @@
 //!
 //! Run with: cargo nextest run --test-threads 2 cli_binary_test
 
-use assert_cmd::Command;
+#[path = "common/cli_harness.rs"]
+mod common;
+use common::{cmd, redact_nondeterministic};
+
 use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
-use regex::Regex;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-
-/// Resolve the path to the `webfang` binary.
-///
-/// `webfang` is built by the `rust_scraper_cli` crate (a workspace sibling),
-/// so `assert_cmd::cargo_bin` cannot locate it from `rust_scraper_core` tests
-/// — `CARGO_BIN_EXE_webfang` is only set for the crate that owns the binary.
-/// We fall back to the workspace `target/` dir and, if missing, build it.
-fn webfang_path() -> std::path::PathBuf {
-    if let Ok(p) = std::env::var("CARGO_BIN_EXE_webfang") {
-        return std::path::PathBuf::from(p);
-    }
-    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // crates/rust_scraper_core -> workspace root (two levels up)
-    let workspace_root = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("resolve workspace root");
-    for profile in ["debug", "release"] {
-        let mut candidate = workspace_root.join("target").join(profile).join("webfang");
-        if cfg!(windows) {
-            candidate.set_extension("exe");
-        }
-        if candidate.exists() {
-            return candidate;
-        }
-    }
-    let cargo = option_env!("CARGO").unwrap_or("cargo");
-    let status = std::process::Command::new(cargo)
-        .args(["build", "-p", "rust_scraper_cli", "--bin", "webfang", "--quiet"])
-        .status()
-        .expect("spawn cargo to build webfang");
-    assert!(status.success(), "cargo build --bin webfang failed");
-    let mut built = workspace_root.join("target").join("debug").join("webfang");
-    if cfg!(windows) {
-        built.set_extension("exe");
-    }
-    built
-}
-
-fn cmd() -> Command {
-    Command::new(webfang_path())
-}
-
-/// Redact non-deterministic output so binary stdout/stderr snapshots stay
-/// stable across machines and runs: the temp-dir path (`<OUT_DIR>`), ANSI color
-/// escape codes, ISO-8601 `-Z` timestamps, and dynamic wiremock ports.
-fn redact(dir: &Path, text: &str) -> String {
-    let text = text.replace(dir.to_string_lossy().as_ref(), "<OUT_DIR>");
-    let ansi = Regex::new(r"\x1b\[[0-9;]*m").unwrap();
-    let text = ansi.replace_all(&text, "").into_owned();
-    let ts = Regex::new(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z").unwrap();
-    let text = ts.replace_all(&text, "<TIMESTAMP>").into_owned();
-    let port = Regex::new(r"127\.0\.0\.1:\d+").unwrap();
-    port.replace_all(&text, "127.0.0.1:<PORT>").into_owned()
-}
 
 // ============================================================================
 // Tests: Binary error handling
@@ -79,7 +26,7 @@ fn test_no_url_shows_error() {
     let output = cmd().output().expect("run binary");
     assert!(!output.status.success(), "expected failure");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    insta::assert_snapshot!("test_no_url_shows_error", redact(Path::new("__no_temp__"), &stderr));
+    insta::assert_snapshot!("test_no_url_shows_error", redact_nondeterministic(Path::new("__no_temp__"), &stderr));
 }
 
 /// Test that an invalid URL shows an error
@@ -93,7 +40,7 @@ fn test_invalid_url_shows_error() {
         .expect("run binary");
     assert!(!output.status.success(), "expected failure");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    insta::assert_snapshot!("test_invalid_url_shows_error", redact(Path::new("__no_temp__"), &stderr));
+    insta::assert_snapshot!("test_invalid_url_shows_error", redact_nondeterministic(Path::new("__no_temp__"), &stderr));
 }
 
 // ============================================================================
@@ -107,7 +54,7 @@ fn test_help_contains_scraper() {
     let output = cmd().arg("--help").output().expect("run binary");
     assert!(output.status.success(), "expected success");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    insta::assert_snapshot!("test_help_contains_scraper", redact(Path::new("__no_temp__"), &stdout));
+    insta::assert_snapshot!("test_help_contains_scraper", redact_nondeterministic(Path::new("__no_temp__"), &stdout));
 }
 
 /// Test that --version outputs version and exits with code 0.
@@ -116,7 +63,7 @@ fn test_version() {
     let output = cmd().arg("--version").output().expect("run binary");
     assert!(output.status.success(), "expected success");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    insta::assert_snapshot!("test_version", redact(Path::new("__no_temp__"), &stdout));
+    insta::assert_snapshot!("test_version", redact_nondeterministic(Path::new("__no_temp__"), &stdout));
 }
 
 // ============================================================================
@@ -146,7 +93,7 @@ fn test_quiet_flag_accepted() {
     let output = cmd().arg("--quiet").output().expect("run binary");
     assert!(!output.status.success(), "expected failure");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    insta::assert_snapshot!("test_quiet_flag_accepted", redact(Path::new("__no_temp__"), &stderr));
+    insta::assert_snapshot!("test_quiet_flag_accepted", redact_nondeterministic(Path::new("__no_temp__"), &stderr));
 }
 
 /// Test that --dry-run flag is accepted
@@ -155,7 +102,7 @@ fn test_dry_run_flag_accepted() {
     let output = cmd().arg("--dry-run").output().expect("run binary");
     assert!(!output.status.success(), "expected failure");
     let stderr = String::from_utf8_lossy(&output.stderr);
-    insta::assert_snapshot!("test_dry_run_flag_accepted", redact(Path::new("__no_temp__"), &stderr));
+    insta::assert_snapshot!("test_dry_run_flag_accepted", redact_nondeterministic(Path::new("__no_temp__"), &stderr));
 }
 
 // ============================================================================
@@ -245,6 +192,6 @@ async fn test_single_page_custom_timeout_is_used_by_scrape_client() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     insta::assert_snapshot!(
         "test_single_page_custom_timeout_is_used_by_scrape_client",
-        redact(output_dir.path(), &stderr)
+        redact_nondeterministic(output_dir.path(), &stderr)
     );
 }

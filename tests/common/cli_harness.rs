@@ -1,5 +1,11 @@
 //! Shared CLI behavioral test harness for the `webfang` binary.
 //!
+//! `#![allow(dead_code)]`: this file is included via `#[path]` from three
+//! separate test crates (`behavioral`, `cli_binary`, `cli_behavioral`), each of
+//! which uses a different subset of the helpers. Items unused by a given crate
+//! would otherwise trip `-D warnings`; gating them here is intentional.
+#![allow(dead_code)]
+//!
 //! Centralized helpers used by the `behavioral`, `cli_binary`, and
 //! `cli_behavioral` test binaries so the `webfang_path()` resolver, the
 //! `BehavioralTest` mock-server/temp-dir harness, and the output-redaction
