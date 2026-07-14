@@ -44,7 +44,7 @@ fn test_help_exits_zero() {
         .arg("--help")
         .assert()
         .code(0)
-        .stdout(predicate::str::contains("web scraper"));
+        .stdout(predicate::str::contains("rust_scraper binary"));
 }
 
 /// --version prints version and exits with code 0.

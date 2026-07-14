@@ -63,7 +63,7 @@ fn test_help_contains_scraper() {
         .arg("--help")
         .assert()
         .code(0)
-        .stdout(predicate::str::contains("web scraper"));
+        .stdout(predicate::str::contains("rust_scraper binary"));
 }
 
 /// Test that --version outputs version and exits with code 0.
