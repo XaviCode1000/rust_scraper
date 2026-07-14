@@ -1,7 +1,8 @@
 //! Error paths: unreachable host, 404, 500 responses.
 
+use crate::assert_snapshot_redacted;
 use crate::cmd;
-use predicates::prelude::*;
+use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
 use wiremock::matchers::{method, path};
@@ -43,7 +44,7 @@ fn unreachable_host_exit_code_69() {
 
 #[test]
 fn unreachable_host_stderr_mentions_failure() {
-    cmd()
+    let output = cmd()
         .arg("--url")
         .arg("http://127.0.0.1:1")
         .arg("--single-page")
@@ -52,10 +53,10 @@ fn unreachable_host_stderr_mentions_failure() {
         .arg("--max-retries")
         .arg("0")
         .arg("--quiet")
-        .assert()
-        .stderr(predicate::str::contains(
-            "No pages were successfully scraped",
-        ));
+        .output()
+        .expect("run binary");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_snapshot_redacted("unreachable_host_stderr", Path::new("__no_temp__"), stderr);
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +79,7 @@ async fn slow_server_timeout_exits_error() {
         .mount(&server)
         .await;
 
-    cmd()
+    let result = cmd()
         .arg("--url")
         .arg(format!("{}/slow", server.uri()))
         .arg("--single-page")
@@ -89,11 +90,16 @@ async fn slow_server_timeout_exits_error() {
         .arg("--output")
         .arg(output.path())
         .arg("--quiet")
-        .assert()
-        .code(69)
-        .stderr(predicate::str::contains(
-            "No pages were successfully scraped",
-        ));
+        .output()
+        .expect("run binary");
+
+    assert_eq!(
+        result.status.code(),
+        Some(69),
+        "slow server should time out with exit code 69"
+    );
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert_snapshot_redacted("slow_server_timeout_stderr", output.path(), stderr);
 }
 
 // ---------------------------------------------------------------------------
