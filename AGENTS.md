@@ -293,8 +293,73 @@ gitnexus status                                          # Freshness check
 | New domain entity | `entities.rs` | `src/domain/` — struct + constructor + `TryFrom` validation, `Display`+`Debug`+`PartialEq` |
 | New adapter | `crawler/` | `src/infrastructure/` — domain trait → impl, module with `mod.rs` |
 | New error type | `error.rs` | `src/cli/` — `thiserror::Error` + `From` impls, Spanish user-facing |
+| New behavioral test | `cli_harness.rs` | `tests/common/` — `BehavioralTest` + wiremock + TempDir + insta snapshots |
 
 **Avoid:** `adapters/tui/progress_widget.rs` (551 lines), `infrastructure/mcp_server/mod.rs` (1404 lines) — keep new components focused.
+
+## 🧪 Testing — Snapshots, Harness & Conventions
+
+### Integration test structure
+Root `tests/` integration tests are wired into `rust_scraper_core` via explicit `[[test]]` entries in `crates/rust_scraper_core/Cargo.toml`. The workspace root `Cargo.toml` is virtual (no `[package]`), so root `tests/` files need explicit `[[test]]` wiring — they are **never auto-discovered**.
+
+Test harness lives in `tests/common/cli_harness.rs`:
+- `BehavioralTest` — wiremock `MockServer` + `tempfile::TempDir`, `scraper_cmd()`, `find_files()`, `read_md_content()`
+- `cli_bin()` — binary selector (currently always `"webfang"`)
+- `webfang_path()` — path-based binary resolver (see below)
+- Snapshot helpers: `assert_snapshot`, `redact_nondeterministic`, `assert_snapshot_redacted`, `assert_snapshot_plain`
+
+### Tests con wiremock (network-free behavioral tests)
+```rust
+use crate::common::{cmd, redact_nondeterministic, BehavioralTest};
+
+#[tokio::test]
+async fn test_example() {
+    let harness = BehavioralTest::new().await;
+    // Configure Mock::given(...) on harness.server
+    let mut cmd = harness.scraper_cmd();
+    cmd.arg("--some-flag");
+    harness.assert_snapshot_redacted("test_example_output", &cmd.output().unwrap());
+}
+```
+
+### Snapshot testing (`insta`)
+Golden-master snapshots are enabled via `insta` (`features = ["redactions", "filters"]`). All behavioral tests that produce Markdown/JSON/stderr output MUST use snapshots instead of `assert!(output.contains("..."))`.
+
+**Snapshot workflow (review gate):**
+1. Make test changes → `cargo nextest run` → tests FAIL (pending `.snap.new`)
+2. `cargo insta review` → review every diff interactively → accept or reject
+3. `cargo nextest run` → tests PASS (committed `.snap` matches output)
+4. `.snap.new` is in `.gitignore` — never commit pending snapshots
+
+**Sanitization rules (mandatory):** Snapshots MUST be deterministic. Always apply `redact_nondeterministic()` which normalizes:
+- `TempDir` path → `[TEMP_PATH]`
+- ISO-8601 timestamps (with/without fractional seconds, any offset) → `[TIMESTAMP]`
+- Wiremock dynamic ports → `[PORT]`
+- ANSI escape codes → `[ANSI]`
+
+If a test leaks additional non-deterministic fields (e.g. Obsidian YAML frontmatter dates), use `insta::with_settings!({ add_filter(r"...", "[REPLACEMENT]") }, { insta::assert_snapshot!(...) })`.
+
+### Binary resolution: `webfang_path()`
+**NEVER use `assert_cmd::cargo_bin(...)` in integration tests.** The `CARGO_BIN_EXE_*` env var is only set for the owning crate. In this virtual workspace, `webfang` is built by `rust_scraper_cli` — a sibling crate. Tests running under `rust_scraper_core` cannot resolve it via `cargo_bin`.
+
+Always use `webfang_path()` from `tests/common/cli_harness.rs`, which:
+1. Tries `CARGO_BIN_EXE_webfang` (CI fallback)
+2. Searches `target/{debug,release}/webfang`
+3. Falls back to `cargo build -p rust_scraper_cli --bin webfang` on demand
+
+**Golden rule for new tests:** `Command::new(webfang_path())`, never `Command::cargo_bin(...)`.
+
+### Creating a new root integration test
+1. Create the test file in `tests/` (e.g. `tests/my_new_test.rs`)
+2. Add a `[[test]]` entry in `crates/rust_scraper_core/Cargo.toml`:
+   ```toml
+   [[test]]
+   name = "my_new_test"
+   path = "../../tests/my_new_test.rs"
+   ```
+3. Use `use crate::common::*;` for the shared harness
+4. Use `webfang_path()` for binary resolution, snapshots for output validation
+5. Run `cargo nextest run --test my_new_test` to verify
 
 ---
 

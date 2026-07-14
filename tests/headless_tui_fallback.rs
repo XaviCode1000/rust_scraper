@@ -12,59 +12,14 @@ use assert_cmd::Command;
 /// Expected Spanish message (spec S2.2 exact wording).
 const EXPECTED_MSG: &str = "TUI no disponible: compilar con --features ui";
 
-/// Resolve the path to the `webfang` binary.
-///
-/// `webfang` is built by the `rust_scraper_cli` crate (a workspace sibling),
-/// so `assert_cmd::cargo_bin` cannot resolve it — `CARGO_BIN_EXE_webfang`
-/// is only set for the crate that owns the binary. In CI that variable is
-/// absent even though the binary was built by a prior step; this fallback
-/// searches `target/{debug,release}` and, as a last resort, spawns
-/// `cargo build -p rust_scraper_cli --bin webfang`.
-fn webfang_path() -> std::path::PathBuf {
-    if let Ok(p) = std::env::var("CARGO_BIN_EXE_webfang") {
-        return std::path::PathBuf::from(p);
-    }
-    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("resolve workspace root");
-    for profile in ["debug", "release"] {
-        let mut candidate = workspace_root.join("target").join(profile).join("webfang");
-        if cfg!(windows) {
-            candidate.set_extension("exe");
-        }
-        if candidate.exists() {
-            return candidate;
-        }
-    }
-    let cargo = option_env!("CARGO").unwrap_or("cargo");
-    let status = std::process::Command::new(cargo)
-        .args([
-            "build",
-            "-p",
-            "rust_scraper_cli",
-            "--bin",
-            "webfang",
-            "--quiet",
-        ])
-        .status()
-        .expect("spawn cargo to build webfang");
-    assert!(status.success(), "cargo build --bin webfang failed");
-    let mut built = workspace_root.join("target").join("debug").join("webfang");
-    if cfg!(windows) {
-        built.set_extension("exe");
-    }
-    built
-}
-
-fn webfang_cmd() -> Command {
-    Command::new(webfang_path())
+fn rust_scraper_core() -> Command {
+    Command::cargo_bin("rust_scraper_core")
+        .expect("rust_scraper_core binary must be built for this test")
 }
 
 #[test]
 fn tui_flag_prints_spanish_message_when_ui_off() {
-    let output = webfang_cmd()
+    let output = rust_scraper_core()
         .arg("--tui")
         .timeout(std::time::Duration::from_secs(10))
         .output()
@@ -87,7 +42,7 @@ fn tui_flag_prints_spanish_message_when_ui_off() {
 
 #[test]
 fn config_tui_flag_prints_spanish_message_when_ui_off() {
-    let output = webfang_cmd()
+    let output = rust_scraper_core()
         .arg("--config-tui")
         .timeout(std::time::Duration::from_secs(10))
         .output()
@@ -110,7 +65,7 @@ fn config_tui_flag_prints_spanish_message_when_ui_off() {
 
 #[test]
 fn interactive_flag_prints_spanish_message_when_ui_off() {
-    let output = webfang_cmd()
+    let output = rust_scraper_core()
         .arg("--interactive")
         .timeout(std::time::Duration::from_secs(10))
         .output()

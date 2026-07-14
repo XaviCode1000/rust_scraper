@@ -1,0 +1,21 @@
+---
+source: crates/rust_scraper_core/../../tests/cli_behavioral_test.rs
+expression: redacted
+---
+---
+title: Rich Meta Page
+url: http://127.0.0.1:<PORT>/
+date: [DATE]
+excerpt: This is a longer article to test rich metadata generation. The content needs enough words to trigger content type detection and provide meaningful reading time estimates for the frontmatter.
+wordCount: 31
+readingTime: 1
+language: eng
+contentType: other
+scrapeDate: <TIMESTAMP>
+source: http://127.0.0.1:<PORT>/
+status: unread
+---
+
+## Rich Metadata Test
+
+This is a longer article to test rich metadata generation. The content needs enough words to trigger content type detection and provide meaningful reading time estimates for the frontmatter.

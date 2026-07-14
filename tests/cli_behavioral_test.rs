@@ -12,7 +12,10 @@
 // skipped entirely instead of triggering a hard compile_error!.
 #![cfg(all(feature = "images", feature = "documents"))]
 
-use assert_cmd::Command;
+#[path = "common/cli_harness.rs"]
+mod common;
+use common::{cmd, redact_nondeterministic};
+
 use predicates::prelude::*;
 use std::time::Duration;
 use tempfile::TempDir;
@@ -20,54 +23,20 @@ use walkdir::WalkDir;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-/// Resolve the path to the `webfang` binary.
+/// Snapshot extracted content with deterministic redactions.
 ///
-/// `webfang` is built by the `rust_scraper_cli` crate (a workspace sibling),
-/// so `assert_cmd::cargo_bin` cannot resolve it — `CARGO_BIN_EXE_webfang`
-/// is only set for the crate that owns the binary. In CI that variable is
-/// absent even though the binary was built by a prior step; this fallback
-/// searches `target/{debug,release}` and, as a last resort, spawns
-/// `cargo build -p rust_scraper_cli --bin webfang`.
-fn webfang_path() -> std::path::PathBuf {
-    if let Ok(p) = std::env::var("CARGO_BIN_EXE_webfang") {
-        return std::path::PathBuf::from(p);
-    }
-    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("resolve workspace root");
-    for profile in ["debug", "release"] {
-        let mut candidate = workspace_root.join("target").join(profile).join("webfang");
-        if cfg!(windows) {
-            candidate.set_extension("exe");
-        }
-        if candidate.exists() {
-            return candidate;
-        }
-    }
-    let cargo = option_env!("CARGO").unwrap_or("cargo");
-    let status = std::process::Command::new(cargo)
-        .args([
-            "build",
-            "-p",
-            "rust_scraper_cli",
-            "--bin",
-            "webfang",
-            "--quiet",
-        ])
-        .status()
-        .expect("spawn cargo to build webfang");
-    assert!(status.success(), "cargo build --bin webfang failed");
-    let mut built = workspace_root.join("target").join("debug").join("webfang");
-    if cfg!(windows) {
-        built.set_extension("exe");
-    }
-    built
-}
-
-fn cmd() -> Command {
-    Command::new(webfang_path())
+/// `redact_nondeterministic` collapses the temp-dir path, ANSI codes, ISO-8601
+/// timestamps (any `field: 2026-07-14T..` form), and dynamic wiremock ports.
+/// Obsidian output also emits a bare `date:` frontmatter field (date only, no
+/// time component) that the helper above cannot catch, so it is collapsed with
+/// an insta `add_filter` (the insta-native mechanism for free-text snapshots).
+fn assert_content_snapshot(name: &str, dir: &std::path::Path, content: &str) {
+    let redacted = redact_nondeterministic(dir, content);
+    let mut settings = insta::Settings::clone_current();
+    settings.add_filter(r"date: \d{4}-\d{2}-\d{2}", "date: [DATE]");
+    settings.bind(|| {
+        insta::assert_snapshot!(name, redacted);
+    });
 }
 
 // ============================================================================
@@ -871,14 +840,10 @@ async fn test_obsidian_tags_appear_in_frontmatter() {
     );
 
     let content = std::fs::read_to_string(md_files[0].path()).unwrap();
-    assert!(
-        content.contains("tags:"),
-        "frontmatter should contain tags field"
-    );
-    assert!(
-        content.contains("scraped") && content.contains("web-dev") && content.contains("rust"),
-        "frontmatter should contain all specified tags: {}",
-        content
+    assert_content_snapshot(
+        "obsidian_tags_appear_in_frontmatter",
+        output.path(),
+        &content,
     );
 }
 
@@ -929,11 +894,10 @@ async fn test_obsidian_rich_metadata_in_frontmatter() {
     );
 
     let content = std::fs::read_to_string(md_files[0].path()).unwrap();
-    // Rich metadata uses camelCase in the YAML frontmatter
-    assert!(
-        content.contains("wordCount:") || content.contains("readingTime:"),
-        "frontmatter should contain rich metadata fields (wordCount/readingTime): {}",
-        &content[..content.len().min(500)]
+    assert_content_snapshot(
+        "obsidian_rich_metadata_in_frontmatter",
+        output.path(),
+        &content,
     );
 }
 
@@ -983,13 +947,7 @@ async fn test_obsidian_wiki_links_conversion() {
     );
 
     let content = std::fs::read_to_string(md_files[0].path()).unwrap();
-    // Wiki-links use [[page]] syntax — the exact conversion depends on the
-    // implementation, but the original absolute URL should be gone or transformed
-    assert!(
-        content.contains("[["),
-        "output should contain Obsidian [[wiki-link]] syntax: {}",
-        &content[..content.len().min(500)]
-    );
+    assert_content_snapshot("obsidian_wiki_links_conversion", output.path(), &content);
 }
 
 /// --obsidian-relative-assets rewrites downloaded asset paths as relative.
@@ -1108,20 +1066,15 @@ async fn test_selector_h3_extracts_only_h3() {
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
         .collect();
-    assert!(!files.is_empty(), "output should contain at least one file");
+    assert!(
+        !files.is_empty(),
+        "output should contain at least one .md file"
+    );
 
     let content = std::fs::read_to_string(files[0].path()).unwrap();
-    assert!(
-        content.contains("Section One") || content.contains("Section Two"),
-        "output should contain h3 content: {}",
-        &content[..content.len().min(500)]
-    );
-    assert!(
-        !content.contains("Paragraph to exclude"),
-        "output should NOT contain paragraph text when --selector h3 is used: {}",
-        &content[..content.len().min(500)]
-    );
+    assert_content_snapshot("selector_h3_extracts_only_h3", output.path(), &content);
 }
 
 /// --selector 'table' extracts table content.
@@ -1160,15 +1113,15 @@ async fn test_selector_table_extracts_table() {
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
         .collect();
-    assert!(!files.is_empty(), "output should contain at least one file");
+    assert!(
+        !files.is_empty(),
+        "output should contain at least one .md file"
+    );
 
     let content = std::fs::read_to_string(files[0].path()).unwrap();
-    assert!(
-        content.contains("Row1Col1"),
-        "output should contain table content: {}",
-        &content[..content.len().min(500)]
-    );
+    assert_content_snapshot("selector_table_extracts_table", output.path(), &content);
 }
 
 /// Without --selector (default "body"), full page content is extracted.
@@ -1203,15 +1156,15 @@ async fn test_no_selector_extracts_full_page() {
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "md"))
         .collect();
-    assert!(!files.is_empty(), "output should contain at least one file");
+    assert!(
+        !files.is_empty(),
+        "output should contain at least one .md file"
+    );
 
     let content = std::fs::read_to_string(files[0].path()).unwrap();
-    assert!(
-        content.contains("Full Page Test") && content.contains("All content"),
-        "full page content should be extracted: {}",
-        &content[..content.len().min(500)]
-    );
+    assert_content_snapshot("no_selector_extracts_full_page", output.path(), &content);
 }
 
 // ============================================================================
