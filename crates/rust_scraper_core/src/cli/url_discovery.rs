@@ -1,7 +1,9 @@
 //! URL discovery logic extracted from orchestrator.
 
 use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
-use tracing::{info, warn};
+use tracing::info;
+#[cfg(feature = "ui")]
+use tracing::warn;
 use url::Url;
 
 use crate::application::crawl_options::CrawlOptions;
