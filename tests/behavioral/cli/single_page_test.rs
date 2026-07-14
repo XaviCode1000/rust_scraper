@@ -56,7 +56,11 @@ async fn single_page_md_contains_page_content() {
         .success();
 
     let content = t.read_md_content();
-    crate::assert_snapshot_redacted("single_page_md_contains_page_content", t.out.path(), content);
+    crate::assert_snapshot_redacted(
+        "single_page_md_contains_page_content",
+        t.out.path(),
+        content,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -85,7 +89,11 @@ async fn single_page_json_format_creates_json_file() {
     // JSON output goes to results.json at the output root (not in domain subdirs)
     let json_files = t.find_files("json");
     let content = std::fs::read_to_string(&json_files[0]).expect("read .json output");
-    crate::assert_snapshot_redacted("single_page_json_format_creates_json_file", t.out.path(), content);
+    crate::assert_snapshot_redacted(
+        "single_page_json_format_creates_json_file",
+        t.out.path(),
+        content,
+    );
 }
 
 #[tokio::test]
@@ -109,7 +117,11 @@ async fn single_page_json_has_correct_structure() {
 
     let json_files = t.find_files("json");
     let content = std::fs::read_to_string(&json_files[0]).expect("read .json output");
-    crate::assert_snapshot_redacted("single_page_json_has_correct_structure", t.out.path(), content);
+    crate::assert_snapshot_redacted(
+        "single_page_json_has_correct_structure",
+        t.out.path(),
+        content,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -137,7 +149,11 @@ async fn single_page_text_format_creates_txt_file() {
 
     let txt_files = t.find_files("txt");
     let content = std::fs::read_to_string(&txt_files[0]).expect("read .txt output");
-    crate::assert_snapshot_redacted("single_page_text_format_creates_txt_file", t.out.path(), content);
+    crate::assert_snapshot_redacted(
+        "single_page_text_format_creates_txt_file",
+        t.out.path(),
+        content,
+    );
 }
 
 #[tokio::test]

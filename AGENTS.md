@@ -296,6 +296,21 @@ gitnexus status                                          # Freshness check
 
 **Avoid:** `adapters/tui/progress_widget.rs` (551 lines), `infrastructure/mcp_server/mod.rs` (1404 lines) — keep new components focused.
 
+### Workspace Integration Test Binary Resolution
+When wiring root `tests/` integration tests into a workspace member crate (e.g. `rust_scraper_core`),
+`assert_cmd::cargo_bin("bin_name")` cannot resolve binaries built by sibling crates
+(the `CARGO_BIN_EXE_*` env var is only set for the owning crate). Use the path-based
+resolver from `tests/common/cli_harness.rs` instead:
+
+```rust
+/// Resolve the webfang binary by path when `assert_cmd::cargo_bin` can't.
+pub fn webfang_path() -> std::path::PathBuf {
+    // See tests/common/cli_harness.rs for the canonical implementation
+}
+```
+
+Copy the exact pattern from: `tests/common/cli_harness.rs::webfang_path`
+
 ---
 
 <!-- gitnexus:start -->

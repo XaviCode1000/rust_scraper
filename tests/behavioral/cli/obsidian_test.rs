@@ -71,7 +71,11 @@ async fn obsidian_wiki_links_produces_wiki_syntax() {
         .success();
 
     let content = t.read_md_content();
-    assert_obsidian_snapshot("obsidian_wiki_links_produces_wiki_syntax", t.out.path(), &content);
+    assert_obsidian_snapshot(
+        "obsidian_wiki_links_produces_wiki_syntax",
+        t.out.path(),
+        &content,
+    );
 }
 
 #[tokio::test]
@@ -95,7 +99,11 @@ async fn obsidian_wiki_links_removes_absolute_urls() {
         .success();
 
     let content = t.read_md_content();
-    assert_obsidian_snapshot("obsidian_wiki_links_removes_absolute_urls", t.out.path(), &content);
+    assert_obsidian_snapshot(
+        "obsidian_wiki_links_removes_absolute_urls",
+        t.out.path(),
+        &content,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -124,7 +132,11 @@ async fn obsidian_tags_appear_in_frontmatter() {
         .success();
 
     let content = t.read_md_content();
-    assert_obsidian_snapshot("obsidian_tags_appear_in_frontmatter", t.out.path(), &content);
+    assert_obsidian_snapshot(
+        "obsidian_tags_appear_in_frontmatter",
+        t.out.path(),
+        &content,
+    );
 }
 
 #[tokio::test]
@@ -149,7 +161,11 @@ async fn obsidian_tags_produces_yaml_frontmatter() {
         .success();
 
     let content = t.read_md_content();
-    assert_obsidian_snapshot("obsidian_tags_produces_yaml_frontmatter", t.out.path(), &content);
+    assert_obsidian_snapshot(
+        "obsidian_tags_produces_yaml_frontmatter",
+        t.out.path(),
+        &content,
+    );
 }
 
 // ---------------------------------------------------------------------------
