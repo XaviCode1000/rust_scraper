@@ -6,62 +6,15 @@
 //!
 //! Run with: cargo nextest run --test-threads 2 cli_binary_test
 
-use assert_cmd::Command;
-use predicates::prelude::*;
+#[path = "common/cli_harness.rs"]
+mod common;
+use common::{cmd, redact_nondeterministic};
+
+use std::path::Path;
 use std::time::Duration;
 use tempfile::TempDir;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
-
-/// Resolve the path to the `webfang` binary.
-///
-/// `webfang` is built by the `rust_scraper_cli` crate (a workspace sibling),
-/// so `assert_cmd::cargo_bin` cannot resolve it — `CARGO_BIN_EXE_webfang`
-/// is only set for the crate that owns the binary. In CI that variable is
-/// absent even though the binary was built by a prior step; this fallback
-/// searches `target/{debug,release}` and, as a last resort, spawns
-/// `cargo build -p rust_scraper_cli --bin webfang`.
-fn webfang_path() -> std::path::PathBuf {
-    if let Ok(p) = std::env::var("CARGO_BIN_EXE_webfang") {
-        return std::path::PathBuf::from(p);
-    }
-    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir
-        .parent()
-        .and_then(|p| p.parent())
-        .expect("resolve workspace root");
-    for profile in ["debug", "release"] {
-        let mut candidate = workspace_root.join("target").join(profile).join("webfang");
-        if cfg!(windows) {
-            candidate.set_extension("exe");
-        }
-        if candidate.exists() {
-            return candidate;
-        }
-    }
-    let cargo = option_env!("CARGO").unwrap_or("cargo");
-    let status = std::process::Command::new(cargo)
-        .args([
-            "build",
-            "-p",
-            "rust_scraper_cli",
-            "--bin",
-            "webfang",
-            "--quiet",
-        ])
-        .status()
-        .expect("spawn cargo to build webfang");
-    assert!(status.success(), "cargo build --bin webfang failed");
-    let mut built = workspace_root.join("target").join("debug").join("webfang");
-    if cfg!(windows) {
-        built.set_extension("exe");
-    }
-    built
-}
-
-fn cmd() -> Command {
-    Command::new(webfang_path())
-}
 
 // ============================================================================
 // Tests: Binary error handling
@@ -70,22 +23,30 @@ fn cmd() -> Command {
 /// Test that running without --url shows an error message
 #[test]
 fn test_no_url_shows_error() {
-    cmd()
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("--url is required"));
+    let output = cmd().output().expect("run binary");
+    assert!(!output.status.success(), "expected failure");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    insta::assert_snapshot!(
+        "test_no_url_shows_error",
+        redact_nondeterministic(Path::new("__no_temp__"), &stderr)
+    );
 }
 
 /// Test that an invalid URL shows an error
 #[test]
 fn test_invalid_url_shows_error() {
     // CLI validates URL and returns error message
-    cmd()
+    let output = cmd()
         .arg("--url")
         .arg("not-a-url")
-        .assert()
-        .failure() // CLI returns exit code 64
-        .stderr(predicate::str::contains("Invalid URL"));
+        .output()
+        .expect("run binary");
+    assert!(!output.status.success(), "expected failure");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    insta::assert_snapshot!(
+        "test_invalid_url_shows_error",
+        redact_nondeterministic(Path::new("__no_temp__"), &stderr)
+    );
 }
 
 // ============================================================================
@@ -96,21 +57,25 @@ fn test_invalid_url_shows_error() {
 /// Test that --help prints usage and exits with code 0.
 #[test]
 fn test_help_contains_scraper() {
-    cmd()
-        .arg("--help")
-        .assert()
-        .code(0)
-        .stdout(predicate::str::contains("rust_scraper binary"));
+    let output = cmd().arg("--help").output().expect("run binary");
+    assert!(output.status.success(), "expected success");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    insta::assert_snapshot!(
+        "test_help_contains_scraper",
+        redact_nondeterministic(Path::new("__no_temp__"), &stdout)
+    );
 }
 
 /// Test that --version outputs version and exits with code 0.
 #[test]
 fn test_version() {
-    cmd()
-        .arg("--version")
-        .assert()
-        .code(0)
-        .stdout(predicate::str::contains(env!("CARGO_PKG_VERSION")));
+    let output = cmd().arg("--version").output().expect("run binary");
+    assert!(output.status.success(), "expected success");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    insta::assert_snapshot!(
+        "test_version",
+        redact_nondeterministic(Path::new("__no_temp__"), &stdout)
+    );
 }
 
 // ============================================================================
@@ -137,21 +102,25 @@ fn test_dry_run_with_url() {
 #[test]
 fn test_quiet_flag_accepted() {
     // Should not fail at argument parsing (will fail at network without URL)
-    cmd()
-        .arg("--quiet")
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("--url is required"));
+    let output = cmd().arg("--quiet").output().expect("run binary");
+    assert!(!output.status.success(), "expected failure");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    insta::assert_snapshot!(
+        "test_quiet_flag_accepted",
+        redact_nondeterministic(Path::new("__no_temp__"), &stderr)
+    );
 }
 
 /// Test that --dry-run flag is accepted
 #[test]
 fn test_dry_run_flag_accepted() {
-    cmd()
-        .arg("--dry-run")
-        .assert()
-        .failure()
-        .stderr(predicate::str::contains("--url is required"));
+    let output = cmd().arg("--dry-run").output().expect("run binary");
+    assert!(!output.status.success(), "expected failure");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    insta::assert_snapshot!(
+        "test_dry_run_flag_accepted",
+        redact_nondeterministic(Path::new("__no_temp__"), &stderr)
+    );
 }
 
 // ============================================================================
@@ -226,7 +195,7 @@ async fn test_single_page_custom_timeout_is_used_by_scrape_client() {
         .mount(&mock_server)
         .await;
 
-    cmd()
+    let output = cmd()
         .arg("--url")
         .arg(format!("{}/slow", mock_server.uri()))
         .arg("--single-page")
@@ -235,9 +204,12 @@ async fn test_single_page_custom_timeout_is_used_by_scrape_client() {
         .arg("--output")
         .arg(output_dir.path())
         .arg("--quiet")
-        .assert()
-        .code(69)
-        .stderr(predicate::str::contains(
-            "No pages were successfully scraped",
-        ));
+        .output()
+        .expect("run binary");
+    assert_eq!(output.status.code(), Some(69), "expected exit code 69");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    insta::assert_snapshot!(
+        "test_single_page_custom_timeout_is_used_by_scrape_client",
+        redact_nondeterministic(output_dir.path(), &stderr)
+    );
 }

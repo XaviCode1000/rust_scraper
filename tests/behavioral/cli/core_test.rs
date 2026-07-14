@@ -1,5 +1,6 @@
 //! Core CLI behavior: version, help, missing/invalid URL.
 
+use crate::assert_snapshot_plain;
 use crate::cmd;
 use predicates::prelude::*;
 
@@ -189,4 +190,15 @@ fn invalid_url_stderr_mentions_invalid() {
 #[test]
 fn invalid_url_exit_code_64() {
     cmd().arg("--url").arg("not-a-url").assert().code(64);
+}
+
+// ---------------------------------------------------------------------------
+// --help output snapshot (deterministic, network-free)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn help_output_snapshot() {
+    let output = cmd().arg("--help").output().expect("run binary");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_snapshot_plain("help", stdout);
 }

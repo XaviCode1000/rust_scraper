@@ -1,0 +1,13 @@
+---
+source: crates/rust_scraper_core/../../tests/behavioral/main.rs
+expression: redacted
+---
+========================================
+TITLE: Single Page Test
+URL: http://127.0.0.1:<PORT>/
+AUTHOR: Unknown
+DATE: N/A
+----------------------------------------
+CONTENT:
+Hello World This is meaningful content for the extractor to process. More paragraphs ensure readability can extract a proper document.
+========================================

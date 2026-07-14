@@ -1,0 +1,15 @@
+---
+source: crates/rust_scraper_core/../../tests/behavioral/main.rs
+expression: redacted
+---
+[
+  {
+    "title": "Single Page Test",
+    "content": "Hello World This is meaningful content for the extractor to process. More paragraphs ensure readability can extract a proper document.",
+    "url": "http://127.0.0.1:<PORT>/",
+    "excerpt": "This is meaningful content for the extractor to process.",
+    "author": null,
+    "date": null,
+    "html": "<div id=\"readability-page-1\" class=\"page\"><div><article> <h2>Hello World</h2> <p>This is meaningful content for the extractor to process.</p> <p>More paragraphs ensure readability can extract a proper document.</p> </article></div></div>"
+  }
+]

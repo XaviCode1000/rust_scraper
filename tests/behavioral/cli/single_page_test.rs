@@ -34,8 +34,8 @@ async fn single_page_creates_md_file() {
         .assert()
         .success();
 
-    let md_files = t.find_files("md");
-    assert!(!md_files.is_empty(), "expected at least one .md file");
+    let content = t.read_md_content();
+    crate::assert_snapshot_redacted("single_page_creates_md_file", t.out.path(), content);
 }
 
 #[tokio::test]
@@ -56,10 +56,10 @@ async fn single_page_md_contains_page_content() {
         .success();
 
     let content = t.read_md_content();
-    assert!(
-        content.contains("Hello World"),
-        "md should contain page heading: {}",
-        &content[..content.len().min(500)]
+    crate::assert_snapshot_redacted(
+        "single_page_md_contains_page_content",
+        t.out.path(),
+        content,
     );
 }
 
@@ -88,7 +88,12 @@ async fn single_page_json_format_creates_json_file() {
 
     // JSON output goes to results.json at the output root (not in domain subdirs)
     let json_files = t.find_files("json");
-    assert!(!json_files.is_empty(), "expected at least one .json file");
+    let content = std::fs::read_to_string(&json_files[0]).expect("read .json output");
+    crate::assert_snapshot_redacted(
+        "single_page_json_format_creates_json_file",
+        t.out.path(),
+        content,
+    );
 }
 
 #[tokio::test]
@@ -111,14 +116,11 @@ async fn single_page_json_has_correct_structure() {
         .success();
 
     let json_files = t.find_files("json");
-    assert!(!json_files.is_empty());
-
-    let content = std::fs::read_to_string(&json_files[0]).unwrap();
-    let parsed: serde_json::Value = serde_json::from_str(&content).expect("valid JSON");
-    assert!(
-        parsed.is_array() || parsed.get("url").is_some() || parsed.get("title").is_some(),
-        "JSON should contain url/title fields or be an array: {}",
-        &content[..content.len().min(500)]
+    let content = std::fs::read_to_string(&json_files[0]).expect("read .json output");
+    crate::assert_snapshot_redacted(
+        "single_page_json_has_correct_structure",
+        t.out.path(),
+        content,
     );
 }
 
@@ -146,7 +148,12 @@ async fn single_page_text_format_creates_txt_file() {
         .success();
 
     let txt_files = t.find_files("txt");
-    assert!(!txt_files.is_empty(), "expected at least one .txt file");
+    let content = std::fs::read_to_string(&txt_files[0]).expect("read .txt output");
+    crate::assert_snapshot_redacted(
+        "single_page_text_format_creates_txt_file",
+        t.out.path(),
+        content,
+    );
 }
 
 #[tokio::test]
@@ -169,15 +176,8 @@ async fn single_page_text_is_plain_text() {
         .success();
 
     let txt_files = t.find_files("txt");
-    assert!(!txt_files.is_empty());
-
-    let content = std::fs::read_to_string(&txt_files[0]).unwrap();
-    // Text format should not contain HTML tags
-    assert!(
-        !content.contains("<html") && !content.contains("<body"),
-        "text format should not contain HTML tags: {}",
-        &content[..content.len().min(500)]
-    );
+    let content = std::fs::read_to_string(&txt_files[0]).expect("read .txt output");
+    crate::assert_snapshot_redacted("single_page_text_is_plain_text", t.out.path(), content);
 }
 
 // ---------------------------------------------------------------------------
@@ -207,12 +207,8 @@ async fn single_page_quiet_suppresses_stdout() {
         "expected success, got: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    // stdout should be empty or very short in quiet mode
+    // stdout should be empty or very short in quiet mode; snapshot it to lock the
+    // behavior so a regression (banner re-added, stderr leaking into stdout) fails.
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.trim().is_empty() || stdout.lines().count() <= 1,
-        "quiet mode should suppress stdout output, got {} lines: {}",
-        stdout.lines().count(),
-        &stdout[..stdout.len().min(300)]
-    );
+    crate::assert_snapshot_plain("single_page_quiet_suppresses_stdout", stdout);
 }
