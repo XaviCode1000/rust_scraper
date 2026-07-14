@@ -245,6 +245,25 @@ pub async fn scrape_with_config(
         });
     }
 
+    // H1 FIX: Extract title from original DOM BEFORE any transformation.
+    // This preserves the <title> tag even when --selector filters it out.
+    let original_title = {
+        let doc = scraper::Html::parse_document(&html);
+        doc.select(&scraper::Selector::parse("title").unwrap())
+            .next()
+            .map(|el| el.text().collect::<String>())
+            .unwrap_or_default()
+    };
+
+    // M7 FIX: Log selector feedback when --selector is active
+    if config.selector != "body" {
+        info!(
+            target: "scraper",
+            selector = %config.selector,
+            "Aplicando selector CSS manual"
+        );
+    }
+
     // Clean HTML boilerplate (scripts, styles, nav, sidebar, footer) BEFORE
     // Readability. This helps legible find the main content without being
     // confused by navigation elements, JavaScript bundles, and CSS.
@@ -280,7 +299,15 @@ pub async fn scrape_with_config(
             }
 
             results.push(ScrapedContent {
-                title: crate::application::resolve_title(&article.title, url),
+                // H1 FIX: Use title from original DOM, falling back to Readability's title
+                title: crate::application::resolve_title(
+                    if original_title.is_empty() {
+                        &article.title
+                    } else {
+                        &original_title
+                    },
+                    url,
+                ),
                 content: article.text_content,
                 url: ValidUrl::new(url.clone()),
                 excerpt: article.excerpt,
@@ -298,8 +325,11 @@ pub async fn scrape_with_config(
         },
         Err(e) => {
             warn!("⚠️  Readability failed for {}: {}", url, e);
-            let fallback_content =
+            // H2 FIX: Apply clean_html to fallback content to prevent JS/CSS leakage
+            let raw_fallback =
                 crate::infrastructure::scraper::fallback::extract_text(&extraction_html);
+            let fallback_content =
+                crate::infrastructure::converter::html_cleaner::clean_html(&raw_fallback);
             let assets = download_assets_if_enabled(&html, url, config, downloader).await?;
 
             // SPA detection: check if fallback content is minimal
@@ -318,10 +348,18 @@ pub async fn scrape_with_config(
             }
 
             results.push(ScrapedContent {
-                title: url
-                    .host_str()
-                    .ok_or_else(|| ScraperError::invalid_url(format!("URL missing host: {url}")))?
-                    .to_string(),
+                // H1 FIX: Use title from original DOM, falling back to host-based fallback
+                title: {
+                    let fallback_title = url.host_str().unwrap_or("unknown_host").to_string();
+                    crate::application::resolve_title(
+                        if original_title.is_empty() {
+                            &fallback_title
+                        } else {
+                            &original_title
+                        },
+                        url,
+                    )
+                },
                 content: fallback_content,
                 url: ValidUrl::new(url.clone()),
                 excerpt: None,
