@@ -7,15 +7,13 @@ mod cli;
 
 use assert_cmd::Command;
 
-/// Returns the binary name to test, based on active features.
-/// The full `webfang` binary requires both `ai` and `mcp`; the
-/// `rust_scraper_core` binary is always built (default features).
+/// Returns the binary name to test.
+///
+/// The only CLI binary in the workspace is `webfang` (crate: `rust_scraper_cli`).
+/// `rust_scraper_core` is a library-only crate and no longer ships its own
+/// binary, so every test exercises `webfang`.
 fn cli_bin() -> &'static str {
-    if cfg!(all(feature = "ai", feature = "mcp")) {
-        "webfang"
-    } else {
-        "rust_scraper_core"
-    }
+    "webfang"
 }
 
 /// Shared binary command builder for tests that don't need a mock server.
