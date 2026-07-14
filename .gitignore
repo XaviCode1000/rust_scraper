@@ -14,6 +14,8 @@ debug/
 coverage/
 test-flags/
 test-output/
+# insta draft snapshots (promote via `cargo insta accept`, never commit)
+*.snap.new
 *.gcno
 *.gcda
 **/mutants.out*/
