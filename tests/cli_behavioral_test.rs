@@ -14,7 +14,7 @@
 
 #[path = "common/cli_harness.rs"]
 mod common;
-use common::cmd;
+use common::{cmd, redact_nondeterministic};
 
 use predicates::prelude::*;
 use std::time::Duration;
@@ -22,6 +22,22 @@ use tempfile::TempDir;
 use walkdir::WalkDir;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
+
+/// Snapshot extracted content with deterministic redactions.
+///
+/// `redact_nondeterministic` collapses the temp-dir path, ANSI codes, ISO-8601
+/// timestamps (any `field: 2026-07-14T..` form), and dynamic wiremock ports.
+/// Obsidian output also emits a bare `date:` frontmatter field (date only, no
+/// time component) that the helper above cannot catch, so it is collapsed with
+/// an insta `add_filter` (the insta-native mechanism for free-text snapshots).
+fn assert_content_snapshot(name: &str, dir: &std::path::Path, content: &str) {
+    let redacted = redact_nondeterministic(dir, content);
+    let mut settings = insta::Settings::clone_current();
+    settings.add_filter(r"date: \d{4}-\d{2}-\d{2}", "date: [DATE]");
+    settings.bind(|| {
+        insta::assert_snapshot!(name, redacted);
+    });
+}
 
 // ============================================================================
 // 1. Exit codes
@@ -824,15 +840,7 @@ async fn test_obsidian_tags_appear_in_frontmatter() {
     );
 
     let content = std::fs::read_to_string(md_files[0].path()).unwrap();
-    assert!(
-        content.contains("tags:"),
-        "frontmatter should contain tags field"
-    );
-    assert!(
-        content.contains("scraped") && content.contains("web-dev") && content.contains("rust"),
-        "frontmatter should contain all specified tags: {}",
-        content
-    );
+    assert_content_snapshot("obsidian_tags_appear_in_frontmatter", output.path(), &content);
 }
 
 /// --obsidian-rich-metadata adds word count, reading time, and language to frontmatter.
@@ -882,12 +890,7 @@ async fn test_obsidian_rich_metadata_in_frontmatter() {
     );
 
     let content = std::fs::read_to_string(md_files[0].path()).unwrap();
-    // Rich metadata uses camelCase in the YAML frontmatter
-    assert!(
-        content.contains("wordCount:") || content.contains("readingTime:"),
-        "frontmatter should contain rich metadata fields (wordCount/readingTime): {}",
-        &content[..content.len().min(500)]
-    );
+    assert_content_snapshot("obsidian_rich_metadata_in_frontmatter", output.path(), &content);
 }
 
 /// --obsidian-wiki-links converts same-domain URLs to [[wiki-link]] syntax.
@@ -936,13 +939,7 @@ async fn test_obsidian_wiki_links_conversion() {
     );
 
     let content = std::fs::read_to_string(md_files[0].path()).unwrap();
-    // Wiki-links use [[page]] syntax — the exact conversion depends on the
-    // implementation, but the original absolute URL should be gone or transformed
-    assert!(
-        content.contains("[["),
-        "output should contain Obsidian [[wiki-link]] syntax: {}",
-        &content[..content.len().min(500)]
-    );
+    assert_content_snapshot("obsidian_wiki_links_conversion", output.path(), &content);
 }
 
 /// --obsidian-relative-assets rewrites downloaded asset paths as relative.
@@ -1065,16 +1062,7 @@ async fn test_selector_h3_extracts_only_h3() {
     assert!(!files.is_empty(), "output should contain at least one file");
 
     let content = std::fs::read_to_string(files[0].path()).unwrap();
-    assert!(
-        content.contains("Section One") || content.contains("Section Two"),
-        "output should contain h3 content: {}",
-        &content[..content.len().min(500)]
-    );
-    assert!(
-        !content.contains("Paragraph to exclude"),
-        "output should NOT contain paragraph text when --selector h3 is used: {}",
-        &content[..content.len().min(500)]
-    );
+    assert_content_snapshot("selector_h3_extracts_only_h3", output.path(), &content);
 }
 
 /// --selector 'table' extracts table content.
@@ -1117,11 +1105,7 @@ async fn test_selector_table_extracts_table() {
     assert!(!files.is_empty(), "output should contain at least one file");
 
     let content = std::fs::read_to_string(files[0].path()).unwrap();
-    assert!(
-        content.contains("Row1Col1"),
-        "output should contain table content: {}",
-        &content[..content.len().min(500)]
-    );
+    assert_content_snapshot("selector_table_extracts_table", output.path(), &content);
 }
 
 /// Without --selector (default "body"), full page content is extracted.
@@ -1160,11 +1144,7 @@ async fn test_no_selector_extracts_full_page() {
     assert!(!files.is_empty(), "output should contain at least one file");
 
     let content = std::fs::read_to_string(files[0].path()).unwrap();
-    assert!(
-        content.contains("Full Page Test") && content.contains("All content"),
-        "full page content should be extracted: {}",
-        &content[..content.len().min(500)]
-    );
+    assert_content_snapshot("no_selector_extracts_full_page", output.path(), &content);
 }
 
 // ============================================================================
