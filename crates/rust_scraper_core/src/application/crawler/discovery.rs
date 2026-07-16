@@ -384,8 +384,13 @@ pub async fn scrape_single_url_for_tui(
     let cleaned_html = crate::infrastructure::converter::html_cleaner::clean_html(&html);
 
     // Apply CSS selector extraction if a non-default selector is configured.
-    let extraction_html =
-        crate::application::scraper_service::extract_with_selector(&cleaned_html, &config.selector);
+    let extraction_html = crate::application::scraper_service::extract_with_selector(
+        &cleaned_html,
+        &config.selector,
+        None,
+    )
+    .as_html()
+    .to_owned();
 
     // Try Readability first, fallback to plain text extraction
     match readability::parse(&extraction_html, Some(url.as_str())) {
