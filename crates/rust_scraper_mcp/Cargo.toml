@@ -42,6 +42,8 @@ bytes = { workspace = true }
 tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 schemars = { workspace = true }
+insta = { workspace = true }
+scraper = { workspace = true }
 
 [lints.clippy]
 doc_markdown = "allow"
