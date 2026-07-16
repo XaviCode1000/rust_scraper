@@ -12,7 +12,10 @@
 //! - **async-concurrency-limit**: Uses buffer_unordered for concurrency control
 
 use crate::application::http_client::{HttpClientPort, HttpError};
-use crate::domain::{DownloadedAsset, ScrapedContent, ValidUrl};
+use crate::domain::{
+    DomInspectorPort, DownloadedAsset, ExtractResult, ScrapedContent, SelectorDiagnostic,
+    SelectorErrorKind, ValidUrl,
+};
 use crate::error::{Result, ScraperError};
 use crate::infrastructure::http::waf_engine::WafInspector;
 use crate::ScraperConfig;
@@ -53,11 +56,21 @@ const MIN_CONTENT_CHARS: usize = 50;
 ///
 /// When `selector` is not "body", parses the HTML and extracts all elements
 /// matching the selector. Returns the outer HTML of matched elements wrapped
-/// in a `<div>` for Readability processing. If no elements match, returns
-/// the original HTML unchanged.
-pub(crate) fn extract_with_selector(html: &str, selector: &str) -> String {
+/// in a `<div>` for Readability processing. If no elements match or the
+/// selector is invalid, returns [`ExtractResult::Fallback`] with the full
+/// HTML and an optional diagnostic (when an inspector is provided).
+///
+/// # Arguments
+/// * `html` - The HTML document to extract from
+/// * `selector` - CSS selector string (use `"body"` to skip extraction)
+/// * `inspector` - Optional DOM inspector for diagnostics on failure paths
+pub(crate) fn extract_with_selector(
+    html: &str,
+    selector: &str,
+    inspector: Option<&dyn DomInspectorPort>,
+) -> ExtractResult {
     if selector == "body" {
-        return html.to_owned();
+        return ExtractResult::Matched(html.to_owned());
     }
 
     let document = scraper::Html::parse_document(html);
@@ -68,7 +81,15 @@ pub(crate) fn extract_with_selector(html: &str, selector: &str) -> String {
                 "Invalid CSS selector '{}': {}, falling back to full HTML",
                 selector, e
             );
-            return html.to_owned();
+            return ExtractResult::Fallback {
+                html: html.to_owned(),
+                diagnostic: build_diagnostic(
+                    inspector,
+                    &document,
+                    SelectorErrorKind::InvalidSelector(e.to_string()),
+                    selector,
+                ),
+            };
         },
     };
 
@@ -79,7 +100,15 @@ pub(crate) fn extract_with_selector(html: &str, selector: &str) -> String {
             "CSS selector '{}' matched 0 elements, falling back to full HTML",
             selector
         );
-        return html.to_owned();
+        return ExtractResult::Fallback {
+            html: html.to_owned(),
+            diagnostic: build_diagnostic(
+                inspector,
+                &document,
+                SelectorErrorKind::ZeroMatches,
+                selector,
+            ),
+        };
     }
 
     debug!(
@@ -88,10 +117,29 @@ pub(crate) fn extract_with_selector(html: &str, selector: &str) -> String {
         matched.len()
     );
 
-    format!(
+    ExtractResult::Matched(format!(
         "<div id=\"selector-extracted\">{}</div>",
         matched.join("\n")
-    )
+    ))
+}
+
+/// Build a [`SelectorDiagnostic`] using the inspector, or return `None` if no
+/// inspector was provided.
+///
+/// This helper calls `inspector.inspect()` for the DOM structure report and
+/// `inspector.suggest()` for closest-match selector suggestions. It is only
+/// called on the failure path (0 matches or invalid selector).
+fn build_diagnostic(
+    inspector: Option<&dyn DomInspectorPort>,
+    document: &scraper::Html,
+    error_kind: SelectorErrorKind,
+    failed_selector: &str,
+) -> Option<SelectorDiagnostic> {
+    inspector.map(|insp| SelectorDiagnostic {
+        error_kind,
+        report: insp.inspect(document),
+        suggestions: insp.suggest(document, failed_selector),
+    })
 }
 
 /// Result of SPA content detection analysis.
@@ -276,7 +324,9 @@ pub async fn scrape_with_config(
     );
 
     // Apply CSS selector extraction if a non-default selector is configured.
-    let extraction_html = extract_with_selector(&cleaned_html, &config.selector);
+    let extraction_html = extract_with_selector(&cleaned_html, &config.selector, None)
+        .as_html()
+        .to_owned();
 
     // Try Readability first, fallback to plain text extraction
     match crate::infrastructure::scraper::readability::parse(&extraction_html, Some(url.as_str())) {
@@ -971,9 +1021,11 @@ mod tests {
     #[test]
     fn test_extract_with_selector_body_passthrough() {
         let html = "<html><body><p>Hello</p></body></html>";
-        let result = extract_with_selector(html, "body");
+        let result = extract_with_selector(html, "body", None);
+        assert!(result.is_matched(), "selector 'body' should return Matched");
         assert_eq!(
-            result, html,
+            result.as_html(),
+            html,
             "selector 'body' should return original HTML unchanged"
         );
     }
@@ -985,17 +1037,18 @@ mod tests {
             <div class="main"><p>Main content</p></div>
             <div class="sidebar"><p>Sidebar</p></div>
         </body></html>"#;
-        let result = extract_with_selector(html, "div.main");
+        let result = extract_with_selector(html, "div.main", None);
+        assert!(result.is_matched(), "should return Matched");
         assert!(
-            result.contains("Main content"),
+            result.as_html().contains("Main content"),
             "should contain matched element content"
         );
         assert!(
-            result.contains("selector-extracted"),
+            result.as_html().contains("selector-extracted"),
             "should wrap in selector-extracted div"
         );
         assert!(
-            !result.contains("Sidebar"),
+            !result.as_html().contains("Sidebar"),
             "should NOT contain unmatched element content"
         );
     }
@@ -1004,17 +1057,27 @@ mod tests {
     #[test]
     fn test_extract_with_selector_no_matches_falls_back() {
         let html = "<html><body><p>Hello</p></body></html>";
-        let result = extract_with_selector(html, "article");
-        assert_eq!(result, html, "no matches should fall back to original HTML");
+        let result = extract_with_selector(html, "article", None);
+        assert!(!result.is_matched(), "no matches should return Fallback");
+        assert_eq!(
+            result.as_html(),
+            html,
+            "no matches should fall back to original HTML"
+        );
     }
 
     #[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
     #[test]
     fn test_extract_with_selector_invalid_syntax_falls_back() {
         let html = "<html><body><p>Hello</p></body></html>";
-        let result = extract_with_selector(html, ">>>invalid");
+        let result = extract_with_selector(html, ">>>invalid", None);
+        assert!(
+            !result.is_matched(),
+            "invalid selector syntax should return Fallback"
+        );
         assert_eq!(
-            result, html,
+            result.as_html(),
+            html,
             "invalid selector syntax should fall back to original HTML"
         );
     }
@@ -1027,10 +1090,11 @@ mod tests {
             <li>Item 2</li>
             <li>Item 3</li>
         </body></html>"#;
-        let result = extract_with_selector(html, "li");
-        assert!(result.contains("Item 1"));
-        assert!(result.contains("Item 2"));
-        assert!(result.contains("Item 3"));
+        let result = extract_with_selector(html, "li", None);
+        assert!(result.is_matched(), "should return Matched");
+        assert!(result.as_html().contains("Item 1"));
+        assert!(result.as_html().contains("Item 2"));
+        assert!(result.as_html().contains("Item 3"));
     }
 
     #[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
@@ -1040,9 +1104,122 @@ mod tests {
             <div id="target"><p>Targeted</p></div>
             <div id="other"><p>Other</p></div>
         </body></html>"#;
-        let result = extract_with_selector(html, "#target");
-        assert!(result.contains("Targeted"));
-        assert!(!result.contains("Other"));
+        let result = extract_with_selector(html, "#target", None);
+        assert!(result.is_matched(), "should return Matched");
+        assert!(result.as_html().contains("Targeted"));
+        assert!(!result.as_html().contains("Other"));
+    }
+
+    // ---------------------------------------------------------------------
+    // New tests: ExtractResult diagnostic behavior with/without inspector
+    // ---------------------------------------------------------------------
+
+    #[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
+    #[test]
+    fn test_extract_with_selector_matched() {
+        let html = r#"<html><body>
+            <article><p>Article content</p></article>
+        </body></html>"#;
+        let result = extract_with_selector(html, "article", None);
+        assert!(
+            result.is_matched(),
+            "valid selector with matches should return Matched"
+        );
+        assert!(
+            result.as_html().contains("Article content"),
+            "matched HTML should contain the article content"
+        );
+        assert!(
+            result.as_html().contains("selector-extracted"),
+            "matched HTML should be wrapped in selector-extracted div"
+        );
+    }
+
+    #[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
+    #[test]
+    fn test_extract_with_selector_zero_matches_with_inspector() {
+        use crate::infrastructure::scraper::dom_inspector::DefaultDomInspector;
+
+        let html = r#"<html><body>
+            <div class="main"><p>Main content</p></div>
+        </body></html>"#;
+        let inspector = DefaultDomInspector::new();
+        let result = extract_with_selector(
+            html,
+            ".nonexistent",
+            Some(&inspector as &dyn DomInspectorPort),
+        );
+        assert!(!result.is_matched(), "zero matches should return Fallback");
+        match &result {
+            ExtractResult::Fallback {
+                html: _,
+                diagnostic,
+            } => {
+                let diag = diagnostic
+                    .as_ref()
+                    .expect("diagnostic should be Some when inspector is provided");
+                assert_eq!(
+                    diag.error_kind,
+                    SelectorErrorKind::ZeroMatches,
+                    "error kind should be ZeroMatches"
+                );
+                assert!(
+                    !diag.report.tag_counts.is_empty(),
+                    "report should contain tag counts from the DOM"
+                );
+            },
+            ExtractResult::Matched(_) => panic!("expected Fallback, got Matched"),
+        }
+    }
+
+    #[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
+    #[test]
+    fn test_extract_with_selector_zero_matches_no_inspector() {
+        let html = "<html><body><p>Hello</p></body></html>";
+        let result = extract_with_selector(html, "article", None);
+        assert!(!result.is_matched(), "zero matches should return Fallback");
+        match &result {
+            ExtractResult::Fallback {
+                html: _,
+                diagnostic,
+            } => {
+                assert!(
+                    diagnostic.is_none(),
+                    "diagnostic should be None when no inspector is provided"
+                );
+            },
+            ExtractResult::Matched(_) => panic!("expected Fallback, got Matched"),
+        }
+    }
+
+    #[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
+    #[test]
+    fn test_extract_with_selector_invalid_syntax() {
+        use crate::infrastructure::scraper::dom_inspector::DefaultDomInspector;
+
+        let html = "<html><body><p>Hello</p></body></html>";
+        let inspector = DefaultDomInspector::new();
+        let result =
+            extract_with_selector(html, "div >>> p", Some(&inspector as &dyn DomInspectorPort));
+        assert!(
+            !result.is_matched(),
+            "invalid selector syntax should return Fallback"
+        );
+        match &result {
+            ExtractResult::Fallback {
+                html: _,
+                diagnostic,
+            } => {
+                let diag = diagnostic
+                    .as_ref()
+                    .expect("diagnostic should be Some when inspector is provided");
+                assert!(
+                    matches!(&diag.error_kind, SelectorErrorKind::InvalidSelector(_)),
+                    "error kind should be InvalidSelector"
+                );
+            },
+            ExtractResult::Matched(_) => panic!("expected Fallback, got Matched"),
+        }
     }
 
     // =====================================================================
