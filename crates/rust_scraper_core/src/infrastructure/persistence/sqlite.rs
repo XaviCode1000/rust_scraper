@@ -296,8 +296,12 @@ impl VectorRepository for SqliteVectorRepository {
                 ScraperError::persistence(format!("obtener conexión del pool: {e}"))
             })?;
             conn.interact(move |c| {
+                // INSERT OR IGNORE: the chunks table enforces uniqueness via
+                // `id TEXT PRIMARY KEY`. Under concurrent batch processing a
+                // TOCTOU race can occur between the dedup check and the insert;
+                // OR IGNORE makes the insert idempotent instead of erroring.
                 c.execute(
-                    "INSERT INTO chunks \
+                    "INSERT OR IGNORE INTO chunks \
                      (id, resource_url, chunk_index, content, embedding_vector, created_at) \
                      VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))",
                     rusqlite::params![id, resource_url, chunk_index, content, blob.as_deref()],

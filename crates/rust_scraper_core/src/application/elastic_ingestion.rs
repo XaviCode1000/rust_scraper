@@ -23,9 +23,14 @@
 //!   `ScraperError::Ingestion`. No sleep/backoff.
 //! - Network err → `tracing::warn!`, `PermitGuard` drops (RAII), propagate.
 //!   Retries are delegated to the top-level URL queue (future work).
+//!
+//! # Batch processing (Issue #124)
+//!
+//! [`ingest_batch`](ElasticIngestion::ingest_batch) processes multiple URLs
+//! concurrently via `buffer_unordered`, which polls futures on the current
+//! task (cooperative concurrency) — no `Arc` or task spawning needed.
 
 use std::fmt;
-use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
 use tracing::{error, info, warn};
@@ -50,7 +55,7 @@ use crate::infrastructure::crawler::resource_downloader::{DownloadedResource, Re
 pub struct ElasticIngestion<R: VectorRepository + Send + Sync> {
     downloader: ResourceDownloader,
     bridge: CpuBridge,
-    repository: Arc<R>,
+    repository: R,
     config: AutotuningConfig,
     /// Optional ONNX semantic cleaner (frozen Decision 5). When `Some`, the
     /// orchestrator runs the cleaner's async `clean()` (HTML chunking +
@@ -69,16 +74,15 @@ pub struct ElasticIngestion<R: VectorRepository + Send + Sync> {
 impl<R: VectorRepository + Send + Sync> ElasticIngestion<R> {
     /// Wire the four pipeline components (frozen Decision 1: monomorphization).
     ///
-    /// The repository is wrapped in `Arc<R>` so it can be shared across
-    /// concurrent futures in [`ingest_batch`](Self::ingest_batch). The blanket
-    /// `impl<T: VectorRepository + ?Sized> VectorRepository for Arc<T>`
-    /// (see `domain/repository.rs`) delegates all trait methods through the
-    /// `Arc` deref, so [`run`](Self::run) needs no changes.
+    /// The repository is generic and monomorphized at compile time. Since
+    /// [`ingest_batch`](Self::ingest_batch) uses `buffer_unordered`
+    /// (cooperative concurrency on the current task), the repository is
+    /// borrowed by `&self` across all futures — no `Arc` sharing is needed.
     #[must_use]
     pub fn new(
         downloader: ResourceDownloader,
         bridge: CpuBridge,
-        repository: Arc<R>,
+        repository: R,
         config: AutotuningConfig,
     ) -> Self {
         Self {
@@ -204,15 +208,18 @@ impl<R: VectorRepository + Send + Sync> ElasticIngestion<R> {
     ///
     /// # Results
     ///
-    /// Returns a [`BatchResult`] aggregating successes, errors, and panics.
-    /// Inspect its fields to decide whether the batch met your quality bar.
-    pub async fn ingest_batch(&self, urls: &[String]) -> BatchResult {
+    /// Returns `Ok(BatchResult)` aggregating successes, errors, and panics.
+    /// Individual URL failures are captured in [`BatchResult::errors`];
+    /// systemic failures (e.g. infrastructure collapse) return
+    /// `Err(ScraperError)`. Inspect the fields to decide whether the batch
+    /// met your quality bar.
+    pub async fn ingest_batch(&self, urls: &[String]) -> Result<BatchResult, ScraperError> {
         use futures::stream::{self, StreamExt};
         use futures::FutureExt;
         use std::panic::AssertUnwindSafe;
 
         if urls.is_empty() {
-            return BatchResult::default();
+            return Ok(BatchResult::default());
         }
 
         info!(
@@ -249,7 +256,7 @@ impl<R: VectorRepository + Send + Sync> ElasticIngestion<R> {
             "lote completado"
         );
 
-        batch
+        Ok(batch)
     }
 
     /// Dispatch the downloaded bytes through the CpuBridge (sync lol_html text
@@ -493,7 +500,7 @@ mod tests {
                 cpu_cores: 2,
                 ram_budget_bytes: 1 << 20,
             };
-            ElasticIngestion::new(downloader, bridge, Arc::new(repo), config)
+            ElasticIngestion::new(downloader, bridge, repo, config)
         }
 
         async fn serve_html(body: &str) -> (MockServer, String) {
@@ -600,7 +607,7 @@ mod tests {
             let (_s3, u3) = serve_html("<main><p>content gamma</p></main>").await;
 
             let urls = vec![u1, u2, u3];
-            let result = orc.ingest_batch(&urls).await;
+            let result = orc.ingest_batch(&urls).await.expect("batch should succeed");
 
             assert_eq!(result.success, 3, "all three URLs should succeed");
             assert!(result.errors.is_empty(), "no errors expected");
@@ -630,7 +637,7 @@ mod tests {
             let bad_url = format!("http://127.0.0.1:{bad_port}/");
 
             let urls = vec![u1, bad_url, u2];
-            let result = orc.ingest_batch(&urls).await;
+            let result = orc.ingest_batch(&urls).await.expect("batch should succeed");
 
             assert_eq!(result.success, 2, "two URLs should succeed");
             assert_eq!(result.errors.len(), 1, "one URL should error");
@@ -643,7 +650,7 @@ mod tests {
             let orc = make_orchestrator(repo.clone());
 
             let urls: Vec<String> = Vec::new();
-            let result = orc.ingest_batch(&urls).await;
+            let result = orc.ingest_batch(&urls).await.expect("batch should succeed");
 
             assert_eq!(result.success, 0, "no successes on empty input");
             assert!(result.errors.is_empty(), "no errors on empty input");
@@ -664,7 +671,7 @@ mod tests {
 
             // First batch: persists the resource.
             let urls = vec![url.clone()];
-            let first = orc.ingest_batch(&urls).await;
+            let first = orc.ingest_batch(&urls).await.expect("batch should succeed");
             assert_eq!(first.success, 1, "first ingestion should succeed");
             assert!(first.errors.is_empty(), "no errors on first run");
 
@@ -679,7 +686,7 @@ mod tests {
             );
 
             // Second batch: same URL — dedup short-circuit returns Ok(()).
-            let second = orc.ingest_batch(&urls).await;
+            let second = orc.ingest_batch(&urls).await.expect("batch should succeed");
             assert_eq!(second.success, 1, "dedup should still count as success");
             assert!(second.errors.is_empty(), "no errors on dedup run");
 
