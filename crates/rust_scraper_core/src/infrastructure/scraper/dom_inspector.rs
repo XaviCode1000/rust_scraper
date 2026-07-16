@@ -171,14 +171,15 @@ impl DomInspectorPort for DefaultDomInspector {
             }
         }
 
-        // Sort common_classes descending by frequency, top 10.
+        // Sort common_classes descending by frequency, then alphabetically for
+        // deterministic output when frequencies are tied. Top 10.
         let mut common_classes: Vec<(String, usize)> = class_counts.into_iter().collect();
-        common_classes.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+        common_classes.sort_unstable_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         common_classes.truncate(10);
 
-        // Sort common_ids descending by frequency, top 5.
+        // Sort common_ids descending by frequency, then alphabetically. Top 5.
         let mut common_ids: Vec<(String, usize)> = id_counts.into_iter().collect();
-        common_ids.sort_unstable_by(|a, b| b.1.cmp(&a.1));
+        common_ids.sort_unstable_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         common_ids.truncate(5);
 
         DomStructureReport {
