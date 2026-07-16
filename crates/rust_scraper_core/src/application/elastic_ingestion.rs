@@ -23,6 +23,14 @@
 //!   `ScraperError::Ingestion`. No sleep/backoff.
 //! - Network err → `tracing::warn!`, `PermitGuard` drops (RAII), propagate.
 //!   Retries are delegated to the top-level URL queue (future work).
+//!
+//! # Batch processing (Issue #124)
+//!
+//! [`ingest_batch`](ElasticIngestion::ingest_batch) processes multiple URLs
+//! concurrently via `buffer_unordered`, which polls futures on the current
+//! task (cooperative concurrency) — no `Arc` or task spawning needed.
+
+use std::fmt;
 
 use sha2::{Digest, Sha256};
 use tracing::{error, info, warn};
@@ -66,9 +74,10 @@ pub struct ElasticIngestion<R: VectorRepository + Send + Sync> {
 impl<R: VectorRepository + Send + Sync> ElasticIngestion<R> {
     /// Wire the four pipeline components (frozen Decision 1: monomorphization).
     ///
-    /// The repository is generic and monomorphized at compile time — the repo's
-    /// native `async fn` methods are awaited inline on the orchestrator's own
-    /// task, avoiding the `dyn`/`Send` future problem without `Box<dyn Future>`.
+    /// The repository is generic and monomorphized at compile time. Since
+    /// [`ingest_batch`](Self::ingest_batch) uses `buffer_unordered`
+    /// (cooperative concurrency on the current task), the repository is
+    /// borrowed by `&self` across all futures — no `Arc` sharing is needed.
     #[must_use]
     pub fn new(
         downloader: ResourceDownloader,
@@ -186,6 +195,70 @@ impl<R: VectorRepository + Send + Sync> ElasticIngestion<R> {
         Ok(())
     }
 
+    /// Process multiple URLs concurrently using `buffer_unordered` (Issue #124).
+    ///
+    /// Concurrency is bounded by `self.config.cpu_cores` — at most that many
+    /// futures are polled simultaneously, which IS the backpressure mechanism
+    /// (no unbounded queue growth). Uses a collect-all error strategy: every URL
+    /// is attempted regardless of individual failures.
+    ///
+    /// Panics from individual futures are caught per-future via
+    /// `catch_unwind` + `AssertUnwindSafe` and counted separately in
+    /// [`BatchResult::panics`].
+    ///
+    /// # Results
+    ///
+    /// Returns `Ok(BatchResult)` aggregating successes, errors, and panics.
+    /// Individual URL failures are captured in [`BatchResult::errors`];
+    /// systemic failures (e.g. infrastructure collapse) return
+    /// `Err(ScraperError)`. Inspect the fields to decide whether the batch
+    /// met your quality bar.
+    pub async fn ingest_batch(&self, urls: &[String]) -> Result<BatchResult, ScraperError> {
+        use futures::stream::{self, StreamExt};
+        use futures::FutureExt;
+        use std::panic::AssertUnwindSafe;
+
+        if urls.is_empty() {
+            return Ok(BatchResult::default());
+        }
+
+        info!(
+            count = urls.len(),
+            concurrency = self.config.cpu_cores,
+            "iniciando ingestión por lote"
+        );
+
+        let results = stream::iter(urls.iter().cloned())
+            .map(|url| AssertUnwindSafe(async move { self.run(&url).await }).catch_unwind())
+            .buffer_unordered(self.config.cpu_cores)
+            .collect::<Vec<_>>()
+            .await;
+
+        let mut batch = BatchResult::default();
+        for result in results {
+            match result {
+                Ok(Ok(())) => batch.success += 1,
+                Ok(Err(e)) => {
+                    warn!(error = %e, "ingestión individual falló en lote");
+                    batch.errors.push(e);
+                },
+                Err(_) => {
+                    error!("pánico durante ingestión individual en lote");
+                    batch.panics += 1;
+                },
+            }
+        }
+
+        info!(
+            success = batch.success,
+            errors = batch.errors.len(),
+            panics = batch.panics,
+            "lote completado"
+        );
+
+        Ok(batch)
+    }
+
     /// Dispatch the downloaded bytes through the CpuBridge (sync lol_html text
     /// extraction, `embedding = None`). Shared by both the `ai`-without-cleaner
     /// path and the no-`ai` build.
@@ -235,6 +308,34 @@ impl<R: VectorRepository + Send + Sync> ElasticIngestion<R> {
                 embedding: dc.embeddings,
             })
             .collect())
+    }
+}
+
+/// Aggregate result of a batch ingestion run via
+/// [`ElasticIngestion::ingest_batch`].
+///
+/// Collects successes, errors, and panics from concurrent URL processing.
+/// Uses a collect-all strategy (not fail-fast): every URL is attempted
+/// regardless of individual failures.
+#[derive(Debug, Default)]
+pub struct BatchResult {
+    /// Number of URLs successfully ingested (including dedup short-circuits).
+    pub success: usize,
+    /// Errors encountered during ingestion (network, CPU, persistence).
+    pub errors: Vec<ScraperError>,
+    /// Number of futures that panicked during processing.
+    pub panics: usize,
+}
+
+impl fmt::Display for BatchResult {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "lote completado: {} éxitos, {} errores, {} pánicos",
+            self.success,
+            self.errors.len(),
+            self.panics
+        )
     }
 }
 
@@ -493,6 +594,110 @@ mod tests {
             assert!(
                 state.resources.is_empty() && state.chunks.is_empty(),
                 "ningún recurso/chunk debe persistirse tras un fallo de red"
+            );
+        }
+
+        #[tokio::test]
+        async fn test_ingest_batch_all_success() {
+            let repo = InMemoryRepo::default();
+            let orc = make_orchestrator(repo.clone());
+
+            let (_s1, u1) = serve_html("<main><p>content alpha</p></main>").await;
+            let (_s2, u2) = serve_html("<main><p>content beta</p></main>").await;
+            let (_s3, u3) = serve_html("<main><p>content gamma</p></main>").await;
+
+            let urls = vec![u1, u2, u3];
+            let result = orc.ingest_batch(&urls).await.expect("batch should succeed");
+
+            assert_eq!(result.success, 3, "all three URLs should succeed");
+            assert!(result.errors.is_empty(), "no errors expected");
+            assert_eq!(result.panics, 0, "no panics expected");
+
+            let state = repo.state.lock().expect("repo mutex poisoned");
+            assert_eq!(
+                state.resources.len(),
+                3,
+                "three distinct resources persisted"
+            );
+        }
+
+        #[tokio::test]
+        async fn test_ingest_batch_mixed_results() {
+            let repo = InMemoryRepo::default();
+            let orc = make_orchestrator(repo.clone());
+
+            let (_s1, u1) = serve_html("<main><p>good content one</p></main>").await;
+            let (_s2, u2) = serve_html("<main><p>good content two</p></main>").await;
+
+            // A URL that will fail with a connection-refused error.
+            let bad_port = {
+                let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+                listener.local_addr().expect("addr").port()
+            };
+            let bad_url = format!("http://127.0.0.1:{bad_port}/");
+
+            let urls = vec![u1, bad_url, u2];
+            let result = orc.ingest_batch(&urls).await.expect("batch should succeed");
+
+            assert_eq!(result.success, 2, "two URLs should succeed");
+            assert_eq!(result.errors.len(), 1, "one URL should error");
+            assert_eq!(result.panics, 0, "no panics expected");
+        }
+
+        #[tokio::test]
+        async fn test_ingest_batch_empty_input() {
+            let repo = InMemoryRepo::default();
+            let orc = make_orchestrator(repo.clone());
+
+            let urls: Vec<String> = Vec::new();
+            let result = orc.ingest_batch(&urls).await.expect("batch should succeed");
+
+            assert_eq!(result.success, 0, "no successes on empty input");
+            assert!(result.errors.is_empty(), "no errors on empty input");
+            assert_eq!(result.panics, 0, "no panics on empty input");
+
+            let state = repo.state.lock().expect("repo mutex poisoned");
+            assert!(
+                state.resources.is_empty() && state.chunks.is_empty(),
+                "nothing persisted on empty input"
+            );
+        }
+
+        #[tokio::test]
+        async fn test_ingest_batch_dedup() {
+            let repo = InMemoryRepo::default();
+            let orc = make_orchestrator(repo.clone());
+            let (_server, url) = serve_html("<main><p>unique batch dedup content</p></main>").await;
+
+            // First batch: persists the resource.
+            let urls = vec![url.clone()];
+            let first = orc.ingest_batch(&urls).await.expect("batch should succeed");
+            assert_eq!(first.success, 1, "first ingestion should succeed");
+            assert!(first.errors.is_empty(), "no errors on first run");
+
+            let after_first = {
+                let s = repo.state.lock().expect("poisoned");
+                (s.resources.len(), s.chunks.len())
+            };
+            assert_eq!(
+                after_first,
+                (1, 1),
+                "one resource + one chunk after first run"
+            );
+
+            // Second batch: same URL — dedup short-circuit returns Ok(()).
+            let second = orc.ingest_batch(&urls).await.expect("batch should succeed");
+            assert_eq!(second.success, 1, "dedup should still count as success");
+            assert!(second.errors.is_empty(), "no errors on dedup run");
+
+            let after_second = {
+                let s = repo.state.lock().expect("poisoned");
+                (s.resources.len(), s.chunks.len())
+            };
+            assert_eq!(
+                after_second,
+                (1, 1),
+                "dedup must prevent duplicate resource and chunk rows"
             );
         }
     }
