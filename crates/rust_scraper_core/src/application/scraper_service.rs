@@ -73,6 +73,26 @@ pub(crate) fn extract_with_selector(
         return ExtractResult::Matched(html.to_owned());
     }
 
+    // Early check: empty or whitespace-only HTML. `scraper::Html::parse_document("")`
+    // creates 3 implicit elements (html, head, body), so without this check the
+    // selector matching would fall through to ZeroMatches instead of
+    // EmptyDocument — leaving SelectorErrorKind::EmptyDocument as dead code.
+    if html.trim().is_empty() {
+        warn!(
+            "HTML document is empty or whitespace-only, falling back with EmptyDocument diagnostic"
+        );
+        let document = scraper::Html::parse_document(html);
+        return ExtractResult::Fallback {
+            html: html.to_owned(),
+            diagnostic: build_diagnostic(
+                inspector,
+                &document,
+                SelectorErrorKind::EmptyDocument,
+                selector,
+            ),
+        };
+    }
+
     let document = scraper::Html::parse_document(html);
     let sel = match scraper::Selector::parse(selector) {
         Ok(s) => s,
@@ -1282,6 +1302,96 @@ mod tests {
             },
             ExtractResult::Matched(_) => panic!("expected Fallback, got Matched"),
         }
+    }
+
+    // =====================================================================
+    // Empty HTML document → EmptyDocument diagnostic
+    // =====================================================================
+
+    #[cfg_attr(miri, ignore)] // scraper::Selector drop triggers servo_arc Tree-Borrows UB under Miri
+    #[test]
+    fn test_extract_with_selector_empty_html() {
+        use crate::infrastructure::scraper::dom_inspector::DefaultDomInspector;
+
+        let inspector = DefaultDomInspector::new();
+
+        // --- Truly empty HTML ---
+        let result =
+            extract_with_selector("", "article", Some(&inspector as &dyn DomInspectorPort));
+        assert!(
+            !result.is_matched(),
+            "empty HTML should return Fallback, not Matched"
+        );
+        match &result {
+            ExtractResult::Fallback { html, diagnostic } => {
+                assert!(
+                    html.is_empty(),
+                    "fallback HTML should be the original empty string"
+                );
+                let diag = diagnostic
+                    .as_ref()
+                    .expect("diagnostic should be Some when inspector is provided");
+                assert_eq!(
+                    diag.error_kind,
+                    SelectorErrorKind::EmptyDocument,
+                    "empty HTML should produce EmptyDocument, not ZeroMatches"
+                );
+            },
+            ExtractResult::Matched(_) => panic!("expected Fallback, got Matched"),
+        }
+
+        // --- Whitespace-only HTML ---
+        let result = extract_with_selector(
+            "   \n\t  ",
+            "article",
+            Some(&inspector as &dyn DomInspectorPort),
+        );
+        assert!(
+            !result.is_matched(),
+            "whitespace-only HTML should return Fallback"
+        );
+        match &result {
+            ExtractResult::Fallback { diagnostic, .. } => {
+                let diag = diagnostic
+                    .as_ref()
+                    .expect("diagnostic should be Some when inspector is provided");
+                assert_eq!(
+                    diag.error_kind,
+                    SelectorErrorKind::EmptyDocument,
+                    "whitespace-only HTML should produce EmptyDocument"
+                );
+            },
+            ExtractResult::Matched(_) => panic!("expected Fallback, got Matched"),
+        }
+
+        // --- Empty HTML without inspector → diagnostic is None ---
+        let result = extract_with_selector("", "article", None);
+        assert!(
+            !result.is_matched(),
+            "empty HTML without inspector should still return Fallback"
+        );
+        match &result {
+            ExtractResult::Fallback { html, diagnostic } => {
+                assert!(html.is_empty(), "fallback HTML should be empty");
+                assert!(
+                    diagnostic.is_none(),
+                    "diagnostic should be None when no inspector is provided"
+                );
+            },
+            ExtractResult::Matched(_) => panic!("expected Fallback, got Matched"),
+        }
+
+        // --- Empty HTML with body selector → backward compat (returns Matched) ---
+        let result = extract_with_selector("", "body", None);
+        assert!(
+            result.is_matched(),
+            "body selector on empty HTML should return Matched (backward compat)"
+        );
+        assert_eq!(
+            result.as_html(),
+            "",
+            "body selector on empty HTML should return the empty string unchanged"
+        );
     }
 
     // =====================================================================
