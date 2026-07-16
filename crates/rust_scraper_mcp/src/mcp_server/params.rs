@@ -21,6 +21,13 @@ pub struct ScrapeWithOptionsParams {
     pub download_images: Option<bool>,
     /// Download documents if found (default: false)
     pub download_documents: Option<bool>,
+    /// CSS selector for content extraction (default: "body").
+    ///
+    /// When provided, the scraper extracts only the HTML matching this
+    /// selector. If the selector matches zero elements or is invalid, the
+    /// full page HTML is returned with a diagnostic explaining the failure.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selector: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema, Debug)]

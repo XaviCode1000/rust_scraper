@@ -7,8 +7,10 @@
 
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
+
 /// Error kind for CSS selector diagnostics.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SelectorErrorKind {
     /// Selector matched 0 elements in the DOM.
     ZeroMatches,
@@ -19,7 +21,7 @@ pub enum SelectorErrorKind {
 }
 
 /// A closest-match selector suggestion computed via Jaro-Winkler similarity.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SelectorSuggestion {
     /// The suggested selector text (e.g. `.main-content`, `#article`, `article`).
     pub selector: String,
@@ -28,7 +30,7 @@ pub struct SelectorSuggestion {
 }
 
 /// Structural report of a DOM, used for selector diagnostics.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct DomStructureReport {
     /// Total element count (capped at the inspector's node-count cap).
     pub element_count: usize,
@@ -45,7 +47,7 @@ pub struct DomStructureReport {
 }
 
 /// Diagnostic information for a failed CSS selector.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SelectorDiagnostic {
     /// What went wrong.
     pub error_kind: SelectorErrorKind,
@@ -56,7 +58,7 @@ pub struct SelectorDiagnostic {
 }
 
 /// Result of CSS selector extraction.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ExtractResult {
     /// Selector matched one or more elements.
     Matched(String),
