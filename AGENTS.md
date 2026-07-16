@@ -146,28 +146,75 @@ gh workflow run ci.yml --ref $(git branch --show-current) && gh run watch
 
 ## 🏗️ Architecture (tribal knowledge — AI can't deduce this)
 
-**Dependency direction:** `infrastructure` → `adapters` → `application` → `domain` (inward only)
+### Workspace structure (5 crates)
 
-**Error chain:** `[CLI] → ScraperError :: [domain] CrawlError :: [infra] HttpError/WafError/ParseError`
+```
+rust_scraper/                          # virtual workspace root (no [package])
+├── crates/
+│   ├── rust_scraper_core/             # domain + application + infrastructure
+│   ├── rust_scraper_ai/               # ONNX embeddings, semantic cleaning
+│   ├── rust_scraper_tui/              # ratatui TUI selector
+│   ├── rust_scraper_mcp/              # MCP server (34 tools)
+│   └── rust_scraper_cli/              # CLI binary (webfang)
+```
 
-**HTTP client: ALWAYS `wreq`**, never `reqwest` — TLS fingerprint impersonation for WAF evasion.
+**Inter-crate dependency direction (ENFORCED):**
+```
+cli ──→ tui ──→ core ←── ai
+cli ──→ mcp ──→ core
+cli ──────────→ core
+```
 
-**Async rules:**
+**Intra-crate layer direction (Clean Architecture):**
+`infrastructure` → `adapters` → `application` → `domain` (inward only)
+
+Domain defines ports (traits) → Infrastructure implements them → Application orchestrates.
+
+### Error stratification
+
+```
+[CLI] → ScraperError : [infra] HttpError/WafError/ParseError
+                ↓
+        DomainError (6 variants)
+        AppError (6 variants)
+        InfraError (13 variants)
+```
+
+Dual wrapping pattern: infra errors wrap into domain errors via `From` impls.
+
+### MCP server — canonical location
+
+**`crates/rust_scraper_mcp/src/mcp_server/`** is the ONLY canonical location.
+The root `src/` was deleted (PR #163 cleanup). Never create code in `src/`.
+
+MCP tools: 34 tools across 8 categories (scraping, content, export, URL utils, security, Obsidian, assets, AI).
+Transport: Streamable HTTP (`rmcp`) at `127.0.0.1:8080/mcp`, also stdio via `mcp_server_stdio` example.
+
+### HTTP client
+
+**ALWAYS `wreq`**, never `reqwest` — TLS fingerprint impersonation for WAF evasion.
+
+### Async rules
+
 - Tokio multi-threaded runtime
 - `spawn_blocking` for CPU-intensive work (ONNX inference, HTML parsing)
 - Never hold `Mutex`/`RwLock` across `.await`
 - Bounded channels for backpressure
 
-**Crate version conflicts (DO NOT unify):**
+### Crate version conflicts (DO NOT unify)
+
 - `dashmap` 5.x (via governor) + 6.x (direct) — both needed
 - `quick-xml` 0.37 (direct) + 0.38 (via syntect→plist) — both needed
 - `scraper` 0.27 → selectors 0.35, `legible` → dom_query → selectors 0.38 — both needed
 
-**AI feature (`--features ai`):**
+### AI feature (`--features ai`)
+
 - ~90MB ONNX model (all-MiniLM-L6-v2), cached in `~/.cache/rust_scraper/models/`
 - `cleaner.clean(html)` → `Vec<DocumentChunk>` with embeddings
 
-**Build requirement:** `cmake` is mandatory — `wreq` → `boring2` → `boring-sys2` needs it for BoringSSL.
+### Build requirement
+
+`cmake` is mandatory — `wreq` → `boring2` → `boring-sys2` needs it for BoringSSL.
 
 ---
 
@@ -228,9 +275,9 @@ gitnexus analyze --index-only --skip-agents-md  # GitNexus index is per-worktree
 
 **Cross-branch read access (NO checkout):**
 ```bash
-git show main:src/main.rs                 # read a file from another branch
-git diff main..HEAD -- src/                # compare with main
-git log main --oneline -10                 # inspect history
+git show main:crates/rust_scraper_core/src/main.rs  # read a file from another branch
+git diff main..HEAD -- crates/                       # compare with main
+git log main --oneline -10                           # inspect history
 ```
 These are safe — they read the shared `.git` object store without modifying the working tree.
 
@@ -292,7 +339,7 @@ If you detect you operated outside your assigned worktree, or `git stash pop` ap
 - `cargo check`, `cargo clippy`, `cargo fmt`, `cargo nextest run`
 - GitNexus MCP tools and CLI (`gitnexus analyze`, `status`, `query`, `impact`, `context`, etc.)
 - CodeDB MCP tools (`codedb_context`, `symbol`, `word`, `outline`, `read`, `callers`, `deps`, etc.)
-- Edit files within `src/`, `tests/`, `benches/`, `examples/`
+- Edit files within `crates/`, `tests/`, `benches/`, `examples/`
 - Worktree management: `git worktree add`, `git worktree remove`, `git worktree list`, `git worktree prune`
 - Read-only cross-branch inspection: `git show <branch>:<file>`, `git log <branch>`
 
@@ -302,7 +349,7 @@ If you detect you operated outside your assigned worktree, or `git stash pop` ap
 - Deleting files
 - `cargo build --release` or `cargo llvm-cov`
 - Modifying CI/CD (`.github/`)
-- New files outside `src/`, `tests/`, `benches/`, `examples/`
+- New files outside `crates/`, `tests/`, `benches/`, `examples/`
 - Re-indexing with `--pdg` or `--drop-embeddings` (data-loss / cost implications)
 
 ### Never
@@ -345,10 +392,10 @@ If you detect you operated outside your assigned worktree, or `git stash pop` ap
 
 | What | Copy from | Location |
 |:-----|:----------|:---------|
-| New service/trait | `crawler_service.rs` | `src/application/` — trait → impl with DI, `async_trait`, `#[instrument]`, typed errors |
-| New domain entity | `entities.rs` | `src/domain/` — struct + constructor + `TryFrom` validation, `Display`+`Debug`+`PartialEq` |
-| New adapter | `crawler/` | `src/infrastructure/` — domain trait → impl, module with `mod.rs` |
-| New error type | `error.rs` | `src/cli/` — `thiserror::Error` + `From` impls, Spanish user-facing |
+| New service/trait | `crawler_service.rs` | `crates/rust_scraper_core/src/application/` — trait → impl with DI, `async_trait`, `#[instrument]`, typed errors |
+| New domain entity | `entities.rs` | `crates/rust_scraper_core/src/domain/` — struct + constructor + `TryFrom` validation, `Display`+`Debug`+`PartialEq` |
+| New adapter | `crawler/` | `crates/rust_scraper_core/src/infrastructure/` — domain trait → impl, module with `mod.rs` |
+| New error type | `error.rs` | `crates/rust_scraper_core/src/cli/` — `thiserror::Error` + `From` impls, Spanish user-facing |
 | New behavioral test | `cli_harness.rs` | `tests/common/` — `BehavioralTest` + wiremock + TempDir + insta snapshots |
 
 **Avoid:** `adapters/tui/progress_widget.rs` (551 lines), `infrastructure/mcp_server/mod.rs` (1404 lines) — keep new components focused.
