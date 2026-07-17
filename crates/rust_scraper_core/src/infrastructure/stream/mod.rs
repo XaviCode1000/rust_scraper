@@ -95,6 +95,14 @@ impl StreamRepository {
         let boxed: Box<dyn Write + Send> = if path == "-" {
             Box::new(std::io::stdout())
         } else {
+            if let Some(parent) = std::path::Path::new(path).parent() {
+                std::fs::create_dir_all(parent).map_err(|e| {
+                    ScraperError::Io(std::io::Error::new(
+                        e.kind(),
+                        format!("no se pudo crear el directorio '{}': {e}", parent.display()),
+                    ))
+                })?;
+            }
             Box::new(std::fs::File::create(path).map_err(|e| {
                 ScraperError::Io(std::io::Error::new(
                     e.kind(),
