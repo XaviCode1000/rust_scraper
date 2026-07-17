@@ -202,7 +202,7 @@ fn tracestate_format() {
         ts.starts_with("webfang=v1:"),
         "tracestate should use vendor format"
     );
-    // Total length: "webfang=v1:" (16) + 32 hex = 48
+    // Total length: "webfang=v1:" (11) + 32 hex = 43
     assert_eq!(ts.len(), 43);
 }
 

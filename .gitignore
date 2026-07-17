@@ -136,6 +136,10 @@ rag_dataset/
 # Scraper output (should never be committed)
 output/
 
+# Pre-decomposition monolith (PR #163 created crates/ — src/ is dead code)
+/src/
+/build.rs
+
 # Keep the legitimate source module (referenced by crate code; not runtime output)
 !crates/webfang_core/src/infrastructure/output/
 !crates/webfang_core/src/infrastructure/output/**

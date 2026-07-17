@@ -106,6 +106,10 @@ mod tests {
     use super::*;
 
     // T-2.1: discover_urls returns Result (compile-time + runtime verification)
+    #[cfg_attr(
+        miri,
+        ignore = "btls/wreq FFI (BoringSSL TLS_method) not supported by Miri"
+    )]
     #[tokio::test]
     async fn discover_urls_returns_result_type() {
         let seed_url = url::Url::parse("https://localhost:1").unwrap();
