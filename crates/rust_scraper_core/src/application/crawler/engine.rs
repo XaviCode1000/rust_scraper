@@ -123,6 +123,9 @@ pub struct Engine {
     output_stages: Vec<Arc<Box<dyn OutputStage>>>,
     /// Optional autoscale level for RAM-aware concurrency adjustment.
     autoscale_level: Option<Arc<SharedConcurrencyLevel>>,
+    /// Handle for the signal handler task — aborted on shutdown
+    /// to prevent the tokio runtime from hanging waiting for it.
+    signal_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Engine {
@@ -175,6 +178,7 @@ impl Engine {
             pipeline: None,
             output_stages: Vec::new(),
             autoscale_level: None,
+            signal_handle: None,
         })
     }
 
@@ -326,7 +330,11 @@ impl Engine {
     }
 
     /// Spawn a signal handler that sets the shutdown flag on SIGINT/SIGTERM.
-    fn spawn_signal_handler(shutdown: ShutdownSignal) {
+    ///
+    /// Returns the [`JoinHandle`] so the caller can abort it on shutdown.
+    /// Without this, the tokio runtime hangs waiting for a task that never
+    /// completes (e.g. in batch mode where no signal is sent).
+    fn spawn_signal_handler(shutdown: ShutdownSignal) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             let ctrl_c = tokio::signal::ctrl_c();
             #[cfg(unix)]
@@ -349,7 +357,7 @@ impl Engine {
                 info!("Received interrupt — initiating graceful shutdown");
             }
             shutdown.store(true, std::sync::atomic::Ordering::SeqCst);
-        });
+        })
     }
 
     /// Record a URL as visited (both hash dedup and string tracking).
@@ -370,8 +378,8 @@ impl Engine {
     pub async fn run(&mut self) -> Result<CrawlResult, CrawlError> {
         let config_clone = Arc::clone(&self.config);
 
-        // Spawn signal handler for graceful shutdown
-        Self::spawn_signal_handler(Arc::clone(&self.shutdown));
+        // Spawn signal handler for graceful shutdown — store handle to abort on drop
+        self.signal_handle = Some(Self::spawn_signal_handler(Arc::clone(&self.shutdown)));
 
         // Load checkpoint state if resuming
         if let Some(ref cp) = self.checkpoint {
@@ -751,6 +759,13 @@ impl Engine {
 
     /// Graceful shutdown — drop the collector sender, receiver drains remaining items
     pub async fn shutdown(mut self) {
+        // Abort the signal handler to prevent the runtime from hanging
+        // waiting for a task that never completes (e.g. batch mode exits
+        // without a signal ever being sent).
+        if let Some(handle) = self.signal_handle.take() {
+            handle.abort();
+        }
+
         // Save checkpoint before shutting down
         self.save_checkpoint().await;
 
