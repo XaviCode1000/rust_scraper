@@ -10,11 +10,12 @@
 //! `StreamRepository` has no SQLite dependency, so this test runs under the
 //! default (core) build.
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
-use rust_scraper::domain::repository::VectorRepository;
-use rust_scraper::infrastructure::stream::{StreamRepository, VectorRecord};
-use tempfile::NamedTempFile;
+use rust_scraper_core::domain::repository::VectorRepository;
+use rust_scraper_core::infrastructure::stream::{StreamRepository, VectorRecord};
+use tempfile::{NamedTempFile, TempDir};
 
 #[tokio::test]
 async fn stream_repository_writes_jsonl_with_384_dim_embedding() {
@@ -76,4 +77,31 @@ async fn stream_repository_stdout_dash_is_valid_sink_path() {
         repo.is_ok(),
         "`StreamRepository::new(\"-\")` must construct without error"
     );
+}
+
+#[tokio::test]
+async fn stream_repository_creates_parent_directories() {
+    let tmp = TempDir::new().expect("temp dir");
+    let nested_path: PathBuf = tmp
+        .path()
+        .join("subdir")
+        .join("nested")
+        .join("output.jsonl");
+
+    assert!(
+        !nested_path.parent().unwrap().exists(),
+        "parent dir must not exist before StreamRepository::new"
+    );
+
+    let repo = StreamRepository::new(&nested_path.to_string_lossy());
+    assert!(
+        repo.is_ok(),
+        "StreamRepository::new must succeed for nested path"
+    );
+
+    assert!(
+        nested_path.parent().unwrap().exists(),
+        "parent directories must be created by StreamRepository::new"
+    );
+    assert!(nested_path.exists(), "output file must be created");
 }
