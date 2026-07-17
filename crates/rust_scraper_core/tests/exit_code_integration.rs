@@ -185,3 +185,51 @@ async fn test_valid_sitemap_returns_exit_0() {
         .assert()
         .code(0);
 }
+
+// ============================================================================
+// Tests: SitemapNotFound propagation (Bug #191 fix)
+// ============================================================================
+
+/// When no sitemap is found at any location, crawl_with_sitemap must return
+/// Err(CrawlError::SitemapNotFound) — NOT Ok(vec![]) as pre-fix behavior did.
+///
+/// wiremock returns 404 for all unregistered paths, so discover_sitemap_url
+/// exhausts robots.txt + fallback locations and returns SitemapNotFound.
+/// crawl_with_sitemap must propagate this instead of silently returning empty.
+#[tokio::test]
+async fn test_sitemap_not_found_propagates_error() {
+    let mock_server = MockServer::start().await;
+    let base_url = format!("{}/", mock_server.uri());
+
+    let seed = url::Url::parse(&format!("{base_url}index.html")).expect("valid seed URL");
+    let config = rust_scraper_core::domain::CrawlerConfig::builder(seed)
+        .max_pages(5)
+        .delay_ms(1)
+        .timeout_secs(5)
+        .build();
+
+    let result = rust_scraper_core::application::crawler::discovery::crawl_with_sitemap(
+        &base_url, None, &config,
+    )
+    .await;
+
+    match result {
+        Err(rust_scraper_core::domain::CrawlError::SitemapNotFound(url)) => {
+            assert!(url.contains(
+                &mock_server
+                    .uri()
+                    .replace("http://", "")
+                    .replace("https://", "")
+            ));
+        },
+        Ok(urls) => {
+            panic!(
+                "expected SitemapNotFound error, got Ok with {} URLs",
+                urls.len()
+            );
+        },
+        Err(e) => {
+            panic!("expected SitemapNotFound error, got {:?}", e);
+        },
+    }
+}
