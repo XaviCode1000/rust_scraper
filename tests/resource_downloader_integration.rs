@@ -10,7 +10,7 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 /// A realistic HTML page used as the download payload.
-const HTML_PAGE: &[u8] = b"<html><head><title>Rust Scraper</title></head>\
+const HTML_PAGE: &[u8] = b"<html><head><title>WebFang</title></head>\
 <body><h1>Foo</h1><p>bar baz qux</p></body></html>";
 
 /// End-to-end download against a wiremock server returns the exact bytes.

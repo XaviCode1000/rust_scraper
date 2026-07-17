@@ -1,4 +1,4 @@
-//! Rust Scraper - Production-ready web scraper with Clean Architecture
+//! WebFang - Production-ready web scraper with Clean Architecture
 //!
 //! Extracts clean, structured content from web pages using readability algorithm.
 //!

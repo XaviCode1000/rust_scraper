@@ -1,4 +1,4 @@
-//! Rust Scraper Core — Core scraping library
+//! WebFang Core — Core scraping library
 //!
 //! Contains domain, application, and infrastructure layers for web scraping.
 //! AI, MCP, and TUI adapters live in separate crates.

@@ -1,4 +1,4 @@
-# AGENTS.md — Rust Scraper
+# AGENTS.md — WebFang
 
 Production-ready web scraper. Clean Architecture, TUI selector, AI semantic cleaning, sitemap-based crawling.
 
