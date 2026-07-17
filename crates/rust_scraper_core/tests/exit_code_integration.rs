@@ -233,3 +233,67 @@ async fn test_sitemap_not_found_propagates_error() {
         },
     }
 }
+
+// ============================================================================
+// Tests: Engine signal handler abort — no hang on shutdown (Bug #191 fix)
+// ============================================================================
+
+/// Exercise crawl_site_with_options with a small crawl that completes
+/// naturally. The fix ensures the signal handler's JoinHandle is aborted
+/// in engine.shutdown(), preventing the runtime from hanging.
+///
+/// Before the fix: tokio runtime hangs waiting for the orphaned signal
+/// handler task to complete (which never happens since no signal is sent).
+/// After the fix: shutdown aborts the signal handler, runtime exits cleanly.
+#[tokio::test]
+async fn test_crawl_completes_without_signal_handler_hang() {
+    let mock_server = MockServer::start().await;
+    let server_uri = mock_server.uri();
+
+    Mock::given(method("GET"))
+        .and(path("/index.html"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_string("<html><body><h1>Single Page</h1></body></html>"),
+        )
+        .mount(&mock_server)
+        .await;
+
+    let seed = url::Url::parse(&format!("{server_uri}/index.html")).expect("valid URL");
+    let config = rust_scraper_core::domain::CrawlerConfig::builder(seed)
+        .max_depth(0)
+        .max_pages(1)
+        .delay_ms(1)
+        .concurrency(1)
+        .timeout_secs(5)
+        .build();
+
+    let options = rust_scraper_core::application::crawler::engine::EngineOptions {
+        checkpoint_path: None,
+        session_pool_enabled: false,
+        ignore_robots: true,
+        js_strategy: rust_scraper_core::domain::JsStrategy::Static,
+        autoscale_enabled: false,
+    };
+
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        rust_scraper_core::crawl_site_with_options(config, options),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(crawl_result)) => {
+            assert!(
+                crawl_result.total_pages > 0,
+                "crawl should have completed at least 1 page"
+            );
+        },
+        Ok(Err(e)) => {
+            panic!("crawl should succeed, got error: {e:?}");
+        },
+        Err(_elapsed) => {
+            panic!("crawl timed out after 10s — possible signal handler hang");
+        },
+    }
+}
