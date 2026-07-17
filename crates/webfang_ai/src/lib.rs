@@ -1,4 +1,4 @@
-//! Rust Scraper AI — ONNX-based semantic cleaning
+//! WebFang AI — ONNX-based semantic cleaning
 //!
 //! Provides AI-powered content cleaning using sentence-transformers models.
 //! Depends on `webfang_core` for domain types.
