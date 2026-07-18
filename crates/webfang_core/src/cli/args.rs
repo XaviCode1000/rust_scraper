@@ -353,6 +353,12 @@ pub struct Args {
     #[clap(next_help_heading = "AI Settings")]
     pub offline: bool,
 
+    /// AI model to use: granite-97m (default, fast) or granite-311m (higher quality)
+    #[cfg(feature = "ai")]
+    #[arg(long, env = "AI_MODEL_ID", value_parser = ["granite-97m", "granite-311m"])]
+    #[clap(next_help_heading = "AI Settings")]
+    pub ai_model: Option<String>,
+
     // ========== Sitemap Settings ==========
     /// Maximum recursion depth for sitemap indexes
     #[arg(long, default_value = "3", env = "WEBFANG_SITEMAP_DEPTH")]
