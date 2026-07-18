@@ -69,3 +69,14 @@ reqwest = { workspace = true, optional = true }
 [lints.clippy]
 doc_markdown = "allow"
 uninlined_format_args = "allow"
+
+[[test]]
+name = "ai_integration"
+path = "../../tests/ai_integration.rs"
+required-features = ["ai"]
+
+[dev-dependencies]
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+futures = { workspace = true }
+uuid = { workspace = true }
