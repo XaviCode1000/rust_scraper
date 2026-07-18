@@ -37,6 +37,10 @@ url = { workspace = true }
 futures = { workspace = true }
 chrono = { workspace = true }
 
+[[test]]
+name = "tui_unit_tests"
+path = "../../tests/tui_unit_tests.rs"
+
 [lints.clippy]
 doc_markdown = "allow"
 uninlined_format_args = "allow"
