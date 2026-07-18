@@ -27,7 +27,6 @@ serde_json = { workspace = true }
 
 # Error handling
 anyhow = { workspace = true }
-thiserror = { workspace = true }
 
 # Logging
 tracing = { workspace = true }
@@ -37,7 +36,6 @@ tracing-subscriber = { workspace = true }
 url = { workspace = true }
 url-normalize = { workspace = true }
 wreq = { workspace = true }
-bytes = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

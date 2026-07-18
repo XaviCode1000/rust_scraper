@@ -128,8 +128,6 @@ pulldown-cmark = { workspace = true }
 async-compression = { workspace = true }
 
 # Security
-rustls-webpki = { workspace = true }
-time = { workspace = true }
 
 # Competitive Features
 jzon-rs-serde = { workspace = true }
