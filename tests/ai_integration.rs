@@ -1083,7 +1083,6 @@ fn test_ai_model_parse() {
 /// Test AiModel::FromStr trait impl for error messages
 #[test]
 fn test_ai_model_from_str() {
-    use std::str::FromStr;
     use webfang_ai::infrastructure_ai::AiModel;
 
     let ok: AiModel = "granite-97m".parse().unwrap();
