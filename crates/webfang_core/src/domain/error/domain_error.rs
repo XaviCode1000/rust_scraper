@@ -10,7 +10,7 @@ use thiserror::Error;
 /// These errors represent domain-level failures that are independent of
 /// infrastructure or application concerns. Each variant maps to a
 /// `ScraperError` variant via `From` for backward compatibility.
-#[derive(Error, Debug)]
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum DomainError {
     /// URL is invalid or cannot be parsed
     #[error("URL inválida: {0}")]
