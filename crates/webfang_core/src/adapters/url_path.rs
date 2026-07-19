@@ -16,6 +16,7 @@
 use std::path::PathBuf;
 use thiserror::Error;
 
+use crate::domain::DomainError;
 use crate::OutputFormat;
 
 /// Windows reserved device names (case-insensitive)
@@ -35,9 +36,11 @@ pub struct Domain(String);
 impl Domain {
     pub fn from_url(url: &str) -> Result<Self, DomainError> {
         let parsed = url::Url::parse(url).map_err(|e| DomainError::InvalidUrl(e.to_string()))?;
-        let host = parsed.host_str().ok_or(DomainError::NoHost)?;
+        let host = parsed
+            .host_str()
+            .ok_or_else(|| DomainError::InvalidUrl("URL has no host".to_string()))?;
         if host.is_empty() {
-            return Err(DomainError::EmptyHost);
+            return Err(DomainError::InvalidUrl("Host is empty".to_string()));
         }
         // Remove "www." prefix for consistency
         let clean = host.strip_prefix("www.").unwrap_or(host);
@@ -62,16 +65,6 @@ impl std::fmt::Display for Domain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum DomainError {
-    #[error("Invalid URL: {0}")]
-    InvalidUrl(String),
-    #[error("URL has no host")]
-    NoHost,
-    #[error("Host is empty")]
-    EmptyHost,
 }
 
 /// URL path prepared for filesystem-safe conversion.

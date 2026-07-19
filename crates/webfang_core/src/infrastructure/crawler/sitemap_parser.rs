@@ -31,6 +31,7 @@ use super::memory_manager::MemoryManager;
 use super::retry_policy::RetryPolicy;
 use super::sitemap_config::SitemapConfig;
 use super::url_validator::UrlValidator;
+use crate::domain::UrlValidatorTrait;
 #[allow(unused_imports)]
 use async_compression::tokio::bufread::GzipDecoder;
 use quick_xml::events::Event;
@@ -203,7 +204,7 @@ impl SitemapParser {
                         .emulation(wreq_util::Emulation::Chrome145)
                         .timeout(std::time::Duration::from_secs(10))
                         .build()
-                        .expect("BUG: failed to build HTTP client");
+                        .map_err(|e| std::io::Error::other(e.to_string()))?;
                     client
                         .get(&url)
                         .send()

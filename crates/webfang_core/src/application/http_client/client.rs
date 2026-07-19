@@ -137,7 +137,10 @@ impl HttpClient {
                     "rate_limit_rpm must be greater than 0".into(),
                 ));
             }
-            let quota = Quota::per_minute(NonZeroU32::new(rpm).unwrap()); // Safe now since rpm > 0
+            let quota =
+                Quota::per_minute(NonZeroU32::new(rpm).expect(
+                    "invariant: rpm > 0 was already checked above — NonZeroU32 cannot fail",
+                ));
             Some(RateLimiter::direct(quota))
         } else {
             None
