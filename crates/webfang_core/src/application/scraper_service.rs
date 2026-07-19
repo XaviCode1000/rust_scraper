@@ -342,10 +342,13 @@ pub async fn scrape_with_config(
     // This preserves the <title> tag even when --selector filters it out.
     let original_title = {
         let doc = scraper::Html::parse_document(&html);
-        doc.select(&scraper::Selector::parse("title").unwrap())
-            .next()
-            .map(|el| el.text().collect::<String>())
-            .unwrap_or_default()
+        doc.select(
+            &scraper::Selector::parse("title")
+                .expect("invariant: 'title' is a valid CSS selector — this cannot fail"),
+        )
+        .next()
+        .map(|el| el.text().collect::<String>())
+        .unwrap_or_default()
     };
 
     // M7 FIX: Log selector feedback when --selector is active
