@@ -83,6 +83,9 @@ governor = "0.6"
 dashmap = "6"
 ahash = { version = "0.8", features = ["std"] }
 
+# Thread pool channels
+crossbeam-channel = "0.5"
+
 # Observability
 indicatif = { version = "0.17", features = ["improved_unicode"] }
 
