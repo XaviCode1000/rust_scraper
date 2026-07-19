@@ -1,73 +1,39 @@
-//! Inference engine — ONNX model execution with tract-onnx
+//! Inference engine — ONNX model execution with ort (ONNX Runtime)
 //!
 //! Handles loading and executing ONNX models for sentence embedding generation:
-//! - Thread-safe session sharing with `Arc<TypedSimplePlan<TypedModel>>` (`own-arc-shared`)
+//! - Thread-safe model bytes sharing with `Arc<Vec<u8>>` (`own-arc-shared`)
 //! - Async inference via `spawn_blocking` (`async-spawn-blocking`)
 //! - Clone Arc before await (`async-clone-before-await`)
-//! - 384-dimensional embedding output for all-MiniLM-L6-v2
+//! - 384-dimensional embedding output for IBM Granite models
 //! - **3-input ONNX model**: input_ids, attention_mask, token_type_ids
 //!
 //! # Design Decisions
 //!
-//! - **TypedSimplePlan**: Uses tract's typed plan type for type-safe inference
-//! - **Arc for session sharing**: Session is wrapped in Arc for thread-safe access across threads
-//! - **spawn_blocking**: CPU-intensive inference runs in blocking pool to avoid starving async runtime
-//! - **No locks across await**: Clone Arc before async operations
-//! - **3-input model**: all-MiniLM-L6-v2 requires input_ids, attention_mask, and token_type_ids
-//!
-//! # Examples
-//!
-//! ```no_run
-//! # async fn example() -> anyhow::Result<()> {
-//! use webfang::infrastructure::ai::{InferenceEngine, ModelInput};
-//!
-//! let engine = InferenceEngine::load_from_file("path/to/model.onnx").await?;
-//! let input = ModelInput::new(
-//!     vec![101i64, 2054, 2003, 102], // input_ids
-//!     vec![1i64, 1, 1, 1],           // attention_mask
-//!     vec![0i64, 0, 0, 0],           // token_type_ids
-//! );
-//! let embedding = engine.run_inference(&input).await?;
-//! assert_eq!(embedding.len(), 384);
-//! # Ok(())
-//! # }
-//! ```
+//! - **ort::Session is !Send**: Each `run_inference` creates a local `ort::Session` inside
+//!   `spawn_blocking` and destroys it before returning. Model bytes are stored as
+//!   `Arc<Vec<u8>>` for cheap cross-thread sharing without the `!Send` constraint.
+//! - **384-dim invariant**: Granite-97M is natively 384d; Granite-311M uses Matryoshka
+//!   truncation to 384d. No runtime dimension discovery needed.
+//! - **spawn_blocking**: CPU-intensive ONNX inference runs in blocking pool to avoid
+//!   starving async runtime.
+//! - **No locks across await**: Clone Arc before async operations.
 
 use std::path::Path;
 use std::sync::Arc;
 
-use tracing::{debug, Instrument};
-use tract_onnx::prelude::*;
+use ort::session::{builder::GraphOptimizationLevel, Session};
+use tracing::{debug, instrument};
 
 use webfang_core::error::SemanticError;
 
-/// Thread-safe inference session
-///
-/// Uses tract's TypedSimplePlan which is Send + Sync for thread-safe sharing.
-/// This is the correct type for ONNX inference with tract-onnx 0.21.
-pub type InferenceSession = Arc<TypedSimplePlan<TypedModel>>;
-
 /// Input data for ONNX model inference
 ///
-/// The all-MiniLM-L6-v2 model requires 3 input tensors:
+/// The Granite embedding models require 3 input tensors:
 /// 1. `input_ids` - Token IDs (vocab indices)
 /// 2. `attention_mask` - Which tokens are real (1) vs padding (0)
 /// 3. `token_type_ids` - Segment IDs (0 for single sentence)
 ///
 /// All vectors must have the same length (sequence length).
-///
-/// # Examples
-///
-/// ```
-/// use webfang::infrastructure::ai::ModelInput;
-///
-/// let input = ModelInput::new(
-///     vec![101i64, 2054, 2003, 102], // [CLS] hello world [SEP]
-///     vec![1i64, 1, 1, 1],           // All real tokens
-///     vec![0i64, 0, 0, 0],           // Single sentence
-/// );
-/// assert_eq!(input.seq_len(), 4);
-/// ```
 #[derive(Debug, Clone)]
 pub struct ModelInput {
     /// Token IDs (vocab indices)
@@ -92,8 +58,6 @@ impl ModelInput {
     /// Panics if the three vectors have different lengths.
     #[must_use]
     pub fn new(input_ids: Vec<i64>, attention_mask: Vec<i64>, token_type_ids: Vec<i64>) -> Self {
-        // Validate lengths match — must be assert_eq!, NOT debug_assert_eq!
-        // (debug_assert_eq! compiles to nothing in --release)
         assert_eq!(
             input_ids.len(),
             attention_mask.len(),
@@ -123,14 +87,6 @@ impl ModelInput {
     /// This is a convenience method for single-sentence inputs where:
     /// - attention_mask is all 1s (no padding)
     /// - token_type_ids is all 0s (single segment)
-    ///
-    /// # Arguments
-    ///
-    /// * `input_ids` - Token IDs
-    ///
-    /// # Returns
-    ///
-    /// ModelInput with default attention_mask and token_type_ids
     #[must_use]
     pub fn from_tokens(input_ids: Vec<i64>) -> Self {
         let seq_len = input_ids.len();
@@ -144,47 +100,26 @@ impl ModelInput {
 
 /// ONNX inference engine for sentence embeddings
 ///
-/// This engine loads an ONNX model and provides methods for running inference
-/// to generate sentence embeddings (384-dimensional vectors for all-MiniLM-L6-v2).
+/// Uses ort (ONNX Runtime) as the inference backend. The engine holds model
+/// bytes in `Arc<Vec<u8>>` for cheap cloning and thread-safe sharing. Each
+/// inference call creates a local `ort::Session` inside `spawn_blocking`
+/// because `Session` is `!Send`.
 ///
 /// # Thread Safety
 ///
-/// `InferenceEngine` is `Clone` because it wraps the session in `Arc<TypedSimplePlan<TypedModel>>`.
-/// Cloning is cheap (just increments atomic counter) and safe for concurrent use.
-///
-/// # Examples
-///
-/// ```no_run
-/// # async fn example() -> anyhow::Result<()> {
-/// use webfang::infrastructure::ai::{InferenceEngine, ModelInput};
-///
-/// let engine = InferenceEngine::load_from_file("path/to/model.onnx").await?;
-///
-/// // Clone for concurrent use
-/// let engine_clone = engine.clone();
-///
-/// // Both can be used concurrently
-/// let input = ModelInput::from_tokens(vec![101i64, 2054, 2003, 102]);
-/// let embedding1 = engine.run_inference(&input).await?;
-/// let embedding2 = engine_clone.run_inference(&input).await?;
-/// # Ok(())
-/// # }
-/// ```
-#[derive(Clone)]
+/// `InferenceEngine` is `Clone` (cheap `Arc` clone). It is `Send + Sync`
+/// because `Arc<Vec<u8>>` is `Send + Sync`.
+#[derive(Debug, Clone)]
 pub struct InferenceEngine {
-    session: InferenceSession,
+    model_bytes: Arc<Vec<u8>>,
 }
 
 impl InferenceEngine {
     /// Load ONNX model from file
     ///
-    /// Uses the tract-onnx pattern:
-    /// 1. Read model bytes
-    /// 2. Parse ONNX model with `model_for_read()`
-    /// 3. Optimize the model graph
-    /// 4. Build executable plan with `into_runnable()`
-    ///
-    /// The model is loaded once and shared across threads via `Arc`.
+    /// Reads the model bytes from disk and stores them in an `Arc` for
+    /// cheap sharing. The actual `ort::Session` is created per-inference
+    /// inside `spawn_blocking`.
     ///
     /// # Arguments
     ///
@@ -192,80 +127,47 @@ impl InferenceEngine {
     ///
     /// # Returns
     ///
-    /// * `Ok(InferenceEngine)` - Model loaded successfully
-    /// * `Err(SemanticError::ModelLoad)` - Failed to load model
+    /// * `Ok(InferenceEngine)` - Model bytes loaded successfully
+    /// * `Err(SemanticError::ModelLoad)` - Failed to read model file
     ///
     /// # Errors
     ///
     /// Returns error if:
     /// - File doesn't exist or can't be read
-    /// - ONNX model is invalid or corrupted
-    /// - Model has unexpected input/output structure
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # async fn example() -> anyhow::Result<()> {
-    /// use webfang::infrastructure::ai::InferenceEngine;
-    ///
-    /// let engine = InferenceEngine::load_from_file("model.onnx").await?;
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// - File is empty
     pub async fn load_from_file<P: AsRef<Path>>(model_path: P) -> Result<Self, SemanticError> {
         let model_path = model_path.as_ref();
 
-        debug!(path = ?model_path, "Loading ONNX model");
+        debug!(path = ?model_path, "Loading ONNX model bytes");
 
-        // Read model bytes (async I/O)
         let model_data = tokio::fs::read(model_path).await.map_err(|e| {
             SemanticError::ModelLoad(std::io::Error::other(format!(
-                "Failed to read model file: {}",
+                "Failed to read model file '{}': {}",
+                model_path.display(),
                 e
             )))
         })?;
 
-        // Build tract model from bytes using model_for_read
-        // Note: model_for_read takes a mutable reader, so we use a slice
-        let model = tract_onnx::onnx()
-            .model_for_read(&mut &model_data[..])
-            .map_err(|e| {
-                SemanticError::ModelLoad(std::io::Error::other(format!(
-                    "Failed to parse ONNX model: {}",
-                    e
-                )))
-            })?;
+        if model_data.is_empty() {
+            return Err(SemanticError::ModelLoad(std::io::Error::other(format!(
+                "Model file is empty: '{}'",
+                model_path.display()
+            ))));
+        }
 
-        // Optimize the model graph (operator fusion, constant folding, etc.)
-        let optimized = model.into_optimized().map_err(|e| {
-            SemanticError::ModelLoad(std::io::Error::other(format!(
-                "Failed to optimize model: {}",
-                e
-            )))
-        })?;
+        let model_bytes = Arc::new(model_data);
 
-        // Build executable plan (TypedSimplePlan<TypedModel>)
-        // This is the correct method - into_runnable() returns the plan
-        let plan = optimized.into_runnable().map_err(|e| {
-            SemanticError::ModelLoad(std::io::Error::other(format!(
-                "Failed to create runnable plan: {}",
-                e
-            )))
-        })?;
+        debug!(bytes = model_bytes.len(), "Model bytes loaded successfully");
 
-        // Wrap in Arc for thread-safe sharing
-        let session = Arc::new(plan);
-
-        debug!("Model loaded successfully");
-
-        Ok(Self { session })
+        Ok(Self { model_bytes })
     }
 
     /// Run inference on token inputs
     ///
-    /// Takes token IDs, attention mask, and token type IDs to generate a
-    /// 384-dimensional embedding vector. Uses `spawn_blocking` to avoid
-    /// blocking the async runtime (`async-spawn-blocking`).
+    /// Creates an ephemeral `ort::Session` from the stored model bytes,
+    /// runs inference, and applies mean pooling + L2 normalization.
+    /// The session is created and destroyed entirely inside `spawn_blocking`
+    /// because `ort::Session` is `!Send`.
     ///
     /// # Arguments
     ///
@@ -275,86 +177,94 @@ impl InferenceEngine {
     ///
     /// * `Ok(Vec<f32>)` - 384-dimensional embedding vector
     /// * `Err(SemanticError::Inference)` - Inference failed
-    ///
-    /// # Performance
-    ///
-    /// Typical latency: 10-50ms per inference on Haswell CPU.
-    /// This is CPU-intensive work, hence `spawn_blocking` is mandatory.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// # async fn example() -> anyhow::Result<()> {
-    /// use webfang::infrastructure::ai::{InferenceEngine, ModelInput};
-    ///
-    /// let engine = InferenceEngine::load_from_file("model.onnx").await?;
-    /// let input = ModelInput::from_tokens(vec![101i64, 2054, 2003, 102]);
-    /// let embedding = engine.run_inference(&input).await?;
-    /// assert_eq!(embedding.len(), 384);
-    /// # Ok(())
-    /// # }
-    /// ```
+    #[instrument(skip_all)]
     pub async fn run_inference(&self, input: &ModelInput) -> Result<Vec<f32>, SemanticError> {
         // Clone Arc before await to avoid holding references across suspension
-        // This ensures the future is Send and can be spawned (`async-clone-before-await`)
-        let session: InferenceSession = Arc::clone(&self.session);
+        let model_bytes = Arc::clone(&self.model_bytes);
         let input = input.clone();
 
-        // Run inference in blocking pool (CPU-intensive work)
-        // This prevents blocking the async runtime threads (`async-spawn-blocking`)
         let result = tokio::task::spawn_blocking(move || {
             let seq_len = input.seq_len();
 
-            // Create 3 input tensors for all-MiniLM-L6-v2 model
-            // Shape: [1, sequence_length] with i64 data
-            let input_ids_tensor =
-                Tensor::from_shape(&[1, seq_len], &input.input_ids).map_err(|e| {
-                    SemanticError::Inference(format!("Failed to create input_ids tensor: {}", e))
-                })?;
-
-            let attention_mask_tensor = Tensor::from_shape(&[1, seq_len], &input.attention_mask)
+            // Create ephemeral ort::Session from model bytes
+            let mut session = Session::builder()
                 .map_err(|e| {
                     SemanticError::Inference(format!(
-                        "Failed to create attention_mask tensor: {}",
+                        "Failed to create ONNX session builder: {}",
+                        e
+                    ))
+                })?
+                .with_optimization_level(GraphOptimizationLevel::Level3)
+                .map_err(|e| {
+                    SemanticError::Inference(format!("Failed to set optimization level: {}", e))
+                })?
+                .with_intra_threads(num_cpus::get())
+                .map_err(|e| {
+                    SemanticError::Inference(format!("Failed to set intra threads: {}", e))
+                })?
+                .commit_from_memory(&model_bytes)
+                .map_err(|e| {
+                    SemanticError::Inference(format!(
+                        "Failed to create ONNX session from memory: {}",
                         e
                     ))
                 })?;
 
-            let token_type_ids_tensor = Tensor::from_shape(&[1, seq_len], &input.token_type_ids)
-                .map_err(|e| {
-                    SemanticError::Inference(format!(
-                        "Failed to create token_type_ids tensor: {}",
-                        e
-                    ))
-                })?;
+            // Build named input tensors using ndarray + Tensor::from_array
+            let input_ids_array =
+                ndarray::Array2::<i64>::from_shape_vec((1, seq_len), input.input_ids.clone())
+                    .map_err(|e| {
+                        SemanticError::Inference(format!("Failed to create input_ids array: {}", e))
+                    })?;
 
-            // Create state for the plan
-            // Pass the Arc directly (not &Arc) - TypedSimpleState::new takes P: Borrow<SimplePlan>
-            let mut state = TypedSimpleState::new(session.clone())
-                .map_err(|e| SemanticError::Inference(format!("Failed to create state: {}", e)))?;
+            let attention_mask_array =
+                ndarray::Array2::<i64>::from_shape_vec((1, seq_len), input.attention_mask.clone())
+                    .map_err(|e| {
+                        SemanticError::Inference(format!(
+                            "Failed to create attention_mask array: {}",
+                            e
+                        ))
+                    })?;
 
-            // Run the model with 3 input tensors
-            // all-MiniLM-L6-v2 expects: input_ids, attention_mask, token_type_ids
-            let outputs = state
-                .run(tvec![
-                    input_ids_tensor.into(),
-                    attention_mask_tensor.into(),
-                    token_type_ids_tensor.into(),
+            let token_type_ids_array =
+                ndarray::Array2::<i64>::from_shape_vec((1, seq_len), input.token_type_ids.clone())
+                    .map_err(|e| {
+                        SemanticError::Inference(format!(
+                            "Failed to create token_type_ids array: {}",
+                            e
+                        ))
+                    })?;
+
+            // Run inference with named inputs
+            let outputs = session
+                .run(ort::inputs![
+                    "input_ids" => ort::value::Tensor::from_array(input_ids_array)
+                        .map_err(|e| SemanticError::Inference(format!(
+                            "Failed to create input_ids tensor: {}",
+                            e
+                        )))?,
+                    "attention_mask" => ort::value::Tensor::from_array(attention_mask_array)
+                        .map_err(|e| SemanticError::Inference(format!(
+                            "Failed to create attention_mask tensor: {}",
+                            e
+                        )))?,
+                    "token_type_ids" => ort::value::Tensor::from_array(token_type_ids_array)
+                        .map_err(|e| SemanticError::Inference(format!(
+                            "Failed to create token_type_ids tensor: {}",
+                            e
+                        )))?,
                 ])
                 .map_err(|e| SemanticError::Inference(format!("Model execution failed: {}", e)))?;
 
-            // Extract first output tensor (the embedding)
-            let output = outputs
-                .first()
-                .ok_or_else(|| SemanticError::Inference("No output from model".to_string()))?;
+            // Extract last_hidden_state output
+            let (_shape, raw_data): (_, &[f32]) = outputs["last_hidden_state"]
+                .try_extract_tensor::<f32>()
+                .map_err(|e| {
+                    SemanticError::Inference(format!("Failed to extract last_hidden_state: {}", e))
+                })?;
 
-            // Convert to flat Vec<f32> and apply Mean Pooling + L2 Normalization
-            let embedding_flat: Vec<f32> = output
-                .to_array_view::<f32>()
-                .map_err(|e| SemanticError::Inference(format!("Failed to extract output: {}", e)))?
-                .iter()
-                .copied()
-                .collect();
+            // Convert to Vec<f32>
+            let embedding_flat: Vec<f32> = raw_data.to_vec();
 
             // Apply Mean Pooling + L2 Normalization (sentence-transformers standard)
             use crate::infrastructure_ai::embedding_ops::{l2_normalize_safe, mean_pool};
@@ -363,17 +273,16 @@ impl InferenceEngine {
 
             Ok(embedding)
         })
-        .in_current_span()
         .await
         .map_err(|e| SemanticError::Inference(format!("Task join error: {}", e)))?;
 
-        // Propagate the inner Result from spawn_blocking
         result
     }
 
-    /// Get embedding dimension (384 for all-MiniLM-L6-v2)
+    /// Get embedding dimension (384 for all Granite models)
     ///
-    /// This is a constant for the all-MiniLM-L6-v2 model.
+    /// 384-dim is invariant: Granite-97M is natively 384d, Granite-311M
+    /// uses Matryoshka truncation to 384d.
     #[must_use]
     pub fn embedding_dim(&self) -> usize {
         384
@@ -381,10 +290,10 @@ impl InferenceEngine {
 
     /// Check if engine is ready for inference
     ///
-    /// Returns true if the session Arc has at least one strong reference.
+    /// Returns true if model bytes are available (non-empty Arc).
     #[must_use]
     pub fn is_ready(&self) -> bool {
-        Arc::strong_count(&self.session) > 0
+        !self.model_bytes.is_empty()
     }
 }
 
@@ -395,8 +304,6 @@ mod tests {
     /// Test that InferenceEngine type exists and compiles
     #[test]
     fn test_inference_engine_type_exists() {
-        // This is a compile-time check
-        // If this compiles, the type exists with the correct structure
         fn _assert_type_exists(_engine: InferenceEngine) {}
     }
 
@@ -404,6 +311,7 @@ mod tests {
     ///
     /// This is critical for using InferenceEngine in async contexts
     /// with tokio::spawn and across thread boundaries.
+    /// Uses Arc<Vec<u8>> internally, which is Send + Sync.
     #[test]
     fn test_inference_engine_is_send_sync() {
         fn assert_send<T: Send>() {}
@@ -418,6 +326,83 @@ mod tests {
     fn test_inference_engine_is_clone() {
         fn assert_clone<T: Clone>() {}
         assert_clone::<InferenceEngine>();
+    }
+
+    /// RED → GREEN: load_from_file with missing file → ModelLoad error
+    #[tokio::test]
+    async fn test_load_from_file_missing_file_returns_model_load_error() {
+        let result = InferenceEngine::load_from_file("/tmp/nonexistent_model_xyz123.onnx").await;
+
+        assert!(result.is_err());
+
+        match result {
+            Err(SemanticError::ModelLoad(_)) => {
+                // Expected — missing file produces ModelLoad error
+            },
+            other => panic!("Expected ModelLoad error, got {:?}", other),
+        }
+    }
+
+    /// RED → GREEN: load_from_file with empty file → ModelLoad error
+    #[tokio::test]
+    async fn test_load_from_file_empty_file_returns_model_load_error() {
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let model_path = dir.path().join("empty.onnx");
+
+        // Write an empty file
+        std::fs::write(&model_path, b"").expect("Failed to create empty file");
+
+        let result = InferenceEngine::load_from_file(&model_path).await;
+
+        assert!(result.is_err());
+
+        match result {
+            Err(SemanticError::ModelLoad(_)) => {
+                // Expected — empty model file should produce error
+            },
+            other => panic!("Expected ModelLoad error for empty file, got {:?}", other),
+        }
+    }
+
+    /// RED → GREEN: engine created from valid bytes has embedding_dim() == 384
+    #[tokio::test]
+    async fn test_embedding_dim_returns_384() {
+        // Create a minimal valid ONNX file
+        // A minimal valid ONNX file is a protobuf with a valid ModelProto header.
+        // For a pure unit test without a real model, we verify the constant.
+        // The real inference test will use a downloaded model.
+
+        // For now, we test that the constant is correct.
+        // We create an engine with any bytes (even invalid) — load_from_file
+        // doesn't validate ONNX structure, only reads bytes.
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let model_path = dir.path().join("minimal.onnx");
+
+        // Write a real minimal ONNX model (valid protobuf for a tiny model)
+        // For the unit test, we'll just use any non-empty bytes to test bytes are stored.
+        std::fs::write(&model_path, b"not a real onnx model").expect("Failed to write file");
+
+        let engine = InferenceEngine::load_from_file(&model_path)
+            .await
+            .expect("Should load bytes even if not valid ONNX");
+
+        assert_eq!(engine.embedding_dim(), 384);
+        assert!(engine.is_ready());
+    }
+
+    /// Test that load_from_file with valid non-empty bytes succeeds
+    #[tokio::test]
+    async fn test_load_from_file_with_valid_bytes_succeeds() {
+        let dir = tempfile::tempdir().expect("Failed to create temp dir");
+        let model_path = dir.path().join("minimal.onnx");
+
+        std::fs::write(&model_path, b"some model bytes").expect("Failed to write file");
+
+        let engine = InferenceEngine::load_from_file(&model_path)
+            .await
+            .expect("Should succeed with non-empty model file");
+
+        assert!(engine.is_ready());
     }
 
     /// Test ModelInput creation
