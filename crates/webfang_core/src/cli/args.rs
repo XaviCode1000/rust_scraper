@@ -915,7 +915,7 @@ mod tests {
             "1024",
             "--offline",
             "--ai-model",
-            "mini",
+            "granite-311m",
         ])
         .expect("flags must parse");
 
@@ -927,7 +927,7 @@ mod tests {
                 threshold: 0.5,
                 max_tokens: 1024,
                 offline: true,
-                model: "mini".to_string(),
+                model: "granite-311m".to_string(),
             }
         );
     }
