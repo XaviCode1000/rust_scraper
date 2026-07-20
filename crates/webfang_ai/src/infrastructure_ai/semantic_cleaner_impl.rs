@@ -350,14 +350,13 @@ impl SemanticCleanerImpl {
             )))
         })?;
         let model_bytes = Arc::new(model_data);
-        let inference_pool = Arc::new(InferencePool::new(model_bytes, model_variant).map_err(
-            |e| {
+        let inference_pool =
+            Arc::new(InferencePool::new(model_bytes, model_variant).map_err(|e| {
                 SemanticError::ModelLoad(std::io::Error::other(format!(
                     "Failed to create inference pool: {}",
                     e
                 )))
-            },
-        )?);
+            })?);
 
         // Load tokenizer
         let tokenizer_path = config.cache_dir.join("tokenizer.json");
@@ -502,9 +501,7 @@ impl SemanticCleaner for SemanticCleanerImpl {
             // Following `anti-lock-across-await`: No locks held across await points
             let embeddings = try_join_all(token_buffers.iter().map(|input| {
                 let pool = &self.inference_pool;
-                async move {
-                    pool.infer(input).await
-                }
+                async move { pool.infer(input).await }
             }))
             .await
             .map_err(|e| {
