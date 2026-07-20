@@ -551,6 +551,7 @@ impl From<Args> for crate::application::crawl_options::CrawlOptions {
             .expect("URL must be valid — CLI validation ensures this");
 
         let overrides = args.elastic_overrides();
+        let ai_config = build_ai_config(&args);
 
         Self {
             url,
@@ -621,8 +622,24 @@ impl From<Args> for crate::application::crawl_options::CrawlOptions {
             },
             asset_naming: args.asset_naming,
             download_concurrency: args.download_concurrency,
+            ai_config,
         }
     }
+}
+
+#[cfg(feature = "ai")]
+fn build_ai_config(args: &Args) -> crate::application::crawl_options::AiConfig {
+    crate::application::crawl_options::AiConfig {
+        threshold: args.threshold,
+        max_tokens: args.max_tokens,
+        offline: args.offline,
+        model: args.ai_model.clone().unwrap_or_default(),
+    }
+}
+
+#[cfg(not(feature = "ai"))]
+fn build_ai_config(_args: &Args) -> crate::application::crawl_options::AiConfig {
+    crate::application::crawl_options::AiConfig::default()
 }
 
 #[cfg(test)]
@@ -773,6 +790,7 @@ mod tests {
 
             // Asset download
             asset_naming: "slug".into(),
+            download_concurrency: 5,
 
             ..Default::default()
         }
@@ -872,6 +890,80 @@ mod tests {
 
         // ── Asset naming ─────────────────────────────────────────────────
         assert_eq!(opts.asset_naming, "slug");
+        assert_eq!(opts.download_concurrency, 5);
+
+        // ── AiConfig (defaults when AI flags not set) ─────────────────────
+        // When feature="ai" is OFF, ai_config should be Default (0.3/32768/false/"")
+        // When feature="ai" is ON, ai_config should reflect the AI flag values
+        // (tested separately in test_ai_config_parity_* below)
+    }
+
+    // ========================================================================
+    // AiConfig parity tests (Scenario 2.3.S1, 2.3.S3)
+    // ========================================================================
+
+    #[cfg(feature = "ai")]
+    #[test]
+    fn test_ai_config_parity_with_flags() {
+        use crate::application::crawl_options::AiConfig;
+
+        let args = Args::try_parse_from([
+            "webfang",
+            "--url",
+            "https://example.com",
+            "--threshold",
+            "0.5",
+            "--max-tokens",
+            "1024",
+            "--offline",
+            "--ai-model",
+            "granite-311m",
+        ])
+        .expect("flags must parse");
+
+        let opts = crate::application::crawl_options::CrawlOptions::from(args);
+
+        assert_eq!(
+            opts.ai_config,
+            AiConfig {
+                threshold: 0.5,
+                max_tokens: 1024,
+                offline: true,
+                model: "granite-311m".to_string(),
+            }
+        );
+    }
+
+    #[cfg(feature = "ai")]
+    #[test]
+    fn test_ai_config_parity_no_flags() {
+        use crate::application::crawl_options::AiConfig;
+
+        let args = Args::try_parse_from(["webfang"]).expect("minimal parse must succeed");
+        let opts = crate::application::crawl_options::CrawlOptions::from(args);
+
+        // Default values must reproduce the prior hardcoded behavior (Scenario 2.3.S3)
+        assert_eq!(
+            opts.ai_config,
+            AiConfig {
+                threshold: 0.3,
+                max_tokens: 32768,
+                offline: false,
+                model: String::new(),
+            }
+        );
+    }
+
+    #[cfg(not(feature = "ai"))]
+    #[test]
+    fn test_ai_config_defaults_without_ai_feature() {
+        use crate::application::crawl_options::AiConfig;
+
+        let args = Args::try_parse_from(["webfang"]).expect("minimal parse must succeed");
+        let opts = crate::application::crawl_options::CrawlOptions::from(args);
+
+        // Without AI feature, ai_config should always be Default
+        assert_eq!(opts.ai_config, AiConfig::default());
     }
 
     #[test]
