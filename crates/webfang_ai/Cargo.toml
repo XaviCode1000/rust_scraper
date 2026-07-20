@@ -24,6 +24,9 @@ ort = { workspace = true }
 ndarray = "0.17"
 hf-hub = { workspace = true }
 
+# Thread pool
+crossbeam-channel = { workspace = true }
+
 # Utilities
 sha2 = { workspace = true }
 dirs = { workspace = true }
