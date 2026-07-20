@@ -422,6 +422,14 @@ impl InferencePool {
     pub fn worker_count(&self) -> usize {
         self.worker_count
     }
+
+    /// Check if pool is ready for inference
+    ///
+    /// Returns true if at least one worker thread was spawned successfully.
+    #[must_use]
+    pub fn is_ready(&self) -> bool {
+        self.worker_count > 0
+    }
 }
 
 impl Drop for InferencePool {
