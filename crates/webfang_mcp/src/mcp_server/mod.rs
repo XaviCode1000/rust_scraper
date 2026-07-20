@@ -1244,9 +1244,10 @@ impl McpHandler {
                 ))]));
             }
 
-            Ok(CallToolResult::success(vec![Content::text(format!(
-                "Semantic search for '{}' (limit: {}) — vault search pending implementation. \
-                 Configure vault path via MCP state or WEBFANG_OBSIDIAN_VAULT.",
+            Ok(CallToolResult::error(vec![Content::text(format!(
+                "search_obsidian semantic search not yet implemented. \
+                 Vault path provided, but the embedding search pipeline is not wired. \
+                 Query: '{}', limit: {}",
                 params.query, limit
             ))]))
         }
