@@ -381,7 +381,7 @@ impl McpHandler {
         })?;
         let crawler_config = webfang_core::domain::CrawlerConfig::new(seed);
 
-        match webfang_core::application::crawler_service::crawl_with_sitemap(
+        match webfang_core::application::crawler::crawl_with_sitemap(
             &params.url,
             None,
             &crawler_config,
