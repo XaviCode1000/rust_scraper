@@ -37,6 +37,7 @@ pub struct ExportConfig<'a> {
     pub ai_threshold: f32,
     pub ai_max_tokens: usize,
     pub ai_offline: bool,
+    pub ai_model: String,
 }
 
 /// Run the export flow: AI-cleaned or standard export.
