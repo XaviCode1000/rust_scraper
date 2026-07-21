@@ -53,10 +53,7 @@ pub(crate) fn assert_snapshot_redacted(name: &str, dir: &Path, value: impl Into<
 /// and compile profiles (CI vs local).
 pub(crate) fn assert_snapshot_plain(name: &str, value: impl Into<String>) {
     let mut settings = insta::Settings::clone_current();
-    settings.add_filter(
-        r"(?m)^Parsed using .+$",
-        "Parsed using [REDACTED]",
-    );
+    settings.add_filter(r"(?m)^Parsed using .+$", "Parsed using [REDACTED]");
     settings.bind(|| {
         assert_snapshot!(name, value.into());
     });

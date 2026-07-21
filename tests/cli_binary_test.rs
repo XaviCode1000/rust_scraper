@@ -61,10 +61,7 @@ fn test_help_contains_scraper() {
     assert!(output.status.success(), "expected success");
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut settings = insta::Settings::clone_current();
-    settings.add_filter(
-        r"(?m)^Parsed using .+$",
-        "Parsed using [REDACTED]",
-    );
+    settings.add_filter(r"(?m)^Parsed using .+$", "Parsed using [REDACTED]");
     settings.bind(|| {
         insta::assert_snapshot!(
             "test_help_contains_scraper",
