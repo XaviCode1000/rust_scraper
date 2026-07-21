@@ -319,8 +319,6 @@ async fn __main() -> CliExit {
     // 6. Extract trace_file and ai_model before args is moved into CrawlOptions
     // =========================================================================
     let trace_file = args.crawler.trace_file.take();
-    #[cfg(feature = "ai")]
-    let ai_model_arg = args.ai.ai_model.take();
 
     // =========================================================================
     // 6b. Convert Args → CrawlOptions and apply config file defaults
@@ -417,23 +415,24 @@ async fn __main() -> CliExit {
     let result = {
         let ai_cleaner = if opts.ai {
             // Resolve model variant: CLI flag takes precedence over AI_MODEL_ID env var
-            let model_variant = match &ai_model_arg {
-                Some(model_str) => match model_str.parse::<webfang_ai::AiModel>() {
+            let model_variant = if opts.ai_config.model.is_empty() {
+                webfang_ai::AiModel::from_env_or_default()
+            } else {
+                match opts.ai_config.model.parse::<webfang_ai::AiModel>() {
                     Ok(variant) => variant,
                     Err(e) => {
                         tracing::warn!("Parsing error para --ai-model: {}", e);
                         webfang_ai::AiModel::from_env_or_default()
                     },
-                },
-                None => webfang_ai::AiModel::from_env_or_default(),
+                }
             };
 
             match SemanticCleanerImpl::new(
                 ModelConfig::default()
                     .with_model_variant(model_variant)
-                    .with_relevance_threshold(0.3)
-                    .with_max_tokens(32768)
-                    .with_offline_mode(false),
+                    .with_relevance_threshold(opts.ai_config.threshold)
+                    .with_max_tokens(opts.ai_config.max_tokens)
+                    .with_offline_mode(opts.ai_config.offline),
             )
             .await
             {

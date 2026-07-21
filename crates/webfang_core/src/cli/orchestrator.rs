@@ -238,6 +238,7 @@ pub async fn run(
         ai_threshold: opts.ai_config.threshold,
         ai_max_tokens: opts.ai_config.max_tokens,
         ai_offline: opts.ai_config.offline,
+        ai_model: opts.ai_config.model.clone(),
     };
 
     // Save individual files (Markdown, etc.)

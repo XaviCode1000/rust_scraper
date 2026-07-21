@@ -4,7 +4,7 @@ expression: value.into()
 ---
 CLI Arguments for the webfang binary.
 
-Parsed using `clap` with derive macros.
+Parsed using [REDACTED]
 
 # Examples
 

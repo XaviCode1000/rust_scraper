@@ -48,6 +48,13 @@ pub(crate) fn assert_snapshot_redacted(name: &str, dir: &Path, value: impl Into<
 ///
 /// Use for deterministic outputs that never embed the temp dir (e.g. `--help`,
 /// `--version`, or stderr from a run that passed no `--output`).
+///
+/// Filters out clap's "Parsed using …" line which varies across clap versions
+/// and compile profiles (CI vs local).
 pub(crate) fn assert_snapshot_plain(name: &str, value: impl Into<String>) {
-    assert_snapshot!(name, value.into());
+    let mut settings = insta::Settings::clone_current();
+    settings.add_filter(r"(?m)^Parsed using .+$", "Parsed using [REDACTED]");
+    settings.bind(|| {
+        assert_snapshot!(name, value.into());
+    });
 }
