@@ -448,6 +448,44 @@ impl Downloader {
     }
 }
 
+impl crate::domain::ports::AssetDownloaderPort for Downloader {
+    fn download_batch(
+        &self,
+        urls: &[String],
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = crate::error::Result<Vec<crate::domain::entities::DownloadedAsset>>,
+                > + Send
+                + '_,
+        >,
+    > {
+        let urls = urls.to_vec();
+        Box::pin(async move {
+            let results = self.download_batch(&urls).await;
+            let assets = results
+                .into_iter()
+                .filter_map(|r| r.ok())
+                .map(|a| {
+                    let asset_type = crate::adapters::detector::detect_from_url(&a.url);
+                    let asset_type_str = match asset_type {
+                        crate::adapters::detector::AssetType::Image => "image",
+                        crate::adapters::detector::AssetType::Document => "document",
+                        crate::adapters::detector::AssetType::Unknown => "unknown",
+                    };
+                    crate::domain::entities::DownloadedAsset {
+                        url: a.url,
+                        local_path: a.local_path.to_string_lossy().into_owned(),
+                        asset_type: asset_type_str.to_string(),
+                        size: a.size,
+                    }
+                })
+                .collect();
+            Ok(assets)
+        })
+    }
+}
+
 /// Convert a Response into a stream of bytes
 fn into_stream(response: Response) -> impl StreamExt<Item = wreq::Result<bytes::Bytes>> {
     response.bytes_stream()

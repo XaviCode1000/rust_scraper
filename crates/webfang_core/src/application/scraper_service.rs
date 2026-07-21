@@ -293,7 +293,7 @@ pub async fn scrape_with_config(
     client: &dyn HttpClientPort,
     url: &url::Url,
     config: &ScraperConfig,
-    downloader: Option<&crate::adapters::downloader::Downloader>,
+    downloader: Option<&dyn crate::domain::ports::AssetDownloaderPort>,
     inspector: Option<&dyn DomInspectorPort>,
 ) -> Result<ScrapeOutcome> {
     let mut results = Vec::new();
@@ -378,7 +378,13 @@ pub async fn scrape_with_config(
     // Try Readability first, fallback to plain text extraction
     match crate::infrastructure::scraper::readability::parse(&extraction_html, Some(url.as_str())) {
         Ok(article) => {
-            let assets = download_assets_if_enabled(&html, url, config, downloader).await?;
+            let assets = download_assets_if_enabled(
+                &html,
+                url,
+                config,
+                downloader.map(|d| d as &dyn crate::domain::ports::AssetDownloaderPort),
+            )
+            .await?;
 
             // SPA detection: check if extracted content is minimal
             if let Some(spa_info) = detect_spa_content(url.as_str(), &article.text_content, &html) {
@@ -427,7 +433,13 @@ pub async fn scrape_with_config(
                 crate::infrastructure::scraper::fallback::extract_text(&extraction_html);
             let fallback_content =
                 crate::infrastructure::converter::html_cleaner::clean_html(&raw_fallback);
-            let assets = download_assets_if_enabled(&html, url, config, downloader).await?;
+            let assets = download_assets_if_enabled(
+                &html,
+                url,
+                config,
+                downloader.map(|d| d as &dyn crate::domain::ports::AssetDownloaderPort),
+            )
+            .await?;
 
             // SPA detection: check if fallback content is minimal
             if let Some(spa_info) = detect_spa_content(url.as_str(), &fallback_content, &html) {
@@ -512,7 +524,7 @@ pub async fn scrape_multiple_with_limit(
     client: &dyn HttpClientPort,
     urls: &[url::Url],
     config: &ScraperConfig,
-    downloader: Option<&crate::adapters::downloader::Downloader>,
+    downloader: Option<&dyn crate::domain::ports::AssetDownloaderPort>,
 ) -> Result<Vec<ScrapedContent>> {
     if urls.is_empty() {
         return Ok(Vec::new());
@@ -551,13 +563,13 @@ pub async fn scrape_multiple_with_limit(
 
 /// Helper: Download assets if config has downloads enabled
 ///
-/// Uses the adapters `Downloader` (streaming, pooled client, ~8KB RAM).
-/// Falls back to no-op when feature gates are disabled.
+/// Uses the `AssetDownloaderPort` trait for testability.
+/// Falls back to constructing a concrete `Downloader` when no trait object is provided.
 pub async fn download_assets_if_enabled(
     _html: &str,
     _base_url: &url::Url,
     _config: &crate::ScraperConfig,
-    _shared_downloader: Option<&crate::adapters::downloader::Downloader>,
+    _shared_downloader: Option<&dyn crate::domain::ports::AssetDownloaderPort>,
 ) -> Result<Vec<DownloadedAsset>> {
     if !_config.has_downloads() {
         return Ok(Vec::new());
@@ -567,7 +579,7 @@ pub async fn download_assets_if_enabled(
     {
         // Use shared downloader when provided; create a fallback one otherwise
         let owned_downloader;
-        let downloader = match _shared_downloader {
+        let downloader: &dyn crate::domain::ports::AssetDownloaderPort = match _shared_downloader {
             Some(dl) => dl,
             None => {
                 owned_downloader =
@@ -605,33 +617,10 @@ pub async fn download_assets_if_enabled(
             urls.len()
         );
 
-        let results = downloader.download_batch(&urls).await;
+        let results = downloader.download_batch(&urls).await?;
 
-        // Convert adapters::DownloadedAsset → domain::DownloadedAsset
-        let mut assets = Vec::new();
-        for result in results {
-            match result {
-                Ok(asset) => {
-                    let asset_type = crate::adapters::detector::detect_from_url(&asset.url);
-                    let asset_type_str = match asset_type {
-                        crate::adapters::detector::AssetType::Image => "image",
-                        crate::adapters::detector::AssetType::Document => "document",
-                        crate::adapters::detector::AssetType::Unknown => "unknown",
-                    };
-                    assets.push(DownloadedAsset {
-                        url: asset.url,
-                        local_path: asset.local_path.to_string_lossy().into_owned(),
-                        asset_type: asset_type_str.to_string(),
-                        size: asset.size,
-                    });
-                },
-                Err(e) => {
-                    tracing::warn!("Failed to download asset: {}", e);
-                },
-            }
-        }
-
-        Ok(assets)
+        // Trait impl already returns domain::DownloadedAsset — collect directly
+        Ok(results)
     }
 
     #[cfg(not(any(feature = "images", feature = "documents")))]

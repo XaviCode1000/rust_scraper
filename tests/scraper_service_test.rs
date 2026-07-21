@@ -863,32 +863,66 @@ async fn test_mock_extracts_non_empty_content() {
 // Spy test: prove download_assets_if_enabled reuses shared Arc<Downloader>
 // =====================================================================
 
-/// Spy test: prove `download_assets_if_enabled` reuses the shared
-/// `Arc<Downloader>` (Scenario 2.1.S2).
+/// Spy test: prove `download_assets_if_enabled` reuses the injected
+/// `AssetDownloaderPort` instance (Issue #217).
 ///
-/// The test builds one `Downloader` instance, wraps it in `Arc`, and calls
-/// `download_assets_if_enabled` with `Some(&dl)`.  `Arc::strong_count`
-/// confirms no cloning occurred (count stays at 1), proving the single
-/// construction path from `orchestrator.rs:122`.
-///
-/// NOTE: `download_batch` makes real HTTP calls; unreachable URLs produce
-/// logged warnings but do NOT abort the batch (partial results).  The
-/// architectural assertion (Arc sharing) holds regardless of download success.
+/// Uses a `DownloadSpy` mock that counts `download_batch` calls.
+/// If the function constructed a new Downloader instead of using the injected
+/// mock, the call count would be 0 — proving the trait object is passed through.
 #[tokio::test]
 async fn test_download_assets_shared_downloader_spy() {
-    use std::sync::Arc;
-    use webfang_core::adapters::downloader::Downloader;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
+    use webfang_core::domain::entities::DownloadedAsset as DomainDownloadedAsset;
+    use webfang_core::domain::ports::AssetDownloaderPort;
+
+    /// Spy that counts download_batch calls without doing real I/O.
+    struct DownloadSpy {
+        call_count: AtomicUsize,
+        last_urls: Mutex<Vec<String>>,
+    }
+
+    impl DownloadSpy {
+        fn new() -> Self {
+            Self {
+                call_count: AtomicUsize::new(0),
+                last_urls: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn call_count(&self) -> usize {
+            self.call_count.load(Ordering::SeqCst)
+        }
+
+        fn last_urls(&self) -> Vec<String> {
+            self.last_urls.lock().unwrap().clone()
+        }
+    }
+
+    impl AssetDownloaderPort for DownloadSpy {
+        fn download_batch(
+            &self,
+            urls: &[String],
+        ) -> std::pin::Pin<
+            Box<
+                dyn std::future::Future<
+                        Output = webfang_core::error::Result<Vec<DomainDownloadedAsset>>,
+                    > + Send
+                    + '_,
+            >,
+        > {
+            self.call_count.fetch_add(1, Ordering::SeqCst);
+            *self.last_urls.lock().unwrap() = urls.to_vec();
+            Box::pin(async { Ok(Vec::new()) })
+        }
+    }
 
     let tmp = tempfile::tempdir().expect("tempdir");
     let config = ScraperConfig::default()
         .with_images()
         .with_output_dir(tmp.path().to_path_buf());
 
-    // Build one Downloader — this is the shared instance the orchestrator
-    // constructs at orchestrator.rs:122.
-    let dl = Downloader::new(config.to_download_config())
-        .expect("Downloader::new should succeed with temp dir");
-    let shared = Arc::new(dl);
+    let spy = DownloadSpy::new();
 
     let html = r#"<!DOCTYPE html>
 <html>
@@ -899,34 +933,27 @@ async fn test_download_assets_shared_downloader_spy() {
 </html>"#;
     let base = url::Url::parse("https://example.com/page").unwrap();
 
-    let initial_count = Arc::strong_count(&shared);
-
     let result = webfang_core::application::scraper_service::download_assets_if_enabled(
         html,
         &base,
         &config,
-        Some(&shared),
+        Some(&spy),
     )
     .await
     .expect("download_assets_if_enabled should succeed");
 
-    // Architectural assertion: Arc was NOT cloned — same instance shared.
+    // Proof: the injected spy was called — not a new Downloader constructed
     assert_eq!(
-        Arc::strong_count(&shared),
-        initial_count,
-        "Arc should not be cloned; shared downloader reused without new construction"
+        spy.call_count(),
+        1,
+        "download_batch must be called exactly once"
     );
-
-    // The shared downloader config has downloads enabled.
-    assert!(
-        config.has_downloads(),
-        "config must have downloads enabled for this test"
+    assert_eq!(
+        spy.last_urls().len(),
+        2,
+        "must extract 2 image URLs from HTML"
     );
-
-    // `result` may be empty (real HTTP calls to unreachable URLs fail gracefully).
-    // The critical proof is that the Some(dl) path was taken — the None fallback
-    // branch (scraper_service.rs:572-576) was NOT executed.
-    let _ = result;
+    assert!(result.is_empty(), "spy returns empty vec");
 }
 
 /// Regression guard (C3 / REQ-2.1.2): `None` downloader fallback still works.

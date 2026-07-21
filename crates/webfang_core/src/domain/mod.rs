@@ -65,6 +65,7 @@ pub use js_strategy::JsStrategy;
 pub use link_extractor::{LinkExtractor, LinkProcessor};
 pub use pattern_matching::matches_pattern;
 pub use pipeline_item::{PipelineStage, ScrapedItem, StageOutcome};
+pub use ports::AssetDownloaderPort;
 pub use repositories::CrawlResultRepository;
 pub use repository::VectorRepository;
 pub use result::CrawlResult;

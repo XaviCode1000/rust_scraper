@@ -70,6 +70,28 @@ pub trait PersistencePort: Send + Sync {
     >;
 }
 
+/// Port trait for downloading assets (images, documents).
+///
+/// Abstracts asset downloading so application services don't depend on
+/// specific download implementations. The production adapter streams
+/// to disk with ~8KB RAM; tests inject mocks that count calls.
+pub trait AssetDownloaderPort: Send + Sync {
+    /// Download a batch of assets from URLs.
+    ///
+    /// Returns partial results — individual failures don't abort the batch.
+    fn download_batch(
+        &self,
+        urls: &[String],
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = crate::error::Result<Vec<crate::domain::entities::DownloadedAsset>>,
+                > + Send
+                + '_,
+        >,
+    >;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

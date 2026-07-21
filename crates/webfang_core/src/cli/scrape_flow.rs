@@ -97,7 +97,7 @@ pub async fn scrape_urls(
     scraper_config: &ScraperConfig,
     opts: &CrawlOptions,
     progress_tx: Option<mpsc::Sender<ScrapeProgress>>,
-    downloader: Option<&crate::adapters::downloader::Downloader>,
+    downloader: Option<&dyn crate::domain::ports::AssetDownloaderPort>,
 ) -> (
     Vec<ScrapedContent>,
     Vec<(String, crate::error::ScraperError)>,
