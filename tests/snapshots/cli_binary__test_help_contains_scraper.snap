@@ -4,6 +4,8 @@ expression: "redact_nondeterministic(Path::new(\"__no_temp__\"), &stdout)"
 ---
 CLI Arguments for the webfang binary.
 
+Parsed using `clap` with derive macros.
+
 # Examples
 
 ```no_run use webfang::Args; use clap::Parser;
@@ -30,64 +32,6 @@ Options:
           
           [env: WEBFANG_SELECTOR=]
           [default: body]
-
-  -o, --output <OUTPUT>
-          Output directory for scraped content
-          
-          [env: WEBFANG_OUTPUT=]
-          [default: output]
-
-  -f, --format <FORMAT>
-          Output format for individual files (markdown, text, json) NOTE: For RAG pipeline export, use --export-format instead
-
-          Possible values:
-          - markdown: Markdown format with YAML frontmatter (recommended for RAG)
-          - json:     Structured JSON with metadata
-          - text:     Plain text without formatting
-          
-          [env: WEBFANG_FORMAT=]
-          [default: markdown]
-
-      --export-format <EXPORT_FORMAT>
-          Export format for RAG pipeline (jsonl, vector, auto) NOTE: Use --format for output file format (markdown, text, json)
-
-          Possible values:
-          - jsonl:  JSONL format (JSON Lines - one JSON object per line) Optimal for RAG pipelines and vector database ingestion
-          - vector: Vector format (JSON with metadata header) Supports embeddings and cosine similarity
-          - auto:   Auto-detect format from existing export files
-          
-          [env: WEBFANG_EXPORT_FORMAT=]
-          [default: jsonl]
-
-      --obsidian-wiki-links
-          Convert same-domain links to Obsidian [[wiki-link]] syntax
-          
-          [env: WEBFANG_OBSIDIAN_WIKI_LINKS=]
-
-      --obsidian-tags <OBSIDIAN_TAGS>
-          Tags to include in YAML frontmatter (comma-separated)
-          
-          [env: WEBFANG_OBSIDIAN_TAGS=]
-
-      --obsidian-relative-assets
-          Rewrite downloaded asset paths as relative to the .md file
-          
-          [env: WEBFANG_OBSIDIAN_RELATIVE_ASSETS=]
-
-      --vault <VAULT>
-          Path to Obsidian vault (auto-detects if not provided)
-          
-          [env: WEBFANG_OBSIDIAN_VAULT=]
-
-      --quick-save
-          Quick-save mode: save directly to vault _inbox folder
-          
-          [env: WEBFANG_OBSIDIAN_QUICK_SAVE=]
-
-      --obsidian-rich-metadata
-          Add rich metadata to frontmatter
-          
-          [env: WEBFANG_OBSIDIAN_RICH_METADATA=]
 
       --delay-ms <DELAY_MS>
           Delay between requests in milliseconds
@@ -146,11 +90,6 @@ Options:
           Download all assets (images + documents) from the page
           
           [env: WEBFANG_DOWNLOAD_ASSETS=]
-
-      --tui
-          Unified TUI mode: config form (collapsible sections) → URL selector → scraping
-          
-          [env: WEBFANG_TUI=]
 
       --force-js-render
           Force JavaScript rendering for SPA sites (not yet implemented)
@@ -258,31 +197,6 @@ Options:
           [env: WEBFANG_SITEMAP_DEPTH=]
           [default: 3]
 
-      --cpu-cores <CPU_CORES>
-          CPU core override for the elastic ingestion Rayon pool (else auto-detect)
-          
-          [env: WEBFANG_CPU_CORES=]
-
-      --ram-budget <RAM_BUDGET>
-          RAM budget override for the byte-weighted semaphore (`8GB`, `2048MB`, or bytes)
-          
-          [env: WEBFANG_RAM_BUDGET=]
-
-      --db-path <DB_PATH>
-          SQLite database path override for persisted resources/chunks
-          
-          [env: WEBFANG_DB_PATH=]
-
-      --elastic
-          Enable elastic ingestion pipeline (streaming, SQLite dedup, Rayon CPU bridge)
-          
-          [env: WEBFANG_ELASTIC=]
-
-      --output-vectors <OUTPUT_VECTORS>
-          Write extracted vectors to a JSONL file for RAG pipelines. Use `-` for stdout. No SQLite dependency — available in every build (core binary too)
-          
-          [env: WEBFANG_OUTPUT_VECTORS=]
-
       --checkpoint-interval <CHECKPOINT_INTERVAL>
           Pages between automatic checkpoint saves (0 = disabled) NOTE: Checkpoint is for programmatic use (Engine API) only. CLI --resume uses StateStore instead of checkpoints
           
@@ -332,6 +246,59 @@ Options:
           [env: WEBFANG_OBSCURA_BINARY=]
           [default: obscura]
 
+  -o, --output <OUTPUT>
+          Output directory for scraped content
+          
+          [env: WEBFANG_OUTPUT=]
+          [default: output]
+
+  -f, --format <FORMAT>
+          Output format for individual files (markdown, text, json) NOTE: For RAG pipeline export, use --export-format instead
+
+          Possible values:
+          - markdown: Markdown format with YAML frontmatter (recommended for RAG)
+          - json:     Structured JSON with metadata
+          - text:     Plain text without formatting
+          
+          [env: WEBFANG_FORMAT=]
+          [default: markdown]
+
+      --export-format <EXPORT_FORMAT>
+          Export format for RAG pipeline (jsonl, vector, auto) NOTE: Use --format for output file format (markdown, text, json)
+
+          Possible values:
+          - jsonl:  JSONL format (JSON Lines - one JSON object per line) Optimal for RAG pipelines and vector database ingestion
+          - vector: Vector format (JSON with metadata header) Supports embeddings and cosine similarity
+          - auto:   Auto-detect format from existing export files
+          
+          [env: WEBFANG_EXPORT_FORMAT=]
+          [default: jsonl]
+
+      --cpu-cores <CPU_CORES>
+          CPU core override for the elastic ingestion Rayon pool (else auto-detect)
+          
+          [env: WEBFANG_CPU_CORES=]
+
+      --ram-budget <RAM_BUDGET>
+          RAM budget override for the byte-weighted semaphore (`8GB`, `2048MB`, or bytes)
+          
+          [env: WEBFANG_RAM_BUDGET=]
+
+      --db-path <DB_PATH>
+          SQLite database path override for persisted resources/chunks
+          
+          [env: WEBFANG_DB_PATH=]
+
+      --elastic
+          Enable elastic ingestion pipeline (streaming, SQLite dedup, Rayon CPU bridge)
+          
+          [env: WEBFANG_ELASTIC=]
+
+      --output-vectors <OUTPUT_VECTORS>
+          Write extracted vectors to a JSONL file for RAG pipelines. Use `-` for stdout. No SQLite dependency — available in every build (core binary too)
+          
+          [env: WEBFANG_OUTPUT_VECTORS=]
+
       --batch
           Enable batch mode — read URLs from stdin (one per line)
           
@@ -362,6 +329,41 @@ Options:
           
           [env: WEBFANG_PIPELINE_OUTPUT=]
           [default: jsonl]
+
+      --obsidian-wiki-links
+          Convert same-domain links to Obsidian [[wiki-link]] syntax
+          
+          [env: WEBFANG_OBSIDIAN_WIKI_LINKS=]
+
+      --obsidian-tags <OBSIDIAN_TAGS>
+          Tags to include in YAML frontmatter (comma-separated)
+          
+          [env: WEBFANG_OBSIDIAN_TAGS=]
+
+      --obsidian-relative-assets
+          Rewrite downloaded asset paths as relative to the .md file
+          
+          [env: WEBFANG_OBSIDIAN_RELATIVE_ASSETS=]
+
+      --vault <VAULT>
+          Path to Obsidian vault (auto-detects if not provided)
+          
+          [env: WEBFANG_OBSIDIAN_VAULT=]
+
+      --quick-save
+          Quick-save mode: save directly to vault _inbox folder
+          
+          [env: WEBFANG_OBSIDIAN_QUICK_SAVE=]
+
+      --obsidian-rich-metadata
+          Add rich metadata to frontmatter
+          
+          [env: WEBFANG_OBSIDIAN_RICH_METADATA=]
+
+      --tui
+          Unified TUI mode: config form (collapsible sections) → URL selector → scraping
+          
+          [env: WEBFANG_TUI=]
 
   -h, --help
           Print help (see a summary with '-h')
