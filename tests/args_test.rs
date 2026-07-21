@@ -116,7 +116,6 @@ fn args_with_all_fields_set() -> Args {
             batch_concurrency: 8,
             pipeline: true,
             pipeline_output: webfang_core::domain::config::PipelineOutputFormat::None,
-            ..Default::default()
         },
 
         obsidian: ObsidianArgs {
@@ -126,7 +125,6 @@ fn args_with_all_fields_set() -> Args {
             vault: Some(std::path::PathBuf::from("/tmp/vault")),
             quick_save: true,
             obsidian_rich_metadata: true,
-            ..Default::default()
         },
 
         ai: AiArgs {
