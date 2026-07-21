@@ -176,10 +176,6 @@ name = "cli_binary"
 path = "../../tests/cli_binary_test.rs"
 
 [[test]]
-name = "cli_behavioral"
-path = "../../tests/cli_behavioral_test.rs"
-
-[[test]]
 name = "sitemap_integration"
 path = "../../tests/sitemap_integration.rs"
 

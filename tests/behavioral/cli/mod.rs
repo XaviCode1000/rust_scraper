@@ -1,3 +1,4 @@
+mod batch_test;
 mod core_test;
 mod crawl_test;
 mod download_test;
@@ -6,3 +7,4 @@ mod error_path_test;
 mod obsidian_test;
 mod robots_test;
 mod single_page_test;
+mod sitemap_test;

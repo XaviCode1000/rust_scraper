@@ -2,6 +2,7 @@
 
 use crate::cmd;
 use tempfile::TempDir;
+use walkdir::WalkDir;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -226,5 +227,59 @@ async fn download_documents_pdf_content_is_valid() {
     assert_eq!(
         saved, pdf_content,
         "downloaded document should match original"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Direct PDF URL download (--download-documents with binary content-type)
+// ---------------------------------------------------------------------------
+
+/// When a page returns binary content-type (application/pdf), the raw bytes
+/// are saved to a file in the output directory.
+#[tokio::test]
+async fn download_pdf_saves_binary_file() {
+    let server = MockServer::start().await;
+    let output = tempfile::TempDir::new().unwrap();
+
+    let pdf_content = b"%PDF-1.4 fake pdf content for testing binary download feature";
+
+    Mock::given(method("GET"))
+        .and(path("/report.pdf"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_body_bytes(pdf_content.to_vec())
+                .insert_header("content-type", "application/pdf"),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    crate::cmd()
+        .arg("--url")
+        .arg(format!("{}/report.pdf", server.uri()))
+        .arg("--single-page")
+        .arg("--download-documents")
+        .arg("--output")
+        .arg(output.path())
+        .arg("--quiet")
+        .assert()
+        .success();
+
+    let pdf_files: Vec<_> = WalkDir::new(output.path())
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_type().is_file())
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "pdf"))
+        .collect();
+
+    assert!(
+        !pdf_files.is_empty(),
+        "a .pdf file should exist in the output directory when downloading a PDF URL"
+    );
+
+    let saved = std::fs::read(pdf_files[0].path()).unwrap();
+    assert_eq!(
+        saved, pdf_content,
+        "saved PDF content should match the original"
     );
 }
