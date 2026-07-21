@@ -1,0 +1,228 @@
+pub mod ai;
+pub mod crawler;
+pub mod export;
+pub mod obsidian;
+pub mod tui;
+
+pub use ai::AiArgs;
+pub use crawler::CrawlerArgs;
+pub use export::ExportArgs;
+pub use obsidian::ObsidianArgs;
+pub use tui::TuiArgs;
+
+use clap::Parser;
+
+/// CLI Arguments for the webfang binary.
+///
+/// Parsed using `clap` with derive macros.
+///
+/// # Examples
+///
+/// ```no_run
+/// use webfang::Args;
+/// use clap::Parser;
+///
+/// let args = Args::parse_from([
+///     "webfang",
+///     "--url", "https://example.com",
+///     "--output", "./output",
+///     "--export-format", "jsonl",
+///     "--resume",
+/// ]);
+///
+/// assert_eq!(args.url, "https://example.com");
+/// ```
+#[derive(Parser, Debug, Default)]
+#[command(name = "webfang", version)]
+#[command(
+    about = "High-performance web scraper with WAF evasion and AI-powered content cleaning",
+    after_help = "EXIT CODES:\n  0    Success\n  2    No URLs discovered\n  69   WAF block or network error\n  74   I/O error\n  76   Protocol error\n  78   Configuration error\n\nEXAMPLES:\n  webfang -u https://example.com\n  webfang -u https://example.com --ai\n  webfang -u https://example.com -f jsonl\n  webfang -u https://example.com -v\n  webfang -u https://example.com -vv  # DEBUG\n  webfang --url-list urls.txt --resume"
+)]
+#[command(args_conflicts_with_subcommands = true)]
+pub struct Args {
+    /// Subcommands
+    #[command(subcommand)]
+    pub subcommand: Option<Commands>,
+
+    #[command(flatten)]
+    pub crawler: CrawlerArgs,
+
+    #[command(flatten)]
+    pub export: ExportArgs,
+
+    #[command(flatten)]
+    pub obsidian: ObsidianArgs,
+
+    #[command(flatten)]
+    pub ai: AiArgs,
+
+    #[command(flatten)]
+    pub tui: TuiArgs,
+}
+
+/// Subcommands.
+#[derive(Debug, clap::Subcommand)]
+pub enum Commands {
+    /// Generate shell completion scripts
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+}
+
+/// Shell type for completions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Shell {
+    Bash,
+    Elvish,
+    Fish,
+    PowerShell,
+    Zsh,
+}
+
+impl From<Shell> for clap_complete::Shell {
+    fn from(s: Shell) -> Self {
+        match s {
+            Shell::Bash => clap_complete::Shell::Bash,
+            Shell::Elvish => clap_complete::Shell::Elvish,
+            Shell::Fish => clap_complete::Shell::Fish,
+            Shell::PowerShell => clap_complete::Shell::PowerShell,
+            Shell::Zsh => clap_complete::Shell::Zsh,
+        }
+    }
+}
+
+impl Args {
+    /// Build [`ElasticOverrides`] (PR5) from the elastic-ingestion CLI flags.
+    ///
+    /// `--ram-budget` is parsed via [`parse_ram_bytes`] so it accepts suffixed
+    /// values (`8GB`, `2048MB`, plain bytes). The result feeds
+    /// [`ElasticConfig::resolve`] → Rayon pool size, byte-weighted semaphore,
+    /// and SQLite path.
+    ///
+    /// [`ElasticConfig::resolve`]: crate::infrastructure::autotuning::ElasticConfig::resolve
+    /// [`parse_ram_bytes`]: crate::infrastructure::autotuning::parse_ram_bytes
+    /// [`ElasticOverrides`]: crate::infrastructure::autotuning::ElasticOverrides
+    #[must_use]
+    pub fn elastic_overrides(&self) -> crate::infrastructure::autotuning::ElasticOverrides {
+        use crate::infrastructure::autotuning::{parse_ram_bytes, ElasticOverrides};
+        ElasticOverrides {
+            cpu_cores: self.export.cpu_cores,
+            ram_budget_bytes: self.export.ram_budget.as_deref().and_then(parse_ram_bytes),
+            max_resource_bytes: None,
+            db_path: self.export.db_path.clone(),
+        }
+    }
+}
+
+// ============================================================================
+// From<Args> for CrawlOptions
+// ============================================================================
+
+impl From<Args> for crate::application::crawl_options::CrawlOptions {
+    /// Convert CLI arguments into structured [`CrawlOptions`].
+    ///
+    /// This is an owned, lossless conversion — every field in `Args` maps
+    /// to exactly one field in `CrawlOptions`. The `url` field is parsed
+    /// from `Option<String>` into `Url` (panics if invalid; CLI validation
+    /// guarantees validity before this point).
+    fn from(args: Args) -> Self {
+        use crate::application::crawl_options::{
+            CrawlLimits, ExportOptions, IngestionTuning, NetworkOptions,
+        };
+
+        let url = url::Url::parse(args.crawler.url.as_deref().unwrap_or("https://example.com"))
+            .expect("URL must be valid — CLI validation ensures this");
+
+        let overrides = args.elastic_overrides();
+        let ai_config = build_ai_config(&args);
+
+        Self {
+            url,
+            verbosity: args.crawler.verbose,
+            quiet: args.crawler.quiet,
+            ai: args.crawler.clean_ai,
+            crawl: CrawlLimits {
+                selector: args.crawler.selector,
+                max_depth: args.crawler.max_depth,
+                max_pages: args.crawler.max_pages,
+                single_page: args.crawler.single_page,
+                include_patterns: args.crawler.include_patterns,
+                exclude_patterns: args.crawler.exclude_patterns,
+                interactive: args.tui.interactive,
+                resume: args.crawler.resume,
+                state_dir: args.crawler.state_dir,
+                use_sitemap: args.crawler.use_sitemap,
+                sitemap_url: args.crawler.sitemap_url,
+                checkpoint_interval: args.crawler.checkpoint_interval,
+                no_checkpoint: args.crawler.no_checkpoint,
+                ignore_robots: args.crawler.ignore_robots,
+                no_session_health: args.crawler.no_session_health,
+                autoscale_enabled: args.crawler.autoscale,
+            },
+            network: NetworkOptions {
+                user_agent: args.crawler.user_agent,
+                accept_language: args.crawler.accept_language,
+                concurrency: args.crawler.concurrency,
+                delay_ms: args.crawler.delay_ms,
+                timeout_secs: args.crawler.timeout_secs,
+                max_retries: args.crawler.max_retries,
+                backoff_base_ms: args.crawler.backoff_base_ms,
+                backoff_max_ms: args.crawler.backoff_max_ms,
+                download_images: args.crawler.download_images || args.crawler.download_assets,
+                download_documents: args.crawler.download_documents || args.crawler.download_assets,
+                force_js_render: args.crawler.force_js_render,
+                h2_profile: args.crawler.h2_profile,
+                js_strategy: args.crawler.js_strategy,
+                obscura_binary: args.crawler.obscura_binary,
+            },
+            export: ExportOptions {
+                output_format: args.export.format,
+                export_format: args.export.export_format,
+                output_dir: args.export.output,
+                dry_run: args.crawler.dry_run,
+                quiet: args.crawler.quiet,
+                obsidian_vault: args.obsidian.vault,
+                obsidian_rich_metadata: args.obsidian.obsidian_rich_metadata,
+                obsidian_tags: args.obsidian.obsidian_tags.unwrap_or_default(),
+                obsidian_wiki_links: args.obsidian.obsidian_wiki_links,
+                obsidian_relative_assets: args.obsidian.obsidian_relative_assets,
+                quick_save: args.obsidian.quick_save,
+            },
+            elastic: IngestionTuning {
+                enabled: args.export.elastic,
+                cpu_cores: overrides.cpu_cores,
+                ram_budget_bytes: overrides.ram_budget_bytes,
+                db_path: overrides.db_path,
+                max_resource_bytes: overrides.max_resource_bytes,
+                output_vectors: args.export.output_vectors.clone(),
+            },
+            pipeline_enabled: args.export.pipeline,
+            pipeline_output_format: args.export.pipeline_output,
+            batch: crate::application::crawl_options::BatchOptions {
+                enabled: args.export.batch || args.export.batch_file.is_some(),
+                batch_file: args.export.batch_file,
+                concurrency: args.export.batch_concurrency,
+            },
+            asset_naming: args.crawler.asset_naming,
+            download_concurrency: args.crawler.download_concurrency,
+            ai_config,
+        }
+    }
+}
+
+#[cfg(feature = "ai")]
+fn build_ai_config(args: &Args) -> crate::application::crawl_options::AiConfig {
+    crate::application::crawl_options::AiConfig {
+        threshold: args.ai.threshold,
+        max_tokens: args.ai.max_tokens,
+        offline: args.ai.offline,
+        model: args.ai.ai_model.clone().unwrap_or_default(),
+    }
+}
+
+#[cfg(not(feature = "ai"))]
+fn build_ai_config(_args: &Args) -> crate::application::crawl_options::AiConfig {
+    crate::application::crawl_options::AiConfig::default()
+}

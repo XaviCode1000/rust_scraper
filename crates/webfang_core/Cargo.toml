@@ -195,6 +195,10 @@ path = "../../tests/sitemap_behavioral.rs"
 name = "scraper_service_test"
 path = "../../tests/scraper_service_test.rs"
 
+[[test]]
+name = "args_test"
+path = "../../tests/args_test.rs"
+
 [lints.clippy]
 doc_markdown = "allow"
 uninlined_format_args = "allow"
