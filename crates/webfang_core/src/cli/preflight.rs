@@ -304,22 +304,22 @@ pub fn apply_tui_config_args(mut args: Args, config_values: &serde_json::Value) 
     // ========================================================================
     // Target
     // ========================================================================
-    apply_str_opt!("url", args.url);
-    apply_str!("selector", args.selector);
+    apply_str_opt!("url", args.crawler.url);
+    apply_str!("selector", args.crawler.selector);
 
     // ========================================================================
     // Output
     // ========================================================================
-    apply_path!("output", args.output);
+    apply_path!("output", args.export.output);
     if let Some(fmt) = config_values.get("format").and_then(|v| v.as_str()) {
-        args.format = match fmt {
+        args.export.format = match fmt {
             "json" => O::Json,
             "text" => O::Text,
             _ => O::Markdown,
         };
     }
     if let Some(fmt) = config_values.get("export_format").and_then(|v| v.as_str()) {
-        args.export_format = match fmt {
+        args.export.export_format = match fmt {
             "vector" => E::Vector,
             "auto" => E::Auto,
             _ => E::Jsonl,
@@ -329,24 +329,24 @@ pub fn apply_tui_config_args(mut args: Args, config_values: &serde_json::Value) 
     // ========================================================================
     // Discovery
     // ========================================================================
-    apply_bool!("use_sitemap", args.use_sitemap);
-    apply_str_opt!("sitemap_url", args.sitemap_url);
-    apply_usize!("max_pages", args.max_pages);
-    apply_u8!("max_depth", args.max_depth);
-    apply_u8!("sitemap_depth", args.sitemap_depth);
+    apply_bool!("use_sitemap", args.crawler.use_sitemap);
+    apply_str_opt!("sitemap_url", args.crawler.sitemap_url);
+    apply_usize!("max_pages", args.crawler.max_pages);
+    apply_u8!("max_depth", args.crawler.max_depth);
+    apply_u8!("sitemap_depth", args.crawler.sitemap_depth);
 
     // ========================================================================
     // Crawler
     // ========================================================================
-    apply_u64!("timeout_secs", args.timeout_secs);
-    apply_u64!("max_retries", args.max_retries);
-    apply_u64!("delay_ms", args.delay_ms);
+    apply_u64!("timeout_secs", args.crawler.timeout_secs);
+    apply_u64!("max_retries", args.crawler.max_retries);
+    apply_u64!("delay_ms", args.crawler.delay_ms);
     // Concurrency: special handling (auto or number)
     if let Some(v) = config_values.get("concurrency").and_then(|v| v.as_str()) {
         if v == "auto" {
-            args.concurrency = crate::ConcurrencyConfig::default();
+            args.crawler.concurrency = crate::ConcurrencyConfig::default();
         } else if let Ok(n) = v.parse::<usize>() {
-            args.concurrency = crate::ConcurrencyConfig::new(n);
+            args.crawler.concurrency = crate::ConcurrencyConfig::new(n);
         }
     }
     // Include/exclude patterns
@@ -355,7 +355,7 @@ pub fn apply_tui_config_args(mut args: Args, config_values: &serde_json::Value) 
         .and_then(|v| v.as_str())
     {
         if !v.is_empty() {
-            args.include_patterns = v.split(',').map(String::from).collect();
+            args.crawler.include_patterns = v.split(',').map(String::from).collect();
         }
     }
     if let Some(v) = config_values
@@ -363,90 +363,96 @@ pub fn apply_tui_config_args(mut args: Args, config_values: &serde_json::Value) 
         .and_then(|v| v.as_str())
     {
         if !v.is_empty() {
-            args.exclude_patterns = v.split(',').map(String::from).collect();
+            args.crawler.exclude_patterns = v.split(',').map(String::from).collect();
         }
     }
 
     // ========================================================================
     // Network
     // ========================================================================
-    apply_str_opt!("user_agent", args.user_agent);
-    apply_str!("accept_language", args.accept_language);
-    apply_str!("h2_profile", args.h2_profile);
+    apply_str_opt!("user_agent", args.crawler.user_agent);
+    apply_str!("accept_language", args.crawler.accept_language);
+    apply_str!("h2_profile", args.crawler.h2_profile);
     if let Some(v) = config_values.get("js_strategy").and_then(|v| v.as_str()) {
-        args.js_strategy = match v {
+        args.crawler.js_strategy = match v {
             "hybrid" => JsStrategy::Hybrid,
             "full" => JsStrategy::Full,
             _ => JsStrategy::Static,
         };
     }
-    apply_bool!("force_js_render", args.force_js_render);
+    apply_bool!("force_js_render", args.crawler.force_js_render);
 
     // ========================================================================
     // Download
     // ========================================================================
-    apply_bool!("download_images", args.download_images);
-    apply_bool!("download_documents", args.download_documents);
-    apply_u64!("max_file_size", args.max_file_size);
-    apply_u64!("download_timeout", args.download_timeout);
+    apply_bool!("download_images", args.crawler.download_images);
+    apply_bool!("download_documents", args.crawler.download_documents);
+    apply_u64!("max_file_size", args.crawler.max_file_size);
+    apply_u64!("download_timeout", args.crawler.download_timeout);
 
     // ========================================================================
     // Obsidian
     // ========================================================================
-    apply_bool!("obsidian_wiki_links", args.obsidian_wiki_links);
+    apply_bool!("obsidian_wiki_links", args.obsidian.obsidian_wiki_links);
     // Tags: comma-separated string → Vec<String>
     if let Some(v) = config_values.get("obsidian_tags").and_then(|v| v.as_str()) {
         if !v.is_empty() {
-            args.obsidian_tags = Some(v.split(',').map(String::from).collect());
+            args.obsidian.obsidian_tags = Some(v.split(',').map(String::from).collect());
         }
     }
-    apply_bool!("obsidian_relative_assets", args.obsidian_relative_assets);
-    apply_bool!("obsidian_rich_metadata", args.obsidian_rich_metadata);
-    apply_path_opt!("vault", args.vault);
-    apply_bool!("quick_save", args.quick_save);
+    apply_bool!(
+        "obsidian_relative_assets",
+        args.obsidian.obsidian_relative_assets
+    );
+    apply_bool!(
+        "obsidian_rich_metadata",
+        args.obsidian.obsidian_rich_metadata
+    );
+    apply_path_opt!("vault", args.obsidian.vault);
+    apply_bool!("quick_save", args.obsidian.quick_save);
 
     // ========================================================================
     // AI (feature-gated)
     // ========================================================================
     #[cfg(feature = "ai")]
     {
-        apply_bool!("clean_ai", args.clean_ai);
-        apply_usize!("max_tokens", args.max_tokens);
+        apply_bool!("clean_ai", args.crawler.clean_ai);
+        apply_usize!("max_tokens", args.ai.max_tokens);
         if let Some(v) = config_values.get("threshold").and_then(|v| v.as_str()) {
             if let Ok(n) = v.parse::<f32>() {
-                args.threshold = n;
+                args.ai.threshold = n;
             }
         }
-        apply_bool!("offline", args.offline);
+        apply_bool!("offline", args.ai.offline);
     }
 
     // ========================================================================
     // Advanced
     // ========================================================================
-    apply_bool!("elastic", args.elastic);
+    apply_bool!("elastic", args.export.elastic);
     // Note: cpu_cores, ram_budget, db_path are handled in orchestrator via ElasticOverrides
-    apply_bool!("pipeline", args.pipeline);
+    apply_bool!("pipeline", args.export.pipeline);
     if let Some(v) = config_values
         .get("pipeline_output")
         .and_then(|v| v.as_str())
     {
-        args.pipeline_output = match v {
+        args.export.pipeline_output = match v {
             "none" => P::None,
             _ => P::Jsonl,
         };
     }
-    apply_bool!("batch", args.batch);
-    apply_path_opt!("batch_file", args.batch_file);
-    apply_usize!("batch_concurrency", args.batch_concurrency);
-    apply_u64!("checkpoint_interval", args.checkpoint_interval);
-    apply_bool!("no_checkpoint", args.no_checkpoint);
-    apply_bool!("ignore_robots", args.ignore_robots);
-    apply_bool!("autoscale", args.autoscale);
-    apply_bool!("no_session_health", args.no_session_health);
-    apply_u8!("verbose", args.verbose);
-    apply_bool!("quiet", args.quiet);
-    apply_bool!("dry_run", args.dry_run);
-    apply_path_opt!("trace_file", args.trace_file);
+    apply_bool!("batch", args.export.batch);
+    apply_path_opt!("batch_file", args.export.batch_file);
+    apply_usize!("batch_concurrency", args.export.batch_concurrency);
+    apply_u64!("checkpoint_interval", args.crawler.checkpoint_interval);
+    apply_bool!("no_checkpoint", args.crawler.no_checkpoint);
+    apply_bool!("ignore_robots", args.crawler.ignore_robots);
+    apply_bool!("autoscale", args.crawler.autoscale);
+    apply_bool!("no_session_health", args.crawler.no_session_health);
+    apply_u8!("verbose", args.crawler.verbose);
+    apply_bool!("quiet", args.crawler.quiet);
+    apply_bool!("dry_run", args.crawler.dry_run);
+    apply_path_opt!("trace_file", args.crawler.trace_file);
 
     args
 }

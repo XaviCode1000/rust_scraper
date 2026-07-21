@@ -217,3 +217,42 @@ async fn server_error_response_exit_code_nonzero() {
         "500 response should produce a non-zero exit code"
     );
 }
+
+// ---------------------------------------------------------------------------
+// --output-dir flag
+// ---------------------------------------------------------------------------
+
+/// --output-dir flag is accepted and output is written there.
+#[tokio::test]
+async fn output_dir_flag_creates_directory() {
+    let server = MockServer::start().await;
+    let output = TempDir::new().unwrap();
+    let custom_dir = output.path().join("custom_out");
+
+    Mock::given(method("GET"))
+        .and(path("/"))
+        .respond_with(ResponseTemplate::new(200).set_body_string(
+            "<html><body><article>\
+                 <h1>Custom Dir Test</h1>\
+                 <p>Verify output goes to the specified directory.</p>\
+                 </article></body></html>",
+        ))
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    cmd()
+        .arg("--url")
+        .arg(server.uri())
+        .arg("--single-page")
+        .arg("--output")
+        .arg(&custom_dir)
+        .arg("--quiet")
+        .assert()
+        .success();
+
+    assert!(
+        custom_dir.exists(),
+        "--output directory should be created by the scraper"
+    );
+}
