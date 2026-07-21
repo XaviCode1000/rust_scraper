@@ -211,7 +211,7 @@ async fn __main() -> CliExit {
     // =========================================================================
     #[cfg(feature = "ui")]
     {
-        if args.tui {
+        if args.tui.tui {
             // Run unified TUI: config form → URL selector → scraping
             let tui_result = run_unified_tui().await;
             match tui_result {
@@ -228,7 +228,7 @@ async fn __main() -> CliExit {
                     return e;
                 },
             }
-        } else if args.config_tui {
+        } else if args.tui.config_tui {
             // [DEPRECATED] Legacy config TUI — redirects to unified TUI
             eprintln!("Warning: --config-tui is deprecated, use --tui instead");
             let tui_result = run_unified_tui().await;
@@ -239,7 +239,7 @@ async fn __main() -> CliExit {
                 Ok(None) => return CliExit::Success,
                 Err(e) => return e,
             }
-        } else if args.interactive {
+        } else if args.tui.interactive {
             // [DEPRECATED] Legacy interactive — redirects to unified TUI
             eprintln!("Warning: --interactive is deprecated, use --tui instead");
             let tui_result = run_unified_tui().await;
@@ -254,7 +254,7 @@ async fn __main() -> CliExit {
     }
     // When `ui` is OFF, any TUI flag triggers a graceful Spanish error (spec S2.2).
     #[cfg(not(feature = "ui"))]
-    if args.tui || args.config_tui || args.interactive {
+    if args.tui.tui || args.tui.config_tui || args.tui.interactive {
         eprintln!("TUI no disponible: compilar con --features ui");
         return CliExit::UsageError("TUI no disponible: compilar con --features ui".into());
     }
@@ -264,10 +264,10 @@ async fn __main() -> CliExit {
     // =========================================================================
 
     // Batch mode reads URLs from stdin/file — --url is not required
-    let is_batch = args.batch || args.batch_file.is_some();
+    let is_batch = args.export.batch || args.export.batch_file.is_some();
 
     // If no URL provided, check for interactive mode
-    if args.url.is_none() && !is_batch {
+    if args.crawler.url.is_none() && !is_batch {
         // CI environment always requires --url
         if is_ci() {
             eprintln!("Error: --url is required for scraping (CI mode)");
@@ -280,7 +280,7 @@ async fn __main() -> CliExit {
             {
                 match prompt_for_url() {
                     Ok(url) => {
-                        args.url = Some(url);
+                        args.crawler.url = Some(url);
                     },
                     Err(_e) => {
                         // Prompt failed (e.g., non-interactive), fall through to error
@@ -316,7 +316,7 @@ async fn __main() -> CliExit {
     // =========================================================================
     // 5b. Validate URL before conversion (CrawlOptions::from panics on invalid URL)
     // =========================================================================
-    if let Some(ref url_str) = args.url {
+    if let Some(ref url_str) = args.crawler.url {
         if url::Url::parse(url_str).is_err() {
             return CliExit::UsageError(format!("Invalid URL: {url_str}"));
         }
@@ -325,9 +325,9 @@ async fn __main() -> CliExit {
     // =========================================================================
     // 6. Extract trace_file and ai_model before args is moved into CrawlOptions
     // =========================================================================
-    let trace_file = args.trace_file.take();
+    let trace_file = args.crawler.trace_file.take();
     #[cfg(feature = "ai")]
-    let ai_model_arg = args.ai_model.take();
+    let ai_model_arg = args.ai.ai_model.take();
 
     // =========================================================================
     // 6b. Convert Args → CrawlOptions and apply config file defaults
