@@ -156,7 +156,9 @@ pub async fn run(
         &scraper_config,
         &opts,
         None,
-        shared_downloader.as_deref(),
+        shared_downloader
+            .as_deref()
+            .map(|d| d as &dyn crate::domain::ports::AssetDownloaderPort),
     )
     .await;
 

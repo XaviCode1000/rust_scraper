@@ -206,7 +206,7 @@ pub async fn discover_urls_for_tui(
 pub async fn scrape_urls_for_tui(
     urls: &[Url],
     config: &ScraperConfig,
-    downloader: Option<&crate::adapters::downloader::Downloader>,
+    downloader: Option<&dyn crate::domain::ports::AssetDownloaderPort>,
 ) -> ScraperResult<Vec<ScrapedContent>> {
     use futures::stream::{self, StreamExt};
 
@@ -253,7 +253,7 @@ pub async fn scrape_single_url_for_tui(
     client: &wreq::Client,
     url: &Url,
     config: &ScraperConfig,
-    downloader: Option<&crate::adapters::downloader::Downloader>,
+    downloader: Option<&dyn crate::domain::ports::AssetDownloaderPort>,
 ) -> ScraperResult<ScrapedContent> {
     let span = span!(Level::DEBUG, "scrape_single", url = %url);
     let _guard = span.enter();

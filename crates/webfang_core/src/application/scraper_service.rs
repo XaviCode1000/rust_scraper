@@ -293,7 +293,7 @@ pub async fn scrape_with_config(
     client: &dyn HttpClientPort,
     url: &url::Url,
     config: &ScraperConfig,
-    downloader: Option<&crate::adapters::downloader::Downloader>,
+    downloader: Option<&dyn crate::domain::ports::AssetDownloaderPort>,
     inspector: Option<&dyn DomInspectorPort>,
 ) -> Result<ScrapeOutcome> {
     let mut results = Vec::new();
@@ -512,7 +512,7 @@ pub async fn scrape_multiple_with_limit(
     client: &dyn HttpClientPort,
     urls: &[url::Url],
     config: &ScraperConfig,
-    downloader: Option<&crate::adapters::downloader::Downloader>,
+    downloader: Option<&dyn crate::domain::ports::AssetDownloaderPort>,
 ) -> Result<Vec<ScrapedContent>> {
     if urls.is_empty() {
         return Ok(Vec::new());
@@ -557,7 +557,7 @@ pub(crate) async fn download_assets_if_enabled(
     _html: &str,
     _base_url: &url::Url,
     _config: &crate::ScraperConfig,
-    _shared_downloader: Option<&crate::adapters::downloader::Downloader>,
+    _shared_downloader: Option<&dyn crate::domain::ports::AssetDownloaderPort>,
 ) -> Result<Vec<DownloadedAsset>> {
     if !_config.has_downloads() {
         return Ok(Vec::new());
@@ -567,7 +567,7 @@ pub(crate) async fn download_assets_if_enabled(
     {
         // Use shared downloader when provided; create a fallback one otherwise
         let owned_downloader;
-        let downloader = match _shared_downloader {
+        let downloader: &dyn crate::domain::ports::AssetDownloaderPort = match _shared_downloader {
             Some(dl) => dl,
             None => {
                 owned_downloader =
@@ -601,36 +601,11 @@ pub(crate) async fn download_assets_if_enabled(
         urls.retain(|url| seen.insert(url.clone()));
 
         tracing::info!(
-            "📦 Downloading {} assets via adapters::Downloader",
+            "📦 Downloading {} assets via AssetDownloaderPort",
             urls.len()
         );
 
-        let results = downloader.download_batch(&urls).await;
-
-        // Convert adapters::DownloadedAsset → domain::DownloadedAsset
-        let mut assets = Vec::new();
-        for result in results {
-            match result {
-                Ok(asset) => {
-                    let asset_type = crate::adapters::detector::detect_from_url(&asset.url);
-                    let asset_type_str = match asset_type {
-                        crate::adapters::detector::AssetType::Image => "image",
-                        crate::adapters::detector::AssetType::Document => "document",
-                        crate::adapters::detector::AssetType::Unknown => "unknown",
-                    };
-                    assets.push(DownloadedAsset {
-                        url: asset.url,
-                        local_path: asset.local_path.to_string_lossy().into_owned(),
-                        asset_type: asset_type_str.to_string(),
-                        size: asset.size,
-                    });
-                },
-                Err(e) => {
-                    tracing::warn!("Failed to download asset: {}", e);
-                },
-            }
-        }
-
+        let assets = downloader.download_batch(&urls).await?;
         Ok(assets)
     }
 
@@ -1089,32 +1064,63 @@ mod tests {
         assert!(config.has_downloads());
     }
 
-    /// Spy test: prove `download_assets_if_enabled` reuses the shared
-    /// `Arc<Downloader>` (Scenario 2.1.S2).
+    /// Spy test: prove `download_assets_if_enabled` injects the provided
+    /// `AssetDownloaderPort` implementation (not a new concrete `Downloader`).
     ///
-    /// The test builds one `Downloader` instance, wraps it in `Arc`, and calls
-    /// `download_assets_if_enabled` with `Some(&dl)`.  `Arc::strong_count`
-    /// confirms no cloning occurred (count stays at 1), proving the single
-    /// construction path from `orchestrator.rs:122`.
-    ///
-    /// NOTE: `download_batch` makes real HTTP calls; unreachable URLs produce
-    /// logged warnings but do NOT abort the batch (partial results).  The
-    /// architectural assertion (Arc sharing) holds regardless of download success.
+    /// The test injects a `DownloadSpy` that counts calls without doing real I/O.
+    /// The assertion proves the spy was called — not a new `Downloader` constructed.
     #[tokio::test]
     async fn test_download_assets_shared_downloader_spy() {
-        use crate::adapters::downloader::Downloader;
-        use std::sync::Arc;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct DownloadSpy {
+            call_count: AtomicUsize,
+            last_urls: std::sync::Mutex<Vec<String>>,
+        }
+
+        impl DownloadSpy {
+            fn new() -> Self {
+                Self {
+                    call_count: AtomicUsize::new(0),
+                    last_urls: std::sync::Mutex::new(Vec::new()),
+                }
+            }
+
+            fn call_count(&self) -> usize {
+                self.call_count.load(Ordering::SeqCst)
+            }
+
+            fn last_urls(&self) -> Vec<String> {
+                self.last_urls.lock().unwrap().clone()
+            }
+        }
+
+        impl crate::domain::ports::AssetDownloaderPort for DownloadSpy {
+            fn download_batch(
+                &self,
+                urls: &[String],
+            ) -> std::pin::Pin<
+                Box<
+                    dyn std::future::Future<
+                            Output = crate::error::Result<
+                                Vec<crate::domain::entities::DownloadedAsset>,
+                            >,
+                        > + Send
+                        + '_,
+                >,
+            > {
+                self.call_count.fetch_add(1, Ordering::SeqCst);
+                *self.last_urls.lock().unwrap() = urls.to_vec();
+                Box::pin(async { Ok(Vec::new()) })
+            }
+        }
 
         let tmp = tempfile::tempdir().expect("tempdir");
         let config = ScraperConfig::default()
             .with_images()
             .with_output_dir(tmp.path().to_path_buf());
 
-        // Build one Downloader — this is the shared instance the orchestrator
-        // constructs at orchestrator.rs:122.
-        let dl = Downloader::new(config.to_download_config())
-            .expect("Downloader::new should succeed with temp dir");
-        let shared = Arc::new(dl);
+        let spy = DownloadSpy::new();
 
         let html = r#"<!DOCTYPE html>
 <html>
@@ -1125,29 +1131,22 @@ mod tests {
 </html>"#;
         let base = url::Url::parse("https://example.com/page").unwrap();
 
-        let initial_count = Arc::strong_count(&shared);
-
-        let result = download_assets_if_enabled(html, &base, &config, Some(&shared))
+        let result = download_assets_if_enabled(html, &base, &config, Some(&spy))
             .await
             .expect("download_assets_if_enabled should succeed");
 
-        // Architectural assertion: Arc was NOT cloned — same instance shared.
+        // Proof: the injected spy was called — not a new Downloader constructed
         assert_eq!(
-            Arc::strong_count(&shared),
-            initial_count,
-            "Arc should not be cloned; shared downloader reused without new construction"
+            spy.call_count(),
+            1,
+            "download_batch must be called exactly once"
         );
-
-        // The shared downloader config has downloads enabled.
-        assert!(
-            config.has_downloads(),
-            "config must have downloads enabled for this test"
+        assert_eq!(
+            spy.last_urls().len(),
+            2,
+            "must extract 2 image URLs from HTML"
         );
-
-        // `result` may be empty (real HTTP calls to unreachable URLs fail gracefully).
-        // The critical proof is that the Some(dl) path was taken — the None fallback
-        // branch (scraper_service.rs:572-576) was NOT executed.
-        let _ = result;
+        assert!(result.is_empty(), "spy returns empty vec");
     }
 
     /// Regression guard (C3 / REQ-2.1.2): `None` downloader fallback still works.

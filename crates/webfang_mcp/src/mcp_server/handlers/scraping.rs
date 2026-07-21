@@ -92,7 +92,11 @@ impl McpHandler {
         }
 
         let client = self.state.container.http_client().as_ref();
-        let dl = self.state.downloader.as_deref();
+        let dl = self
+            .state
+            .downloader
+            .as_deref()
+            .map(|d| d as &dyn webfang_core::domain::ports::AssetDownloaderPort);
         let inspector = self.state.inspector.as_deref();
         match webfang_core::application::scraper_service::scrape_with_config(
             client, &url, &config, dl, inspector,
@@ -151,7 +155,11 @@ impl McpHandler {
         }
 
         let client = self.state.container.http_client().as_ref();
-        let dl = self.state.downloader.as_deref();
+        let dl = self
+            .state
+            .downloader
+            .as_deref()
+            .map(|d| d as &dyn webfang_core::domain::ports::AssetDownloaderPort);
         match webfang_core::application::scraper_service::scrape_multiple_with_limit(
             client, &urls, &config, dl,
         )
