@@ -21,7 +21,7 @@ pub enum InfraError {
 
     /// Network error (connection failed, timeout, etc.)
     #[error("error de red: {0}")]
-    Network(String),
+    Network(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     /// Middleware error (from reqwest-middleware, e.g., retry failures)
     #[error("error de middleware: {0}")]
@@ -38,7 +38,7 @@ pub enum InfraError {
 
     /// Asset download failed
     #[error("Error de descarga: {0}")]
-    Download(String),
+    Download(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     /// Global download timeout (30s)
     #[error("descarga superó tiempo global de 30 segundos")]
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn test_infra_error_network() {
-        let err = InfraError::Network("connection refused".to_string());
+        let err = InfraError::Network(Box::new(std::io::Error::other("connection refused")));
         assert!(err.to_string().contains("connection refused"));
         assert!(err.to_string().contains("red"));
     }
@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn test_infra_error_is_std_error() {
-        let err = InfraError::Network("test".to_string());
+        let err = InfraError::Network(Box::new(std::io::Error::other("test")));
         let _: &dyn std::error::Error = &err;
     }
 }
