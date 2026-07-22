@@ -356,8 +356,35 @@ impl From<WreqError> for ScraperError {
 }
 
 // ============================================================================
-// Phase 2: Error Stratification — From impls for layer-specific errors
+// Error Map V2: From impls for layer-specific errors
 // ============================================================================
+
+impl From<crate::domain::error::CrawlError> for ScraperError {
+    fn from(e: crate::domain::error::CrawlError) -> Self {
+        use crate::domain::error::CrawlError;
+        match e {
+            CrawlError::Network { message, status_code } => ScraperError::Network(Box::new(
+                std::io::Error::other(format!("network: {message} (status: {status_code:?})")),
+            )),
+            CrawlError::Http(msg) => ScraperError::Network(Box::new(
+                std::io::Error::other(format!("http: {msg}")),
+            )),
+            CrawlError::InvalidUrl(msg) => ScraperError::InvalidUrl(msg),
+            CrawlError::Io(e) => ScraperError::Io(e),
+            CrawlError::WafChallenge { provider, url, .. } => {
+                ScraperError::WafBlocked { url, provider }
+            },
+            CrawlError::Internal(msg) => ScraperError::Network(Box::new(
+                std::io::Error::other(format!("internal: {msg}")),
+            )),
+            CrawlError::Download(e) => ScraperError::Download(e),
+            CrawlError::SitemapNotFound(url) => ScraperError::Network(Box::new(
+                std::io::Error::other(format!("sitemap not found for {url}")),
+            )),
+            other => ScraperError::Network(Box::new(std::io::Error::other(other.to_string()))),
+        }
+    }
+}
 
 impl From<crate::domain::error::DomainError> for ScraperError {
     fn from(e: crate::domain::error::DomainError) -> Self {
@@ -385,7 +412,7 @@ impl From<crate::infrastructure::error::InfraError> for ScraperError {
                 ScraperError::Network(Box::new(std::io::Error::other(msg)))
             },
             crate::infrastructure::error::InfraError::Middleware(msg) => {
-                ScraperError::Middleware(msg)
+                ScraperError::Network(Box::new(std::io::Error::other(format!("middleware: {msg}"))))
             },
             crate::infrastructure::error::InfraError::WafBlocked { url, provider } => {
                 ScraperError::WafBlocked { url, provider }
