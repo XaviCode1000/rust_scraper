@@ -347,11 +347,16 @@ impl ScraperError {
 
     /// Classify this error by operational severity.
     ///
-    /// Used by observability systems to decide retry/alert behavior
-    /// without matching on specific variants.
+    /// Used by retry logic and observability systems to decide retry/alert
+    /// behavior without matching on specific variants or string-matching on
+    /// display text.
     pub fn classify(&self) -> ErrorClass {
         match self {
-            Self::Network(e) if is_transient_network(e.as_ref()) => ErrorClass::TransientRetriable,
+            // Network/Download: transient if the wrapped source is a known-retryable
+            // io::Error kind (timeout, connection reset, etc.)
+            Self::Network(e) | Self::Download(e) if is_transient_network(e.as_ref()) => {
+                ErrorClass::TransientRetriable
+            },
             Self::Http { status, .. } if *status >= 500 => ErrorClass::TransientRetriable,
             Self::Http { status, .. } if *status == 429 => ErrorClass::TransientBackoff,
             Self::GlobalTimeout => ErrorClass::TransientBackoff,
@@ -373,14 +378,14 @@ impl ScraperError {
             Self::UrlParse(_) => ErrorClass::InternalFatal,
             Self::Persistence(_) => ErrorClass::InternalFatal,
             Self::Ingestion(_) => ErrorClass::InternalFatal,
-            Self::Download(_) => ErrorClass::InternalFatal,
             Self::Middleware(_) => ErrorClass::InternalFatal,
             Self::H2Config(_) => ErrorClass::InternalFatal,
             Self::Export(_) => ErrorClass::InternalFatal,
             Self::ExportBatch(_) => ErrorClass::InternalFatal,
             Self::Conversion(_) => ErrorClass::InternalFatal,
             Self::Semantic(_) => ErrorClass::InternalFatal,
-            Self::Network(_) => ErrorClass::InternalFatal,
+            // Non-transient Network/Download (e.g. DNS resolution, TLS errors)
+            Self::Network(_) | Self::Download(_) => ErrorClass::InternalFatal,
         }
     }
 }
