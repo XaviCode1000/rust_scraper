@@ -4,8 +4,8 @@
 //! `SemanticCleanerImpl::clean()`, without requiring the ONNX model.
 //! Covers the audit gap: zero tests for the main cleaning pipeline.
 
-use webfang_ai::infrastructure_ai::content_pruner::{ContentPruner, LegibleContentPruner};
 use webfang_ai::infrastructure_ai::chunker::HtmlChunker;
+use webfang_ai::infrastructure_ai::content_pruner::{ContentPruner, LegibleContentPruner};
 
 /// Exercise the full pruner → chunker pipeline on simple HTML.
 #[test]
@@ -77,7 +77,9 @@ fn pipeline_empty_input_returns_empty() {
     let pruned = pruner.prune("");
     assert!(pruned.is_empty());
 
-    let chunks = chunker.chunk("").expect("chunking empty string should not fail");
+    let chunks = chunker
+        .chunk("")
+        .expect("chunking empty string should not fail");
     assert!(chunks.is_empty());
 }
 
@@ -118,7 +120,11 @@ fn pipeline_deeply_nested_html() {
     }
 
     let pruned = pruner.prune(&html);
-    let effective = if pruned.is_empty() { html.as_str() } else { &pruned };
+    let effective = if pruned.is_empty() {
+        html.as_str()
+    } else {
+        &pruned
+    };
     let _ = chunker.chunk(effective);
 }
 
@@ -138,9 +144,15 @@ fn pipeline_large_html_does_not_oom() {
     html.push_str("</article></body></html>");
 
     let pruned = pruner.prune(&html);
-    let effective = if pruned.is_empty() { html.as_str() } else { &pruned };
+    let effective = if pruned.is_empty() {
+        html.as_str()
+    } else {
+        &pruned
+    };
     // Should complete without panic or OOM — chunk count depends on pruner behavior
-    let _chunks = chunker.chunk(effective).expect("chunking large HTML should not fail");
+    let _chunks = chunker
+        .chunk(effective)
+        .expect("chunking large HTML should not fail");
 }
 
 /// Unicode content should survive the pipeline intact.
@@ -158,7 +170,9 @@ fn pipeline_unicode_content_preserved() {
 
     let pruned = pruner.prune(html);
     let effective = if pruned.is_empty() { html } else { &pruned };
-    let chunks = chunker.chunk(effective).expect("unicode HTML should chunk fine");
+    let chunks = chunker
+        .chunk(effective)
+        .expect("unicode HTML should chunk fine");
 
     let all_content: String = chunks.iter().map(|c| c.content.as_str()).collect();
     assert!(
