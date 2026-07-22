@@ -225,6 +225,7 @@ pub trait ExporterExt: Exporter {
 impl<T: Exporter> ExporterExt for T {}
 
 #[cfg(test)]
+#[allow(clippy::io_other_error)]
 mod tests {
     use std::path::PathBuf;
 

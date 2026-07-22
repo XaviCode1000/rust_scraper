@@ -603,6 +603,7 @@ impl From<crate::infrastructure::error::InfraError> for ScraperError {
 }
 
 #[cfg(test)]
+#[allow(clippy::io_other_error)]
 mod tests {
     use super::*;
 

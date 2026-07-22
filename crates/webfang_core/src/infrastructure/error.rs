@@ -78,6 +78,7 @@ pub enum InfraError {
 }
 
 #[cfg(test)]
+#[allow(clippy::io_other_error)]
 mod tests {
     use super::*;
 
