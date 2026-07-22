@@ -525,7 +525,15 @@ mod tests {
     // these assertions report 0ns and flake under load. We measure with
     // `std::time::Instant` instead: governor guarantees it will not return
     // before the real delay has elapsed, so this is deterministic.
+    //
+    // IMPORTANT: MockClock from domain::clock is designed for CONTROLLING
+    // time in tests (advance/set_now), not for measuring real elapsed time.
+    // Since governor uses real time internally, we use std::time::Instant
+    // for measurement. MockClock is used below for testing components
+    // that accept Clock as a dependency parameter (not governor).
     // ============================================================================
+
+    use crate::domain::clock::{Clock, MockClock};
 
     #[tokio::test]
     async fn test_rate_limiting_precision() {
@@ -564,5 +572,119 @@ mod tests {
             "Third request should be delayed by 100ms, got {:?}",
             elapsed
         );
+    }
+
+    // ============================================================================
+    // MockClock unit tests (testing the Clock port itself)
+    //
+    // These verify MockClock works correctly as a test double.
+    // They demonstrate the pattern for components that accept &dyn Clock.
+    // ============================================================================
+
+    #[test]
+    fn test_mock_clock_advance_tracks_elapsed() {
+        let t0 = std::time::Instant::now();
+        let mut clock = MockClock::new(t0);
+
+        // Advance by 100ms
+        clock.advance(std::time::Duration::from_millis(100));
+        assert_eq!(
+            clock.now().duration_since(t0),
+            std::time::Duration::from_millis(100)
+        );
+
+        // Advance by another 200ms (total 300ms)
+        clock.advance(std::time::Duration::from_millis(200));
+        assert_eq!(
+            clock.now().duration_since(t0),
+            std::time::Duration::from_millis(300)
+        );
+    }
+
+    #[test]
+    fn test_mock_clock_set_now_overrides() {
+        let t0 = std::time::Instant::now();
+        let mut clock = MockClock::new(t0);
+
+        clock.advance(std::time::Duration::from_secs(10));
+        assert_eq!(
+            clock.now().duration_since(t0),
+            std::time::Duration::from_secs(10)
+        );
+
+        // Set to a specific point
+        let target = t0 + std::time::Duration::from_secs(5);
+        clock.set_now(target);
+        assert_eq!(
+            clock.now().duration_since(t0),
+            std::time::Duration::from_secs(5)
+        );
+    }
+
+    #[test]
+    fn test_mock_clock_duration_between_two_points() {
+        let t0 = std::time::Instant::now();
+        let mut clock = MockClock::new(t0);
+
+        let start = clock.now();
+        clock.advance(std::time::Duration::from_millis(250));
+        let end = clock.now();
+
+        let elapsed = end.duration_since(start);
+        assert_eq!(elapsed, std::time::Duration::from_millis(250));
+    }
+
+    // ============================================================================
+    // Configuration validation tests
+    // ============================================================================
+
+    #[test]
+    fn test_rate_limiter_config_various_valid_values() {
+        assert!(SharedRateLimiter::new(&RateLimiterConfig::new(1, 1)).is_ok());
+        assert!(SharedRateLimiter::new(&RateLimiterConfig::new(1000, 100)).is_ok());
+        assert!(SharedRateLimiter::new(&RateLimiterConfig::new(50, 10)).is_ok());
+    }
+
+    #[test]
+    fn test_rate_limiter_config_extreme_burst() {
+        let config = RateLimiterConfig::new(100, 1000);
+        assert!(SharedRateLimiter::new(&config).is_ok());
+    }
+
+    // ============================================================================
+    // RateLimiter enum construction tests
+    // ============================================================================
+
+    #[tokio::test]
+    async fn test_rate_limiter_enum_inmemory_creation() {
+        let config = RateLimiterConfig::new(50, 3);
+        let limiter = RateLimiter::new(&config).await.unwrap();
+        assert!(
+            matches!(limiter, RateLimiter::InMemory(_)),
+            "Should create InMemory variant"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter_enum_redis_fallback() {
+        let config = RateLimiterConfig::with_backend(50, 3, RateLimiterBackend::Redis);
+        let limiter = RateLimiter::new(&config).await.unwrap();
+        assert!(
+            matches!(limiter, RateLimiter::InMemory(_)),
+            "Redis fallback should produce InMemory variant"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_rate_limiter_health_check_all_variants() {
+        // InMemory
+        let config = RateLimiterConfig::new(50, 3);
+        let limiter = RateLimiter::new(&config).await.unwrap();
+        assert!(limiter.health_check().await.is_ok());
+
+        // Redis fallback → InMemory
+        let config = RateLimiterConfig::with_backend(50, 3, RateLimiterBackend::Redis);
+        let limiter = RateLimiter::new(&config).await.unwrap();
+        assert!(limiter.health_check().await.is_ok());
     }
 }
