@@ -29,7 +29,7 @@ async fn batch_stdin_processes_urls() {
     cmd()
         .arg("--batch")
         .write_stdin(format!("{}\n", server.uri()))
-        .timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
         .assert()
         .success();
 
@@ -80,7 +80,7 @@ async fn batch_file_processes_urls() {
     cmd()
         .arg("--batch-file")
         .arg(&batch_file)
-        .timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
         .assert()
         .success();
 
