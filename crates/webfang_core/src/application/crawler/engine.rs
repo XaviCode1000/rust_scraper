@@ -523,10 +523,16 @@ impl Engine {
             handle_crawl_result(result, &self.error_count);
         }
 
+        // Drop task_ctx so all cloned Senders inside CrawlTaskCtx are released.
+        // Without this, collect() hangs forever — the mpsc channel stays open
+        // because a Sender clone inside the Arc<CrawlTaskCtx> is still alive.
+        drop(task_ctx);
+
         // Final checkpoint save
         self.save_checkpoint().await;
 
-        // Collect results via mpsc channel (shutdown limpio)
+        // Collect results via mpsc channel — now all Senders are dropped,
+        // so the receiver worker will drain and terminate.
         let collected_urls = self.collector.take().unwrap().collect().await;
         let total_pages = collected_urls.len();
         let errors = self.error_count.load(std::sync::atomic::Ordering::SeqCst);
