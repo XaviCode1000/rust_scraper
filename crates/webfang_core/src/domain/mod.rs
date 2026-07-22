@@ -13,6 +13,7 @@
 
 use url::Url;
 
+pub mod clock;
 pub mod config;
 pub mod crawl_job;
 pub mod crawler_entities;
@@ -41,6 +42,7 @@ pub mod value_objects;
 pub mod semantic_cleaner;
 
 // Re-exports for backward compatibility (crate::domain::X)
+pub use clock::{Clock, MockClock, MockUtcClock, SystemClock, SystemUtcClock, UtcClock};
 pub use config::{ConcurrencyConfig, ExportFormat, OutputFormat, PipelineOutputFormat};
 pub use crawl_job::{ContentType, DiscoveredUrl};
 pub use credentials::{
