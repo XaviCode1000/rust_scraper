@@ -363,7 +363,6 @@ mod sealed {
 mod tests {
     use super::*;
     use crate::domain::clock::MockClock;
-    use std::thread;
 
     // ── Task 3.3: State transitions ──
 
@@ -470,16 +469,19 @@ mod tests {
 
     #[test]
     fn stale_sessions_evicted_on_acquire() {
-        let config = SessionPoolConfig {
-            ttl_duration: Duration::from_millis(1),
-            ..Default::default()
-        };
-        let pool = DomainSessionPool::new(config, Arc::new(SystemClock));
+        let clock = MockClock::new(Instant::now());
+        let pool = DomainSessionPool::new(
+            SessionPoolConfig {
+                ttl_duration: Duration::from_millis(10),
+                ..Default::default()
+            },
+            clock.handle(),
+        );
         let id = pool.acquire("example.com").unwrap();
         pool.report_failure("example.com", id, 429);
 
-        // Wait for TTL to expire
-        thread::sleep(Duration::from_millis(5));
+        // Advance past TTL — the shared clock updates the pool's view too
+        clock.advance(Duration::from_millis(20));
 
         // acquire should evict the stale banned session and return a healthy one
         let id2 = pool.acquire("example.com");
@@ -488,15 +490,19 @@ mod tests {
 
     #[test]
     fn evict_stale_removes_old_banned_sessions() {
-        let config = SessionPoolConfig {
-            ttl_duration: Duration::from_millis(1),
-            ..Default::default()
-        };
-        let pool = DomainSessionPool::new(config, Arc::new(SystemClock));
+        let clock = MockClock::new(Instant::now());
+        let pool = DomainSessionPool::new(
+            SessionPoolConfig {
+                ttl_duration: Duration::from_millis(10),
+                ..Default::default()
+            },
+            clock.handle(),
+        );
         let id = pool.acquire("example.com").unwrap();
         pool.report_failure("example.com", id, 429);
 
-        thread::sleep(Duration::from_millis(5));
+        // Advance past TTL
+        clock.advance(Duration::from_millis(20));
         pool.evict_stale();
 
         let sessions = pool.sessions.get("example.com").unwrap();
@@ -505,14 +511,18 @@ mod tests {
 
     #[test]
     fn healthy_sessions_not_evicted_by_ttl() {
-        let config = SessionPoolConfig {
-            ttl_duration: Duration::from_millis(1),
-            ..Default::default()
-        };
-        let pool = DomainSessionPool::new(config, Arc::new(SystemClock));
+        let clock = MockClock::new(Instant::now());
+        let pool = DomainSessionPool::new(
+            SessionPoolConfig {
+                ttl_duration: Duration::from_millis(10),
+                ..Default::default()
+            },
+            clock.handle(),
+        );
         let _id = pool.acquire("example.com").unwrap();
 
-        thread::sleep(Duration::from_millis(5));
+        // Advance past TTL — healthy sessions should NOT be evicted
+        clock.advance(Duration::from_millis(20));
         pool.evict_stale();
 
         let sessions = pool.sessions.get("example.com").unwrap();
@@ -577,14 +587,17 @@ mod tests {
 
     #[test]
     fn banned_session_available_after_cooldown() {
-        let config = SessionPoolConfig {
-            pool_size: 1,
-            base_delay: Duration::from_millis(1),
-            max_delay: Duration::from_millis(10),
-            max_exp: 1,
-            ..Default::default()
-        };
-        let pool = DomainSessionPool::new(config, Arc::new(SystemClock));
+        let clock = MockClock::new(Instant::now());
+        let pool = DomainSessionPool::new(
+            SessionPoolConfig {
+                pool_size: 1,
+                base_delay: Duration::from_millis(1),
+                max_delay: Duration::from_millis(10),
+                max_exp: 1,
+                ..Default::default()
+            },
+            clock.handle(),
+        );
         let id = pool.acquire("example.com").unwrap();
         pool.report_failure("example.com", id, 429);
 
@@ -595,8 +608,8 @@ mod tests {
             assert!(sessions[0].next_retry_time.is_some());
         }
 
-        // Wait well past cooldown (backoff is 2^1 * 1ms = 2ms, sleep 50ms)
-        thread::sleep(Duration::from_millis(50));
+        // Advance past cooldown (backoff is 2^1 * 1ms = 2ms)
+        clock.advance(Duration::from_millis(50));
 
         let id2 = pool.acquire("example.com");
         assert!(id2.is_some(), "should be available after cooldown");
