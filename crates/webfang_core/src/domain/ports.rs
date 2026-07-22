@@ -95,13 +95,14 @@ pub trait AssetDownloaderPort: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::application::http_client::{HttpError, HttpResponse};
+    use crate::domain::http_error::{HttpError, HttpResult};
+    use crate::domain::http_port::HttpResponse;
     use std::collections::HashMap;
 
     // --- Mock implementations for testing port traits ---
 
     struct MockHttpClientPort {
-        responses: HashMap<String, crate::application::http_client::HttpResult<HttpResponse>>,
+        responses: HashMap<String, crate::domain::http_error::HttpResult<HttpResponse>>,
     }
 
     impl MockHttpClientPort {
@@ -114,7 +115,7 @@ mod tests {
         fn with_response(
             mut self,
             url: &str,
-            result: crate::application::http_client::HttpResult<HttpResponse>,
+            result: crate::domain::http_error::HttpResult<HttpResponse>,
         ) -> Self {
             self.responses.insert(url.to_string(), result);
             self
@@ -128,7 +129,7 @@ mod tests {
         ) -> std::pin::Pin<
             Box<
                 dyn std::future::Future<
-                        Output = crate::application::http_client::HttpResult<HttpResponse>,
+                        Output = crate::domain::http_error::HttpResult<HttpResponse>,
                     > + Send
                     + '_,
             >,
