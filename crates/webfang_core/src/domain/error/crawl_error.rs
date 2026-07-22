@@ -12,6 +12,30 @@
 
 use thiserror::Error;
 
+/// WAF detection classification for observability and retry decisions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WafDetectionKind {
+    /// WAF detected via control/response headers
+    ControlHeader,
+    /// WAF detected via body signature patterns
+    BodySignature,
+    /// WAF detected via silent JavaScript challenge
+    SilentChallenge,
+    /// WAF detected via entropy anomaly in response
+    EntropyAnomaly,
+}
+
+/// Resource type for resource exhaustion errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResourceKind {
+    /// Sitemap URL count limit
+    SitemapUrls,
+    /// Sitemap crawl depth limit
+    SitemapDepth,
+    /// RAM budget limit
+    RamBudget,
+}
+
 /// Crawl errors
 ///
 /// Following **err-thiserror-for-libraries**: Uses thiserror for library error types.
@@ -42,10 +66,6 @@ pub enum CrawlError {
     #[error("parse error: {0}")]
     Parse(String),
 
-    /// Rate limit exceeded
-    #[error("rate limit exceeded")]
-    RateLimit,
-
     /// Maximum depth exceeded
     #[error("maximum depth {max} exceeded at depth {current}")]
     MaxDepthExceeded { current: u8, max: u8 },
@@ -66,22 +86,12 @@ pub enum CrawlError {
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 
-    /// Semaphore error (concurrency control)
-    #[error("semaphore error: {0}")]
-    Semaphore(String),
-
     /// Internal error (unspecified)
     #[error("internal error: {0}")]
     Internal(String),
 
-    /// Sitemap parsing error (FASE 3)
-    /// Note: Does NOT contain sitemap_parser::SitemapError (that's Infra detail).
-    /// Infrastructure layer converts SitemapError → this variant.
-    #[error("sitemap error: {0}")]
-    Sitemap(String),
-
     /// Sitemap not found during auto-discovery
-    #[error("sitemap not found for {0}")]
+    #[error("no sitemap found for {0}")]
     SitemapNotFound(String),
 
     /// Storage error (append-only log corruption, backpressure, serialization)
@@ -106,6 +116,80 @@ pub enum CrawlError {
     /// preserved through `Error::source()` (D4).
     #[error("download error: {0}")]
     Download(#[source] Box<dyn std::error::Error + Send + Sync>),
+
+    // === New variants (Error Map V2) ===
+
+    /// WAF challenge detected during crawl
+    #[error("WAF challenge: {provider} ({kind:?}) at {url}")]
+    WafChallenge {
+        provider: String,
+        kind: WafDetectionKind,
+        url: String,
+    },
+
+    /// Retry attempts exhausted for a URL
+    #[error("retry exhausted for {url} after {attempts} attempts")]
+    RetryExhausted { url: String, attempts: usize },
+
+    /// Transient HTTP error (5xx, retryable)
+    #[error("transient HTTP {status} at {url}")]
+    TransientHttp { status: u16, url: String },
+
+    /// Rate limited with retry-after duration in seconds
+    #[error("rate limited, retry after {0}s")]
+    RateLimited(u64),
+
+    /// Request timeout
+    #[error("request timeout")]
+    Timeout,
+
+    /// Connection error
+    #[error("connection error: {0}")]
+    Connection(String),
+
+    /// Resource limit exhausted
+    #[error("resource exhausted: {resource:?} limit={limit} actual={actual}")]
+    ResourceExhausted {
+        resource: ResourceKind,
+        limit: usize,
+        actual: usize,
+    },
+
+    /// No sitemap found (empty sitemap)
+    #[error("no sitemap found")]
+    SitemapEmpty,
+
+    /// Sitemap crawl depth exceeded
+    #[error("sitemap depth exceeded")]
+    SitemapDepthExceeded,
+
+    /// Semaphore exhausted (backpressure)
+    #[error("semáforo agotado: no hay permisos disponibles")]
+    SemaphoreInanition,
+}
+
+impl From<crate::domain::http_error::HttpError> for CrawlError {
+    fn from(e: crate::domain::http_error::HttpError) -> Self {
+        use crate::domain::http_error::HttpError;
+        match e {
+            HttpError::Forbidden => CrawlError::Http("403 Forbidden".to_string()),
+            HttpError::RateLimited(retry_after) => CrawlError::RateLimited(retry_after),
+            HttpError::ClientError(code) => {
+                CrawlError::Http(format!("client error {code}"))
+            },
+            HttpError::ServerError(code) => {
+                CrawlError::Http(format!("server error {code}"))
+            },
+            HttpError::Timeout => CrawlError::Timeout,
+            HttpError::Connection(msg) => CrawlError::Connection(msg),
+            HttpError::Request(msg) => CrawlError::Http(msg),
+            HttpError::WafChallenge(provider) => CrawlError::WafChallenge {
+                provider,
+                kind: WafDetectionKind::BodySignature,
+                url: String::new(),
+            },
+        }
+    }
 }
 
 #[cfg(test)]
@@ -141,9 +225,9 @@ mod tests {
     }
 
     #[test]
-    fn test_crawl_error_semaphore() {
-        let error = CrawlError::Semaphore("permit lost".to_string());
-        assert!(error.to_string().contains("permit lost"));
+    fn test_crawl_error_semaphore_inanition() {
+        let error = CrawlError::SemaphoreInanition;
+        assert!(error.to_string().contains("semáforo agotado"));
     }
 
     #[test]
@@ -177,8 +261,8 @@ mod tests {
         let error = CrawlError::Parse("html parse failed".to_string());
         assert!(error.to_string().contains("html parse failed"));
 
-        let error = CrawlError::RateLimit;
-        assert_eq!(error.to_string(), "rate limit exceeded");
+        let error = CrawlError::RateLimited(60);
+        assert!(error.to_string().contains("60"));
 
         let error = CrawlError::MaxDepthExceeded { current: 5, max: 3 };
         assert_eq!(error.to_string(), "maximum depth 3 exceeded at depth 5");
@@ -222,5 +306,120 @@ mod tests {
         )));
         assert!(error.to_string().contains("download error"));
         assert!(error.to_string().contains("connection reset"));
+    }
+
+    #[test]
+    fn test_crawl_error_waf_challenge() {
+        let error = CrawlError::WafChallenge {
+            provider: "Cloudflare".to_string(),
+            kind: WafDetectionKind::BodySignature,
+            url: "https://example.com".to_string(),
+        };
+        assert!(error.to_string().contains("Cloudflare"));
+        assert!(error.to_string().contains("example.com"));
+    }
+
+    #[test]
+    fn test_crawl_error_retry_exhausted() {
+        let error = CrawlError::RetryExhausted {
+            url: "https://example.com".to_string(),
+            attempts: 3,
+        };
+        assert!(error.to_string().contains("retry exhausted"));
+        assert!(error.to_string().contains("3"));
+    }
+
+    #[test]
+    fn test_crawl_error_transient_http() {
+        let error = CrawlError::TransientHttp {
+            status: 503,
+            url: "https://example.com".to_string(),
+        };
+        assert!(error.to_string().contains("503"));
+    }
+
+    #[test]
+    fn test_crawl_error_rate_limited() {
+        let error = CrawlError::RateLimited(30);
+        assert!(error.to_string().contains("30"));
+    }
+
+    #[test]
+    fn test_crawl_error_timeout() {
+        let error = CrawlError::Timeout;
+        assert!(error.to_string().contains("timeout"));
+    }
+
+    #[test]
+    fn test_crawl_error_connection() {
+        let error = CrawlError::Connection("refused".to_string());
+        assert!(error.to_string().contains("connection error"));
+        assert!(error.to_string().contains("refused"));
+    }
+
+    #[test]
+    fn test_crawl_error_resource_exhausted() {
+        let error = CrawlError::ResourceExhausted {
+            resource: ResourceKind::RamBudget,
+            limit: 1024,
+            actual: 2048,
+        };
+        assert!(error.to_string().contains("RamBudget"));
+        assert!(error.to_string().contains("1024"));
+        assert!(error.to_string().contains("2048"));
+    }
+
+    #[test]
+    fn test_crawl_error_sitemap_empty() {
+        let error = CrawlError::SitemapEmpty;
+        assert!(error.to_string().contains("no sitemap found"));
+    }
+
+    #[test]
+    fn test_crawl_error_sitemap_depth_exceeded() {
+        let error = CrawlError::SitemapDepthExceeded;
+        assert!(error.to_string().contains("sitemap depth exceeded"));
+    }
+
+    #[test]
+    fn test_crawl_error_sitemap_not_found() {
+        let error = CrawlError::SitemapNotFound("https://example.com".to_string());
+        assert!(error.to_string().contains("no sitemap found"));
+        assert!(error.to_string().contains("example.com"));
+    }
+
+    #[test]
+    fn test_http_error_to_crawl_error_conversion() {
+        let http_err = crate::domain::http_error::HttpError::Forbidden;
+        let crawl_err: CrawlError = http_err.into();
+        assert!(crawl_err.to_string().contains("403"));
+    }
+
+    #[test]
+    fn test_http_error_rate_limited_to_crawl_error() {
+        let http_err = crate::domain::http_error::HttpError::RateLimited(60);
+        let crawl_err: CrawlError = http_err.into();
+        assert!(matches!(crawl_err, CrawlError::RateLimited(60)));
+    }
+
+    #[test]
+    fn test_http_error_timeout_to_crawl_error() {
+        let http_err = crate::domain::http_error::HttpError::Timeout;
+        let crawl_err: CrawlError = http_err.into();
+        assert!(matches!(crawl_err, CrawlError::Timeout));
+    }
+
+    #[test]
+    fn test_http_error_waf_to_crawl_error() {
+        let http_err = crate::domain::http_error::HttpError::WafChallenge("CF".to_string());
+        let crawl_err: CrawlError = http_err.into();
+        assert!(matches!(
+            crawl_err,
+            CrawlError::WafChallenge {
+                provider,
+                kind: WafDetectionKind::BodySignature,
+                ..
+            } if provider == "CF"
+        ));
     }
 }
