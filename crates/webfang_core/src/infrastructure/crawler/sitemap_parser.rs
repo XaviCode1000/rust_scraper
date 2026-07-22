@@ -677,6 +677,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires network — hits real DNS for invalid-host-xyz-12345.com"]
     async fn test_parse_from_url_depth_one_attempts_fetch() {
         let config = SitemapConfig::builder().max_depth(1).build();
         let parser = SitemapParser::with_config(config);
