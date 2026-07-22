@@ -401,10 +401,7 @@ mod tests {
     fn test_http_error_to_crawl_error_conversion() {
         let http_err = crate::domain::http_error::HttpError::Forbidden;
         let crawl_err: CrawlError = http_err.into();
-        assert!(matches!(
-            crawl_err,
-            CrawlError::Http { status: 403, .. }
-        ));
+        assert!(matches!(crawl_err, CrawlError::Http { status: 403, .. }));
     }
 
     #[test]
