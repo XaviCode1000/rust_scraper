@@ -13,10 +13,10 @@ use crate::application::crawler::engine::FetchRouter;
 use crate::application::deduplicator::UrlDeduplicator;
 use crate::application::pipeline::{OutputStage, PipelineExecutor};
 use crate::application::rate_limiter::SharedRateLimiter;
-use crate::infrastructure::crawler::UrlQueue;
 use crate::domain::CrawlerConfig;
 use crate::infrastructure::checkpoint::store::BannedDomain;
 use crate::infrastructure::crawler::RobotsCache;
+use crate::infrastructure::crawler::UrlQueue;
 use crate::infrastructure::downloader::cookie_bridge::CookieBridge;
 use crate::infrastructure::session::DomainSessionPool;
 

@@ -15,11 +15,11 @@ use url::Url;
 
 use super::collector::{CrawlMessage, ResultsCollector};
 use super::concurrency_level::{ConcurrencyLevel, SharedConcurrencyLevel};
+use crate::application::crawler::crawl_task_ctx::CrawlTaskCtx;
 use crate::application::deduplicator::UrlDeduplicator;
 use crate::application::pipeline::{OutputStage, PipelineExecutor, ScrapedItem, StageOutcome};
 use crate::application::rate_limiter::{RateLimiterConfig, SharedRateLimiter};
 use crate::application::url_filter::is_allowed;
-use crate::application::crawler::crawl_task_ctx::CrawlTaskCtx;
 use crate::domain::{CrawlError, CrawlResult, CrawlerConfig, DiscoveredUrl, JsStrategy};
 use crate::infrastructure::checkpoint::store::BannedDomain;
 use crate::infrastructure::checkpoint::BincodeCheckpoint;

@@ -5,8 +5,8 @@
 pub mod checkpoint;
 pub mod collector;
 pub mod concurrency_level;
-pub mod discovery;
 pub mod crawl_task_ctx;
+pub mod discovery;
 pub mod engine;
 
 pub use collector::{CrawlMessage, ResultsAdapter, ResultsCollector};
