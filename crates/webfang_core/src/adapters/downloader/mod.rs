@@ -136,17 +136,8 @@ impl Downloader {
         let images_path = config.output_dir.join(&config.images_dir);
         let documents_path = config.output_dir.join(&config.documents_dir);
 
-        std::fs::create_dir_all(&images_path).map_err(|e| {
-            ScraperError::Io(std::io::Error::other(format!(
-                "Failed to create images directory: {e}"
-            )))
-        })?;
-
-        std::fs::create_dir_all(&documents_path).map_err(|e| {
-            ScraperError::Io(std::io::Error::other(format!(
-                "Failed to create documents directory: {e}"
-            )))
-        })?;
+        std::fs::create_dir_all(&images_path).map_err(ScraperError::Io)?;
+        std::fs::create_dir_all(&documents_path).map_err(ScraperError::Io)?;
 
         let client = Client::builder()
             .emulation(config.h2_profile)
@@ -234,14 +225,12 @@ impl Downloader {
         // Fail-fast on 4xx (client errors). 5xx (server errors) are transient and will be retried.
         let status = response.status();
         if status.is_client_error() {
-            return Err(ScraperError::Download(Box::new(std::io::Error::other(
-                format!("HTTP {} al descargar {}", status, url),
-            ))));
+            return Err(ScraperError::http(status.as_u16(), url));
         }
         if status.is_server_error() {
             // Mark as transient so retry logic will retry on 5xx
             return Err(ScraperError::Network(Box::new(std::io::Error::other(
-                format!("TRANSIENT:HTTP {}", status),
+                format!("transient HTTP {}", status),
             ))));
         }
 

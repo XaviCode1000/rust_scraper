@@ -557,14 +557,10 @@ impl Engine {
                                             }
                                         }
                                     }
-                                    return Err(CrawlError::Download(Box::new(
-                                        std::io::Error::other(format!("WAF: {msg}")),
-                                    )));
+                                    return Err(DownloadError::WafChallenge(msg).into());
                                 },
                                 Err(e) => {
-                                    return Err(CrawlError::Download(Box::new(
-                                        std::io::Error::other(e.to_string()),
-                                    )));
+                                    return Err(e.into());
                                 },
                             }
                         } else {
@@ -593,9 +589,7 @@ impl Engine {
                                             }
                                         }
                                     }
-                                    return Err(CrawlError::Download(Box::new(
-                                        std::io::Error::other(e.to_string()),
-                                    )));
+                                    return Err(e);
                                 },
                             }
                         };
