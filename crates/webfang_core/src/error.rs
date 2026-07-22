@@ -344,6 +344,78 @@ impl ScraperError {
     pub fn ingestion(err: impl std::fmt::Display) -> Self {
         Self::Ingestion(err.to_string())
     }
+
+    /// Classify this error by operational severity.
+    ///
+    /// Used by observability systems to decide retry/alert behavior
+    /// without matching on specific variants.
+    pub fn classify(&self) -> ErrorClass {
+        match self {
+            Self::Network(e) if is_transient_network(e.as_ref()) => ErrorClass::TransientRetriable,
+            Self::Http { status, .. } if *status >= 500 => ErrorClass::TransientRetriable,
+            Self::Http { status, .. } if *status == 429 => ErrorClass::TransientBackoff,
+            Self::GlobalTimeout => ErrorClass::TransientBackoff,
+            Self::SlowlorisTimeout => ErrorClass::TransientBackoff,
+            Self::InvalidUrl(_) => ErrorClass::PermanentFatal,
+            Self::WafBlocked { .. } => ErrorClass::PermanentFatal,
+            Self::Readability(_) => ErrorClass::PermanentFatal,
+            Self::Extraction(_) => ErrorClass::PermanentFatal,
+            Self::ExtractionFailed { .. } => ErrorClass::PermanentFatal,
+            Self::Validation(_) => ErrorClass::PermanentFatal,
+            Self::FeatureGated(_) => ErrorClass::PermanentFatal,
+            Self::Config(_) => ErrorClass::PermanentFatal,
+            Self::PayloadTooLarge => ErrorClass::PermanentFatal,
+            Self::Http { .. } => ErrorClass::PermanentFatal,
+            Self::SemaphoreInanition => ErrorClass::InternalFatal,
+            Self::Io(_) => ErrorClass::InternalFatal,
+            Self::Serialization(_) => ErrorClass::InternalFatal,
+            Self::Yaml(_) => ErrorClass::InternalFatal,
+            Self::UrlParse(_) => ErrorClass::InternalFatal,
+            Self::Persistence(_) => ErrorClass::InternalFatal,
+            Self::Ingestion(_) => ErrorClass::InternalFatal,
+            Self::Download(_) => ErrorClass::InternalFatal,
+            Self::Middleware(_) => ErrorClass::InternalFatal,
+            Self::H2Config(_) => ErrorClass::InternalFatal,
+            Self::Export(_) => ErrorClass::InternalFatal,
+            Self::ExportBatch(_) => ErrorClass::InternalFatal,
+            Self::Conversion(_) => ErrorClass::InternalFatal,
+            Self::Semantic(_) => ErrorClass::InternalFatal,
+            Self::Network(_) => ErrorClass::InternalFatal,
+        }
+    }
+}
+
+/// Check if a boxed error represents a transient network failure.
+///
+/// This is a heuristic — `io::ErrorKind` is the primary signal,
+/// but some wreq errors may also be transient.
+fn is_transient_network(e: &(dyn std::error::Error + 'static)) -> bool {
+    if let Some(io_err) = e.downcast_ref::<std::io::Error>() {
+        matches!(
+            io_err.kind(),
+            std::io::ErrorKind::ConnectionReset
+                | std::io::ErrorKind::ConnectionAborted
+                | std::io::ErrorKind::TimedOut
+                | std::io::ErrorKind::Interrupted
+        )
+    } else {
+        false
+    }
+}
+
+/// Operational classification of errors for observability and retry logic.
+///
+/// Partitions ScraperError variants by severity and recoverability.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ErrorClass {
+    /// Transient errors that should be retried immediately (e.g., connection reset, 5xx)
+    TransientRetriable,
+    /// Transient errors that require backoff before retry (e.g., rate limit, slowloris)
+    TransientBackoff,
+    /// Permanent errors that cannot be recovered by retry (e.g., 4xx, invalid URL, WAF)
+    PermanentFatal,
+    /// Internal errors that indicate a bug (e.g., integer overflow, semaphore exhaustion)
+    InternalFatal,
 }
 
 impl From<WreqError> for ScraperError {
@@ -762,4 +834,76 @@ mod tests {
         assert!(scraper_err.to_string().contains("URL"));
     }
 
+    // ========================================================================
+    // ErrorMap V2: ErrorClass classify() tests
+    // ========================================================================
+
+    #[test]
+    fn test_classify_transient_retriable_connection_reset() {
+        let err = ScraperError::Network(Box::new(std::io::Error::new(
+            std::io::ErrorKind::ConnectionReset,
+            "reset",
+        )));
+        assert_eq!(err.classify(), ErrorClass::TransientRetriable);
+    }
+
+    #[test]
+    fn test_classify_transient_retriable_5xx() {
+        let err = ScraperError::http(503, "https://example.com");
+        assert_eq!(err.classify(), ErrorClass::TransientRetriable);
+    }
+
+    #[test]
+    fn test_classify_transient_backoff_timeout() {
+        let err = ScraperError::GlobalTimeout;
+        assert_eq!(err.classify(), ErrorClass::TransientBackoff);
+    }
+
+    #[test]
+    fn test_classify_transient_backoff_slowloris() {
+        let err = ScraperError::SlowlorisTimeout;
+        assert_eq!(err.classify(), ErrorClass::TransientBackoff);
+    }
+
+    #[test]
+    fn test_classify_transient_backoff_429() {
+        let err = ScraperError::http(429, "https://example.com");
+        assert_eq!(err.classify(), ErrorClass::TransientBackoff);
+    }
+
+    #[test]
+    fn test_classify_permanent_fatal_invalid_url() {
+        let err = ScraperError::invalid_url("bad url");
+        assert_eq!(err.classify(), ErrorClass::PermanentFatal);
+    }
+
+    #[test]
+    fn test_classify_permanent_fatal_4xx() {
+        let err = ScraperError::http(404, "https://example.com");
+        assert_eq!(err.classify(), ErrorClass::PermanentFatal);
+    }
+
+    #[test]
+    fn test_classify_permanent_fatal_waf() {
+        let err = ScraperError::waf_blocked("https://example.com", "Cloudflare");
+        assert_eq!(err.classify(), ErrorClass::PermanentFatal);
+    }
+
+    #[test]
+    fn test_classify_internal_fatal_semaphone() {
+        let err = ScraperError::SemaphoreInanition;
+        assert_eq!(err.classify(), ErrorClass::InternalFatal);
+    }
+
+    #[test]
+    fn test_classify_internal_fatal_io() {
+        let err: ScraperError = std::io::Error::new(std::io::ErrorKind::Other, "test").into();
+        assert_eq!(err.classify(), ErrorClass::InternalFatal);
+    }
+
+    #[test]
+    fn test_classify_internal_fatal_persistence() {
+        let err = ScraperError::persistence("disk full");
+        assert_eq!(err.classify(), ErrorClass::InternalFatal);
+    }
 }
