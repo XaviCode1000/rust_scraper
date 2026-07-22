@@ -325,6 +325,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires network — wiremock tests below cover same scenario"]
     async fn test_fetch_example_com() {
         let downloader = WreqDownloader::new(10, 5);
         let url: Url = "https://example.com".parse().unwrap();
