@@ -24,24 +24,27 @@ use tracing::{debug, info, instrument, warn};
 
 /// Convert an [`HttpError`] into a [`ScraperError`] with the URL context.
 fn scraper_error_from_http(err: HttpError, url: &str) -> ScraperError {
-    match err {
-        HttpError::ClientError(code) | HttpError::ServerError(code) => {
-            ScraperError::http(code, url)
-        },
-        HttpError::Forbidden => ScraperError::http(403, url),
-        HttpError::RateLimited(retry_after) => ScraperError::Network(Box::new(
-            std::io::Error::other(format!("rate limited, retry after {retry_after}s")),
-        )),
-        HttpError::Timeout => {
-            ScraperError::Network(Box::new(std::io::Error::other("request timeout")))
-        },
-        HttpError::Connection(msg) => ScraperError::Network(Box::new(std::io::Error::other(msg))),
-        HttpError::Request(msg) => ScraperError::Network(Box::new(std::io::Error::other(msg))),
-        HttpError::WafChallenge(provider) => ScraperError::WafBlocked {
+    use crate::domain::error::CrawlError;
+    let crawl_err: CrawlError = match err {
+        HttpError::ClientError(code) | HttpError::ServerError(code) => CrawlError::Http {
+            status: code,
             url: url.to_string(),
-            provider,
         },
-    }
+        HttpError::Forbidden => CrawlError::Http {
+            status: 403,
+            url: url.to_string(),
+        },
+        HttpError::RateLimited(retry_after) => CrawlError::RateLimited(retry_after),
+        HttpError::Timeout => CrawlError::Timeout,
+        HttpError::Connection(msg) => CrawlError::Connection(msg),
+        HttpError::Request(msg) => CrawlError::Internal(msg),
+        HttpError::WafChallenge(provider) => CrawlError::WafChallenge {
+            provider,
+            kind: crate::domain::error::WafDetectionKind::BodySignature,
+            url: url.to_string(),
+        },
+    };
+    ScraperError::from(crawl_err)
 }
 
 /// Maximum HTML body size to log/instrument (1MB)

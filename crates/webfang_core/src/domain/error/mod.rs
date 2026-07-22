@@ -5,5 +5,5 @@
 mod crawl_error;
 mod domain_error;
 
-pub use crawl_error::CrawlError;
+pub use crawl_error::{CrawlError, ResourceKind, WafDetectionKind};
 pub use domain_error::DomainError;

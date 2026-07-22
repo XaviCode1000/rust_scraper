@@ -568,7 +568,7 @@ async fn crawl_with_sitemap_internal(
     // Parse sitemap
     let urls = parser.parse_from_url(&sitemap_url).await.map_err(|e| {
         tracing::error!("Failed to parse sitemap {}: {}", sitemap_url, e);
-        CrawlError::Sitemap(e.to_string())
+        CrawlError::Parse(e.to_string())
     })?;
 
     let total_urls = urls.len();

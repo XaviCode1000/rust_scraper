@@ -15,7 +15,7 @@
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use crate::error::{Result, ScraperError};
+use crate::error::{ErrorClass, Result, ScraperError};
 use futures::stream::StreamExt;
 use sha2::{Digest, Sha256};
 use tokio::fs;
@@ -136,17 +136,8 @@ impl Downloader {
         let images_path = config.output_dir.join(&config.images_dir);
         let documents_path = config.output_dir.join(&config.documents_dir);
 
-        std::fs::create_dir_all(&images_path).map_err(|e| {
-            ScraperError::Io(std::io::Error::other(format!(
-                "Failed to create images directory: {e}"
-            )))
-        })?;
-
-        std::fs::create_dir_all(&documents_path).map_err(|e| {
-            ScraperError::Io(std::io::Error::other(format!(
-                "Failed to create documents directory: {e}"
-            )))
-        })?;
+        std::fs::create_dir_all(&images_path).map_err(ScraperError::Io)?;
+        std::fs::create_dir_all(&documents_path).map_err(ScraperError::Io)?;
 
         let client = Client::builder()
             .emulation(config.h2_profile)
@@ -196,7 +187,9 @@ impl Downloader {
             match self.download_once(url).await {
                 Ok(asset) => return Ok(asset),
                 Err(e) => {
-                    if !is_transient_error(&e) || attempt == self.config.max_retries {
+                    if e.classify() != ErrorClass::TransientRetriable
+                        || attempt == self.config.max_retries
+                    {
                         return Err(e);
                     }
                     last_err = Some(e);
@@ -206,9 +199,7 @@ impl Downloader {
 
         // Unreachable: loop always returns on last attempt, but required for type inference
         Err(last_err.unwrap_or_else(|| {
-            ScraperError::download(Box::new(std::io::Error::other(
-                "exhausted retries with no error captured",
-            )))
+            ScraperError::Internal("exhausted retries with no error captured".to_string())
         }))
     }
 
@@ -234,15 +225,13 @@ impl Downloader {
         // Fail-fast on 4xx (client errors). 5xx (server errors) are transient and will be retried.
         let status = response.status();
         if status.is_client_error() {
-            return Err(ScraperError::Download(Box::new(std::io::Error::other(
-                format!("HTTP {} al descargar {}", status, url),
-            ))));
+            return Err(ScraperError::http(status.as_u16(), url));
         }
         if status.is_server_error() {
-            // Mark as transient so retry logic will retry on 5xx
-            return Err(ScraperError::Network(Box::new(std::io::Error::other(
-                format!("TRANSIENT:HTTP {}", status),
-            ))));
+            return Err(ScraperError::Http {
+                status: status.as_u16(),
+                url: url.to_string(),
+            });
         }
 
         let mime_type = response
@@ -286,21 +275,13 @@ impl Downloader {
 
             let chunk_len = chunk.len() as u64;
             downloaded = downloaded.checked_add(chunk_len).ok_or_else(|| {
-                ScraperError::download(Box::new(std::io::Error::other(
-                    "integer overflow in download size",
-                )))
+                ScraperError::Internal("integer overflow in download size".to_string())
             })?;
 
             // Check limit in real-time
             if downloaded > self.config.max_file_size {
-                // Cleanup temp file on failure
                 let _ = fs::remove_file(&temp_path).await;
-                return Err(ScraperError::download(Box::new(std::io::Error::other(
-                    format!(
-                        "file too large: {} bytes (max: {} bytes)",
-                        downloaded, self.config.max_file_size
-                    ),
-                ))));
+                return Err(ScraperError::PayloadTooLarge);
             }
 
             // Write chunk to disk IMMEDIATELY (true streaming)
@@ -521,35 +502,6 @@ fn pattern_matches_asset(url: &str, pattern: &str) -> bool {
         }
     }
     crate::domain::matches_pattern(url, pattern)
-}
-
-/// Check if an error is transient (worth retrying).
-fn is_transient_error(err: &ScraperError) -> bool {
-    // Both network and download failures are typically retryable (timeouts,
-    // connection resets, transient server errors). `InfraError::Download` maps
-    // to `ScraperError::Download` (not `Network`), so both variants must be
-    // inspected here — otherwise a genuine download failure would be wrongly
-    // classified as non-transient and never retried.
-    let source: Option<&dyn std::error::Error> = match err {
-        ScraperError::Network(e) | ScraperError::Download(e) => Some(e.as_ref()),
-        _ => None,
-    };
-    if let Some(e) = source {
-        // `e` is a boxed source; inspect its Display text (lowercased).
-        let msg = e.to_string().to_ascii_lowercase();
-        msg.contains("transient:")
-            || msg.contains("timeout")
-            || msg.contains("timed out")
-            || msg.contains("connect")
-            || msg.contains("connection")
-            || msg.contains("refused")
-            || msg.contains("reset")
-            || msg.contains("broken pipe")
-            || msg.contains("aborted")
-            || msg.contains("reset by peer")
-    } else {
-        false
-    }
 }
 
 /// Compute exponential backoff delay with jitter.
