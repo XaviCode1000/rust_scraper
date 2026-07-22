@@ -100,15 +100,30 @@ mod tests {
         "#;
 
         let result = parse(html, Some("https://example.com"));
-        // Just verify it doesn't crash - legible parsing is heuristic
-        assert!(result.is_ok() || result.is_err());
+        // Legible parsing is heuristic - accept either Ok or Err,
+        // but if Ok, verify the article has meaningful content
+        match result {
+            Ok(article) => {
+                assert!(
+                    !article.title.is_empty() || !article.text_content.is_empty(),
+                    "article should have title or text content"
+                );
+            },
+            Err(e) => {
+                // Heuristic parser may fail on this structure - that's acceptable
+                assert!(
+                    e.to_string().contains("Readability failed"),
+                    "unexpected error: {e}"
+                );
+            },
+        }
     }
 
     #[test]
     fn test_parse_empty_html() {
         let html = "<html><body></body></html>";
-        let result = parse(html, Some("https://example.com"));
-        // Should not panic, may return empty content or error
-        assert!(result.is_ok() || result.is_err());
+        // Empty HTML is an edge case - just verify it doesn't panic.
+        // The Result is consumed here; if parse() panics, the test fails.
+        let _ = parse(html, Some("https://example.com"));
     }
 }
