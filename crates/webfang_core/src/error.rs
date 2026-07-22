@@ -403,6 +403,29 @@ fn is_transient_network(e: &(dyn std::error::Error + 'static)) -> bool {
     }
 }
 
+/// Parse an HTTP status code from a CrawlError::Http message string.
+/// Returns `(status_code, remaining_url)` if found, `None` otherwise.
+fn parse_http_status_from_msg(msg: &str) -> Option<(u16, &str)> {
+    // Patterns: "HTTP 500 at url", "403 Forbidden at url", "client error 404"
+    if let Some(rest) = msg.strip_prefix("HTTP ") {
+        // "HTTP 500 at url"
+        let code_end = rest.find(' ')?;
+        let code: u16 = rest[..code_end].parse().ok()?;
+        let rest = rest[code_end..].strip_prefix(" at ")?;
+        Some((code, rest))
+    } else if let Some(rest) = msg.strip_prefix("403 Forbidden at ") {
+        Some((403, rest))
+    } else if let Some(rest) = msg.strip_prefix("client error ") {
+        let code: u16 = rest.parse().ok()?;
+        Some((code, ""))
+    } else if let Some(rest) = msg.strip_prefix("server error ") {
+        let code: u16 = rest.parse().ok()?;
+        Some((code, ""))
+    } else {
+        None
+    }
+}
+
 /// Operational classification of errors for observability and retry logic.
 ///
 /// Partitions ScraperError variants by severity and recoverability.
@@ -435,20 +458,32 @@ impl From<crate::domain::error::CrawlError> for ScraperError {
     fn from(e: crate::domain::error::CrawlError) -> Self {
         use crate::domain::error::CrawlError;
         match e {
-            CrawlError::Network { message, status_code } => ScraperError::Network(Box::new(
-                std::io::Error::other(format!("network: {message} (status: {status_code:?})")),
-            )),
-            CrawlError::Http(msg) => ScraperError::Network(Box::new(
-                std::io::Error::other(format!("http: {msg}")),
-            )),
+            CrawlError::Network {
+                message,
+                status_code,
+            } => ScraperError::Network(Box::new(std::io::Error::other(format!(
+                "network: {message} (status: {status_code:?})"
+            )))),
+            CrawlError::Http(msg) => {
+                // Try to extract status code from the message for ScraperError::Http
+                // Messages like "403 Forbidden at url" or "HTTP 500 at url"
+                if let Some((code, rest)) = parse_http_status_from_msg(&msg) {
+                    ScraperError::Http {
+                        status: code,
+                        url: rest.to_string(),
+                    }
+                } else {
+                    ScraperError::Network(Box::new(std::io::Error::other(format!("http: {msg}"))))
+                }
+            },
             CrawlError::InvalidUrl(msg) => ScraperError::InvalidUrl(msg),
             CrawlError::Io(e) => ScraperError::Io(e),
             CrawlError::WafChallenge { provider, url, .. } => {
                 ScraperError::WafBlocked { url, provider }
             },
-            CrawlError::Internal(msg) => ScraperError::Network(Box::new(
-                std::io::Error::other(format!("internal: {msg}")),
-            )),
+            CrawlError::Internal(msg) => {
+                ScraperError::Network(Box::new(std::io::Error::other(format!("internal: {msg}"))))
+            },
             CrawlError::Download(e) => ScraperError::Download(e),
             CrawlError::SitemapNotFound(url) => ScraperError::Network(Box::new(
                 std::io::Error::other(format!("sitemap not found for {url}")),
@@ -480,18 +515,14 @@ impl From<crate::infrastructure::error::InfraError> for ScraperError {
             crate::infrastructure::error::InfraError::Http { status, url } => {
                 ScraperError::Http { status, url }
             },
-            crate::infrastructure::error::InfraError::Network(e) => {
-                ScraperError::Network(e)
-            },
-            crate::infrastructure::error::InfraError::Middleware(msg) => {
-                ScraperError::Network(Box::new(std::io::Error::other(format!("middleware: {msg}"))))
-            },
+            crate::infrastructure::error::InfraError::Network(e) => ScraperError::Network(e),
+            crate::infrastructure::error::InfraError::Middleware(msg) => ScraperError::Network(
+                Box::new(std::io::Error::other(format!("middleware: {msg}"))),
+            ),
             crate::infrastructure::error::InfraError::WafBlocked { url, provider } => {
                 ScraperError::WafBlocked { url, provider }
             },
-            crate::infrastructure::error::InfraError::Download(e) => {
-                ScraperError::Download(e)
-            },
+            crate::infrastructure::error::InfraError::Download(e) => ScraperError::Download(e),
             crate::infrastructure::error::InfraError::GlobalTimeout => ScraperError::GlobalTimeout,
             crate::infrastructure::error::InfraError::SlowlorisTimeout => {
                 ScraperError::SlowlorisTimeout

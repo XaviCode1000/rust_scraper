@@ -92,11 +92,22 @@ mod tests {
             url: &str,
         ) -> Pin<Box<dyn std::future::Future<Output = HttpResult<HttpResponse>> + Send + '_>>
         {
-            let result = self
-                .responses
-                .get(url)
-                .cloned()
-                .unwrap_or(Err(HttpError::ClientError(404)));
+            let result = match self.responses.get(url) {
+                Some(Ok(resp)) => Ok(HttpResponse {
+                    status: resp.status,
+                    body: resp.body.clone(),
+                    headers: resp.headers.clone(),
+                }),
+                Some(Err(HttpError::Forbidden)) => Err(HttpError::Forbidden),
+                Some(Err(HttpError::RateLimited(r))) => Err(HttpError::RateLimited(*r)),
+                Some(Err(HttpError::ClientError(c))) => Err(HttpError::ClientError(*c)),
+                Some(Err(HttpError::ServerError(c))) => Err(HttpError::ServerError(*c)),
+                Some(Err(HttpError::Timeout)) => Err(HttpError::Timeout),
+                Some(Err(HttpError::Connection(m))) => Err(HttpError::Connection(m.clone())),
+                Some(Err(HttpError::Request(m))) => Err(HttpError::Request(m.clone())),
+                Some(Err(HttpError::WafChallenge(p))) => Err(HttpError::WafChallenge(p.clone())),
+                None => Err(HttpError::ClientError(404)),
+            };
             Box::pin(async move { result })
         }
     }
@@ -122,7 +133,7 @@ mod tests {
         let mock = MockHttpClient::new();
         let result = mock.get("https://unknown.com").await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), HttpError::ClientError(404));
+        assert!(matches!(result.unwrap_err(), HttpError::ClientError(404)));
     }
 
     #[tokio::test]
@@ -130,7 +141,7 @@ mod tests {
         let mock = MockHttpClient::new().with_response("https://slow.com", Err(HttpError::Timeout));
         let result = mock.get("https://slow.com").await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), HttpError::Timeout);
+        assert!(matches!(result.unwrap_err(), HttpError::Timeout));
     }
 
     #[tokio::test]
@@ -139,7 +150,7 @@ mod tests {
             MockHttpClient::new().with_response("https://api.com", Err(HttpError::RateLimited(60)));
         let result = mock.get("https://api.com").await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), HttpError::RateLimited(60));
+        assert!(matches!(result.unwrap_err(), HttpError::RateLimited(60)));
     }
 
     #[tokio::test]

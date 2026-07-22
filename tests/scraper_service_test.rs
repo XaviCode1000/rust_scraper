@@ -45,11 +45,22 @@ impl HttpClientPort for MockHttpClient {
         url: &str,
     ) -> std::pin::Pin<Box<dyn std::future::Future<Output = HttpResult<HttpResponse>> + Send + '_>>
     {
-        let result = self
-            .responses
-            .get(url)
-            .cloned()
-            .unwrap_or(Err(HttpError::ClientError(404)));
+        let result = match self.responses.get(url) {
+            Some(Ok(resp)) => Ok(HttpResponse {
+                status: resp.status,
+                body: resp.body.clone(),
+                headers: resp.headers.clone(),
+            }),
+            Some(Err(HttpError::Forbidden)) => Err(HttpError::Forbidden),
+            Some(Err(HttpError::RateLimited(r))) => Err(HttpError::RateLimited(*r)),
+            Some(Err(HttpError::ClientError(c))) => Err(HttpError::ClientError(*c)),
+            Some(Err(HttpError::ServerError(c))) => Err(HttpError::ServerError(*c)),
+            Some(Err(HttpError::Timeout)) => Err(HttpError::Timeout),
+            Some(Err(HttpError::Connection(m))) => Err(HttpError::Connection(m.clone())),
+            Some(Err(HttpError::Request(m))) => Err(HttpError::Request(m.clone())),
+            Some(Err(HttpError::WafChallenge(p))) => Err(HttpError::WafChallenge(p.clone())),
+            None => Err(HttpError::ClientError(404)),
+        };
         Box::pin(async move { result })
     }
 }

@@ -118,7 +118,6 @@ pub enum CrawlError {
     Download(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     // === New variants (Error Map V2) ===
-
     /// WAF challenge detected during crawl
     #[error("WAF challenge: {provider} ({kind:?}) at {url}")]
     WafChallenge {
@@ -174,12 +173,8 @@ impl From<crate::domain::http_error::HttpError> for CrawlError {
         match e {
             HttpError::Forbidden => CrawlError::Http("403 Forbidden".to_string()),
             HttpError::RateLimited(retry_after) => CrawlError::RateLimited(retry_after),
-            HttpError::ClientError(code) => {
-                CrawlError::Http(format!("client error {code}"))
-            },
-            HttpError::ServerError(code) => {
-                CrawlError::Http(format!("server error {code}"))
-            },
+            HttpError::ClientError(code) => CrawlError::Http(format!("client error {code}")),
+            HttpError::ServerError(code) => CrawlError::Http(format!("server error {code}")),
             HttpError::Timeout => CrawlError::Timeout,
             HttpError::Connection(msg) => CrawlError::Connection(msg),
             HttpError::Request(msg) => CrawlError::Http(msg),
