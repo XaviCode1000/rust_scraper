@@ -175,7 +175,7 @@ fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
 /// infallible — the work closure stays non-`Result`, reusing `dispatch`'s
 /// single `Result` wrap. (ONNX embeddings are wired in the orchestrator's async
 /// layer — see Decision 5; the bridge is sync CPU-bound text extraction only.)
-fn clean_html_to_text(bytes: &[u8]) -> String {
+pub fn clean_html_to_text(bytes: &[u8]) -> String {
     // `from_utf8_lossy` never panics on invalid UTF-8 (replaces with U+FFFD),
     // so malformed payloads do not crash the Rayon pool.
     let html = String::from_utf8_lossy(bytes);

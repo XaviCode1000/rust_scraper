@@ -232,9 +232,15 @@ impl HtmlChunker {
     ///
     /// * `html` - HTML content
     ///
-    /// # Returns
+    /// Strip HTML tags, returning only text content.
     ///
-    /// Plain text with HTML tags removed
+    /// **NOTE**: This implementation intentionally replaces `>` with `\n` to
+    /// preserve sentence boundaries for semantic chunking. This differs from
+    /// the bridge.rs and clean.rs implementations which strip tags without
+    /// adding newlines. Merging with those implementations would break the
+    /// AI chunking pipeline's ability to detect sentence structure.
+    ///
+    /// See: https://github.com/xavi/webfang/issues/230
     #[allow(clippy::manual_strip)]
     fn strip_html_tags(&self, html: &str) -> String {
         // Simple regex-free HTML tag stripping
