@@ -187,4 +187,13 @@ mod tests {
         }
         assert_eq!(dedup.len(), 1000);
     }
+
+    #[test]
+    fn test_discovered_url_dedup_via_url_deduplicator() {
+        let dedup = UrlDeduplicator::new();
+        assert!(dedup.try_insert("https://example.com/page"));
+        assert!(!dedup.try_insert("https://example.com/page")); // duplicate
+        assert!(dedup.try_insert("https://example.com/other")); // different URL
+        assert_eq!(dedup.len(), 2);
+    }
 }

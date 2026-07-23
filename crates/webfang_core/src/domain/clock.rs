@@ -9,6 +9,7 @@
 //! - [`UtcClock`] — For `DateTime<Utc>`-based timestamps (credentials, exports)
 
 use chrono::{DateTime, Utc};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 /// Clock port for `Instant`-based timing operations.
@@ -36,6 +37,12 @@ pub trait UtcClock: Send + Sync {
 /// System clock using real `Instant::now()`.
 pub struct SystemClock;
 
+impl Default for SystemClock {
+    fn default() -> Self {
+        Self
+    }
+}
+
 impl Clock for SystemClock {
     fn now(&self) -> Instant {
         Instant::now()
@@ -57,43 +64,62 @@ impl UtcClock for SystemUtcClock {
 
 /// Mock clock for deterministic `Instant`-based testing.
 ///
+/// Uses `Arc<Mutex<Instant>>` internally so the clock can be shared
+/// between the pool (via `Arc<dyn Clock>`) and the test (via `MockClock`).
+/// Advancing through the `MockClock` is visible to the pool.
+///
 /// # Example
 ///
 /// ```rust
 /// use std::time::{Duration, Instant};
 /// use webfang::domain::clock::{Clock, MockClock};
 ///
-/// let mut clock = MockClock::new(Instant::now());
+/// let clock = MockClock::new(Instant::now());
 /// let t0 = clock.now();
 ///
 /// // Advance time by 100ms
-/// clock.set_now(t0 + Duration::from_millis(100));
+/// clock.advance(Duration::from_millis(100));
 /// assert_eq!(clock.now(), t0 + Duration::from_millis(100));
 /// ```
 pub struct MockClock {
-    now: Instant,
+    now: Arc<Mutex<Instant>>,
 }
 
 impl MockClock {
     /// Create a mock clock starting at the given instant.
     pub fn new(now: Instant) -> Self {
-        Self { now }
+        Self {
+            now: Arc::new(Mutex::new(now)),
+        }
+    }
+
+    /// Get an `Arc<dyn Clock>` handle sharing this clock's time.
+    ///
+    /// Advancing this `MockClock` will be visible through the returned handle.
+    pub fn handle(&self) -> Arc<dyn Clock> {
+        Arc::clone(&self.now) as Arc<dyn Clock>
     }
 
     /// Advance the clock by the given duration.
-    pub fn advance(&mut self, duration: std::time::Duration) {
-        self.now += duration;
+    pub fn advance(&self, duration: std::time::Duration) {
+        *self.now.lock().expect("mock clock poisoned") += duration;
     }
 
     /// Set the clock to a specific instant.
-    pub fn set_now(&mut self, now: Instant) {
-        self.now = now;
+    pub fn set_now(&self, now: Instant) {
+        *self.now.lock().expect("mock clock poisoned") = now;
     }
 }
 
 impl Clock for MockClock {
     fn now(&self) -> Instant {
-        self.now
+        *self.now.lock().expect("mock clock poisoned")
+    }
+}
+
+impl Clock for Mutex<Instant> {
+    fn now(&self) -> Instant {
+        *self.lock().expect("mock clock poisoned")
     }
 }
 
@@ -172,7 +198,7 @@ mod tests {
     #[test]
     fn test_mock_clock_advance() {
         let t0 = Instant::now();
-        let mut clock = MockClock::new(t0);
+        let clock = MockClock::new(t0);
         clock.advance(Duration::from_millis(500));
         assert_eq!(clock.now(), t0 + Duration::from_millis(500));
     }
@@ -181,7 +207,7 @@ mod tests {
     fn test_mock_clock_set_now() {
         let t0 = Instant::now();
         let t1 = t0 + Duration::from_secs(10);
-        let mut clock = MockClock::new(t0);
+        let clock = MockClock::new(t0);
         clock.set_now(t1);
         assert_eq!(clock.now(), t1);
     }
@@ -213,7 +239,7 @@ mod tests {
     #[test]
     fn test_mock_clock_multiple_advances() {
         let t0 = Instant::now();
-        let mut clock = MockClock::new(t0);
+        let clock = MockClock::new(t0);
         clock.advance(Duration::from_millis(100));
         clock.advance(Duration::from_millis(200));
         clock.advance(Duration::from_millis(300));

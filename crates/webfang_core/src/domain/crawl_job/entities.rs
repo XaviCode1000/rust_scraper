@@ -63,17 +63,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_discovered_url_dedup_via_url_deduplicator() {
-        use crate::application::deduplicator::UrlDeduplicator;
-
-        let dedup = UrlDeduplicator::new();
-        assert!(dedup.try_insert("https://example.com/page"));
-        assert!(!dedup.try_insert("https://example.com/page")); // duplicate
-        assert!(dedup.try_insert("https://example.com/other")); // different URL
-        assert_eq!(dedup.len(), 2);
-    }
-
-    #[test]
     fn test_discovered_url_new() {
         let url = Url::parse("https://example.com/page").unwrap();
         let parent = Url::parse("https://example.com/").unwrap();

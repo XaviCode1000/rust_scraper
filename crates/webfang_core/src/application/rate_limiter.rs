@@ -584,7 +584,7 @@ mod tests {
     #[test]
     fn test_mock_clock_advance_tracks_elapsed() {
         let t0 = std::time::Instant::now();
-        let mut clock = MockClock::new(t0);
+        let clock = MockClock::new(t0);
 
         // Advance by 100ms
         clock.advance(std::time::Duration::from_millis(100));
@@ -604,7 +604,7 @@ mod tests {
     #[test]
     fn test_mock_clock_set_now_overrides() {
         let t0 = std::time::Instant::now();
-        let mut clock = MockClock::new(t0);
+        let clock = MockClock::new(t0);
 
         clock.advance(std::time::Duration::from_secs(10));
         assert_eq!(
@@ -624,7 +624,7 @@ mod tests {
     #[test]
     fn test_mock_clock_duration_between_two_points() {
         let t0 = std::time::Instant::now();
-        let mut clock = MockClock::new(t0);
+        let clock = MockClock::new(t0);
 
         let start = clock.now();
         clock.advance(std::time::Duration::from_millis(250));
