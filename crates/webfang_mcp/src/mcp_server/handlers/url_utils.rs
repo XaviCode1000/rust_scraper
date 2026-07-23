@@ -97,28 +97,17 @@ impl McpHandler {
             .await
             .map_err(|e| McpError::internal_error(format!("semaphore error: {e}"), None))?;
 
-        use url_normalize::{normalize_url as normalize, Options, RemoveQueryParameters};
+        // Delegate to core normalize_url with strip_www=false (MCP preserves www prefix)
+        let normalized = webfang_core::infrastructure::crawler::normalize_url(&params.url, false);
 
+        // Core returns as-is for non-URLs; MCP tool reports error for invalid input
         if !params.url.contains("://") {
             return Ok(CallToolResult::error(vec![Content::text(
                 "Invalid URL: no scheme found".to_string(),
             )]));
         }
 
-        let opts = Options {
-            strip_hash: true,
-            remove_trailing_slash: false,
-            remove_query_parameters: RemoveQueryParameters::All,
-            sort_query_parameters: true,
-            strip_www: false,
-            force_https: false,
-            ..Options::default()
-        };
-
-        match normalize(&params.url, &opts) {
-            Ok(normalized) => Ok(CallToolResult::success(vec![Content::text(normalized)])),
-            Err(e) => Ok(CallToolResult::error(vec![Content::text(e.to_string())])),
-        }
+        Ok(CallToolResult::success(vec![Content::text(normalized)]))
     }
 
     /// Match a URL against a glob pattern
