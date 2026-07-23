@@ -59,11 +59,8 @@ fn clean(mut item: ScrapedItem) -> StageOutcome {
     // 1. Extract readable content via legible (Readability port)
     let extracted = extract_readability(&item.raw_html);
 
-    // 2. Strip residual HTML tags
-    let no_tags = strip_html_tags(&extracted);
-
-    // 3. Normalize whitespace
-    let text = normalize_whitespace(&no_tags);
+    // 2. Strip tags + normalize whitespace via bridge (lol_html + strip pipeline)
+    let text = crate::infrastructure::bridge::clean_html_to_text(extracted.as_bytes());
 
     let cleaned_size = text.len();
     let reduction_pct = if original_size > 0 {
@@ -114,27 +111,6 @@ fn extract_readability(html: &str) -> String {
         },
         Err(_) => html.to_string(),
     }
-}
-
-/// Strip HTML tags, returning only text content.
-fn strip_html_tags(html: &str) -> String {
-    let mut result = String::with_capacity(html.len());
-    let mut inside_tag = false;
-    for ch in html.chars() {
-        match ch {
-            '<' => inside_tag = true,
-            '>' => inside_tag = false,
-            c if !inside_tag => result.push(c),
-            _ => {},
-        }
-    }
-    result
-}
-
-/// Collapse runs of whitespace (spaces, tabs, newlines) into a single space
-/// and trim leading/trailing whitespace.
-fn normalize_whitespace(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<&str>>().join(" ")
 }
 
 #[cfg(test)]
@@ -231,21 +207,6 @@ mod tests {
             },
             _ => panic!("expected Continue"),
         }
-    }
-
-    #[test]
-    fn test_strip_html_tags() {
-        assert_eq!(strip_html_tags("<p>hello</p>"), "hello");
-        assert_eq!(strip_html_tags("<a href='x'>link</a>"), "link");
-        assert_eq!(strip_html_tags("no tags"), "no tags");
-        assert_eq!(strip_html_tags("<br><hr>"), "");
-    }
-
-    #[test]
-    fn test_normalize_whitespace() {
-        assert_eq!(normalize_whitespace("  hello  world  "), "hello world");
-        assert_eq!(normalize_whitespace("a\n\nb\t\nc"), "a b c");
-        assert_eq!(normalize_whitespace("single"), "single");
     }
 
     #[test]

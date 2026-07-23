@@ -108,22 +108,7 @@ pub fn clean_html(html: &str) -> String {
 
 /// Collapse consecutive whitespace into single spaces.
 fn normalize_whitespace(html: &str) -> String {
-    let mut result = String::with_capacity(html.len());
-    let mut in_whitespace = false;
-
-    for ch in html.chars() {
-        if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
-            if !in_whitespace {
-                result.push(' ');
-                in_whitespace = true;
-            }
-        } else {
-            result.push(ch);
-            in_whitespace = false;
-        }
-    }
-
-    result
+    html.split_whitespace().collect::<Vec<&str>>().join(" ")
 }
 
 #[cfg(all(test, not(miri)))]
