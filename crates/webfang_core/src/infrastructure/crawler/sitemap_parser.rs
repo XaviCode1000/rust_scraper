@@ -494,7 +494,14 @@ mod tests {
         let base = Url::parse("https://example.com").unwrap();
         let result = parser.parse_xml_sitemap(xml.as_bytes(), &base).await;
 
-        assert!(result.is_ok() || matches!(result, Err(SitemapError::XmlError(_))));
+        // Malformed XML should either parse (lenient parser) or fail with XmlError
+        match &result {
+            Ok(_) => {}, // Parser is lenient, this is acceptable
+            Err(e) => assert!(
+                matches!(e, SitemapError::XmlError(_)),
+                "expected XmlError for malformed XML, got: {e:?}"
+            ),
+        }
     }
 
     #[test]
@@ -670,6 +677,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "requires network — hits real DNS for invalid-host-xyz-12345.com"]
     async fn test_parse_from_url_depth_one_attempts_fetch() {
         let config = SitemapConfig::builder().max_depth(1).build();
         let parser = SitemapParser::with_config(config);
