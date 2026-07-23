@@ -276,8 +276,8 @@ proptest! {
 #[test]
 fn test_ai_module_returns_empty_router_without_feature() {
     use rmcp::handler::server::tool::ToolRouter;
-    use webfang::infrastructure::mcp_server::handlers::ai::build_router as ai_build_router;
-    use webfang::infrastructure::mcp_server::McpHandler;
+    use webfang_mcp::mcp_server::handlers::ai::build_router as ai_build_router;
+    use webfang_mcp::mcp_server::McpHandler;
 
     let router: ToolRouter<McpHandler> = ai_build_router();
     // Empty router has no registered tools — verifies AI tools are absent
@@ -296,8 +296,8 @@ fn test_ai_module_returns_empty_router_without_feature() {
 #[test]
 fn test_ai_module_compiles_with_feature() {
     use rmcp::handler::server::tool::ToolRouter;
-    use webfang::infrastructure::mcp_server::handlers::ai::build_router as ai_build_router;
-    use webfang::infrastructure::mcp_server::McpHandler;
+    use webfang_mcp::mcp_server::handlers::ai::build_router as ai_build_router;
+    use webfang_mcp::mcp_server::McpHandler;
 
     // This test verifies the AI module compiles with --features ai
     // and returns a valid ToolRouter (even if currently empty stub)
@@ -317,13 +317,13 @@ fn test_ai_module_compiles_with_feature() {
 #[cfg(not(feature = "ai"))]
 #[tokio::test]
 async fn test_mcp_handler_construction_without_ai() {
-    use webfang::config::Config;
-    use webfang::di::Container;
-    use webfang::infrastructure::mcp_server::state::McpState;
-    use webfang::infrastructure::mcp_server::McpHandler;
+    use webfang_core::config::Config;
+    use webfang_core::di::Container;
+    use webfang_mcp::mcp_server::state::McpState;
+    use webfang_mcp::mcp_server::McpHandler;
 
     let config = Config::default();
-    let container = Container::new(config)
+    let container = Container::new(config.crawler, config.scraper)
         .await
         .expect("container creation failed");
     let state = McpState::new(container);
@@ -335,13 +335,13 @@ async fn test_mcp_handler_construction_without_ai() {
 #[cfg(feature = "ai")]
 #[tokio::test]
 async fn test_mcp_handler_construction_with_ai() {
-    use webfang::config::Config;
-    use webfang::di::Container;
-    use webfang::infrastructure::mcp_server::state::McpState;
-    use webfang::infrastructure::mcp_server::McpHandler;
+    use webfang_core::config::Config;
+    use webfang_core::di::Container;
+    use webfang_mcp::mcp_server::state::McpState;
+    use webfang_mcp::mcp_server::McpHandler;
 
     let config = Config::default();
-    let container = Container::new(config)
+    let container = Container::new(config.crawler, config.scraper)
         .await
         .expect("container creation failed");
     let state = McpState::new(container);
@@ -352,13 +352,13 @@ async fn test_mcp_handler_construction_with_ai() {
 /// Verify all non-AI tool categories are registered regardless of feature flag
 #[tokio::test]
 async fn test_non_ai_tool_categories_registered() {
-    use webfang::config::Config;
-    use webfang::di::Container;
-    use webfang::infrastructure::mcp_server::state::McpState;
-    use webfang::infrastructure::mcp_server::McpHandler;
+    use webfang_core::config::Config;
+    use webfang_core::di::Container;
+    use webfang_mcp::mcp_server::state::McpState;
+    use webfang_mcp::mcp_server::McpHandler;
 
     let config = Config::default();
-    let container = Container::new(config)
+    let container = Container::new(config.crawler, config.scraper)
         .await
         .expect("container creation failed");
     let state = McpState::new(container);
