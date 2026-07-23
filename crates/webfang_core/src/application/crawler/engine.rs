@@ -215,7 +215,7 @@ impl Engine {
     }
 
     /// Enable the domain session pool for per-domain rate limiting.
-    pub fn with_session_pool(mut self, cooldown: Duration, _max_failures: u32) -> Self {
+    pub fn with_session_pool(mut self, cooldown: Duration) -> Self {
         let config = SessionPoolConfig {
             base_delay: cooldown,
             ..SessionPoolConfig::default()
@@ -971,7 +971,7 @@ pub async fn crawl_site_with_options(
 
     // Apply session pool if enabled
     if options.session_pool_enabled {
-        engine = engine.with_session_pool(Duration::from_secs(2), 5);
+        engine = engine.with_session_pool(Duration::from_secs(2));
     }
 
     // Apply JS strategy

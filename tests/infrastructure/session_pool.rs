@@ -3,14 +3,13 @@
 //! Uses SessionManager trait: acquire, report_success, report_failure,
 //! evict_stale, domain_count, total_domains.
 
-use webfang_core::infrastructure::network::session_pool::{
-    DomainSessionPool, SessionId, SessionManager, SessionPoolConfig,
-};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
-
 use webfang_core::domain::clock::SystemClock;
+use webfang_core::infrastructure::network::session_pool::{
+    DomainSessionPool, SessionId, SessionManager, SessionPoolConfig,
+};
 
 // ── Acquire / release cycle ───────────────────────────────────────────────
 
