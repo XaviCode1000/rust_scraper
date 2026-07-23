@@ -9,6 +9,7 @@ use crate::application::crawl_options::CrawlOptions;
 use crate::cli::completions::generate_completions;
 use crate::cli::error::CliExit;
 use crate::cli::export_flow::{run_export, save_files, ExportConfig};
+use crate::application::progress_observer::NoopObserver;
 use crate::cli::scrape_flow::scrape_urls;
 use crate::cli::url_discovery::discover_urls;
 use crate::domain::repository::DynVectorRepository;
@@ -155,7 +156,7 @@ pub async fn run(
         &urls_to_scrape,
         &scraper_config,
         &opts,
-        None,
+        &NoopObserver,
         shared_downloader
             .as_deref()
             .map(|d| d as &dyn crate::domain::ports::AssetDownloaderPort),
